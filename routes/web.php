@@ -84,6 +84,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/2fa/recovery-codes', [AuthController::class, 'regenerateRecoveryCodes'])->name('2fa.recovery-codes');
 
     // Mobile Security & Remote Device Management
+    Route::post('/mobile/update-pin', [MobileSecurityController::class, 'updateMobilePin'])->name('mobile.update-pin');
     Route::post('/mobile/reset-pin', [MobileSecurityController::class, 'resetMobilePin'])->name('mobile.reset-pin');
     Route::post('/mobile/cancel-reset-pin', [MobileSecurityController::class, 'cancelResetMobilePin'])->name('mobile.cancel-reset-pin');
     Route::delete('/mobile/devices/{id}', [MobileSecurityController::class, 'revokeDevice'])->name('mobile.revoke-device');

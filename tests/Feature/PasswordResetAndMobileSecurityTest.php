@@ -82,6 +82,39 @@ class PasswordResetAndMobileSecurityTest extends TestCase
         $this->assertTrue(Hash::check('NewSecurePassword2026!', $this->user->password));
     }
 
+    public function test_admin_can_update_mobile_pin_from_web_dashboard(): void
+    {
+        $this->actingAs($this->user);
+
+        $response = $this->post(route('admin.mobile.update-pin'), [
+            'master_pin' => '889900',
+            'decoy_pin' => '112233',
+            'web_password' => 'SecretPassword123!',
+        ]);
+
+        $response->assertRedirect(route('admin.settings'));
+        $response->assertSessionHas('success');
+
+        $this->assertEquals('889900', Setting::get('mobile_new_master_pin'));
+        $this->assertEquals('112233', Setting::get('mobile_new_decoy_pin'));
+        $this->assertEquals('set_new_pin', Setting::get('mobile_pin_action'));
+        $this->assertEquals('1', Setting::get('mobile_pin_sync_requested'));
+    }
+
+    public function test_admin_cannot_update_mobile_pin_with_wrong_password(): void
+    {
+        $this->actingAs($this->user);
+
+        $response = $this->post(route('admin.mobile.update-pin'), [
+            'master_pin' => '889900',
+            'decoy_pin' => '112233',
+            'web_password' => 'WrongPassword!',
+        ]);
+
+        $response->assertRedirect(route('admin.settings'));
+        $response->assertSessionHasErrors(['mobile_pin_password']);
+    }
+
     public function test_admin_can_request_mobile_pin_reset(): void
     {
         $this->actingAs($this->user);
@@ -90,54 +123,66 @@ class PasswordResetAndMobileSecurityTest extends TestCase
         $response->assertRedirect(route('admin.settings'));
         $response->assertSessionHas('success');
 
-        $this->assertEquals('1', Setting::get('mobile_pin_reset_requested'));
-        $this->assertNotNull(Setting::get('mobile_pin_reset_at'));
+        $this->assertEquals('1', Setting::get('mobile_pin_sync_requested'));
+        $this->assertEquals('reset_to_none', Setting::get('mobile_pin_action'));
+        $this->assertNotNull(Setting::get('mobile_pin_sync_at'));
     }
 
     public function test_admin_can_cancel_mobile_pin_reset(): void
     {
         $this->actingAs($this->user);
-        Setting::set('mobile_pin_reset_requested', '1');
+        Setting::set('mobile_pin_sync_requested', '1');
+        Setting::set('mobile_pin_action', 'set_new_pin');
+        Setting::set('mobile_new_master_pin', '123456');
 
         $response = $this->post(route('admin.mobile.cancel-reset-pin'));
         $response->assertRedirect(route('admin.settings'));
         $response->assertSessionHas('info');
 
-        $this->assertEquals('0', Setting::get('mobile_pin_reset_requested'));
+        $this->assertEquals('0', Setting::get('mobile_pin_sync_requested'));
+        $this->assertEmpty(Setting::get('mobile_new_master_pin'));
     }
 
-    public function test_mobile_api_detects_pin_reset_and_can_acknowledge(): void
+    public function test_mobile_api_detects_pin_update_and_can_acknowledge(): void
     {
         $tokenObj = $this->user->createToken('Test Mobile App');
         $plainToken = $tokenObj->plainTextToken;
 
-        // 1. Initial state: no reset requested
+        // 1. Initial state: no sync requested
         $res = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->getJson('/api/auth/user');
         $res->assertStatus(200);
-        $res->assertJsonPath('user.mobile_security.pin_reset_requested', false);
+        $res->assertJsonPath('user.mobile_security.pin_sync_requested', false);
 
-        // 2. Request reset from web dashboard
-        Setting::set('mobile_pin_reset_requested', '1');
+        // 2. Set new PIN from web dashboard
+        $this->actingAs($this->user)->post(route('admin.mobile.update-pin'), [
+            'master_pin' => '654321',
+            'decoy_pin' => '998877',
+            'web_password' => 'SecretPassword123!',
+        ]);
 
         $res = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->getJson('/api/auth/user');
         $res->assertStatus(200);
-        $res->assertJsonPath('user.mobile_security.pin_reset_requested', true);
+        $res->assertJsonPath('user.mobile_security.pin_sync_requested', true);
+        $res->assertJsonPath('user.mobile_security.action', 'set_new_pin');
+        $res->assertJsonPath('user.mobile_security.new_master_pin', '654321');
+        $res->assertJsonPath('user.mobile_security.new_decoy_pin', '998877');
 
-        // 3. Mobile app acknowledges the reset
+        // 3. Mobile app acknowledges the update
         $ackRes = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->postJson('/api/auth/ack-pin-reset');
         $ackRes->assertStatus(200);
         $ackRes->assertJsonPath('success', true);
 
-        // 4. Verify setting cleared
-        $this->assertEquals('0', Setting::get('mobile_pin_reset_requested'));
+        // 4. Verify settings cleared on server
+        $this->assertEquals('0', Setting::get('mobile_pin_sync_requested'));
+        $this->assertEmpty(Setting::get('mobile_new_master_pin'));
 
         $resAfter = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->getJson('/api/auth/user');
         $resAfter->assertStatus(200);
-        $resAfter->assertJsonPath('user.mobile_security.pin_reset_requested', false);
+        $resAfter->assertJsonPath('user.mobile_security.pin_sync_requested', false);
     }
 
     public function test_admin_can_revoke_mobile_device_token(): void

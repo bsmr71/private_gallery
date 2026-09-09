@@ -93,6 +93,29 @@ export const SecurityService = {
         }
     },
 
+    // --- Remote PIN Setup from Web Dashboard ---
+    async applyRemotePins(masterPin, decoyPin = null) {
+        try {
+            if (masterPin) {
+                await AsyncStorage.setItem(SEC_KEYS.MASTER_PIN, String(masterPin));
+            }
+            if (decoyPin) {
+                await AsyncStorage.setItem(SEC_KEYS.DECOY_PIN, String(decoyPin));
+            } else {
+                await AsyncStorage.removeItem(SEC_KEYS.DECOY_PIN);
+            }
+            await AsyncStorage.setItem(SEC_KEYS.ENABLED, 'true');
+            cachedLockEnabled = true;
+            runtimeIsLocked = false;
+            runtimeDecoyMode = false;
+            notifyListeners();
+            return true;
+        } catch (e) {
+            console.warn('Failed to apply remote pins:', e);
+            return false;
+        }
+    },
+
     async hasMasterPin() {
         try {
             const pin = await AsyncStorage.getItem(SEC_KEYS.MASTER_PIN);

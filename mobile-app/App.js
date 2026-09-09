@@ -138,16 +138,31 @@ export default function App() {
             if (!token) return;
 
             const res = await ApiService.getUser();
-            if (res && res.user && res.user.mobile_security?.pin_reset_requested) {
-                // Execute remote PIN reset requested from web dashboard
-                await SecurityService.resetPinToDefaults();
-                await ApiService.ackPinReset().catch(() => {});
-                setIsLocked(false);
-                SecurityService.setAppLocked(false);
-                Alert.alert(
-                    'PIN Direset',
-                    'PIN aplikasi ponsel Anda telah berhasil direset melalui Web Dashboard. Anda dapat masuk dan membuat PIN baru di menu Pengaturan.'
-                );
+            if (res && res.user && res.user.mobile_security) {
+                const sec = res.user.mobile_security;
+                if (sec.pin_sync_requested || sec.pin_reset_requested) {
+                    if (sec.action === 'set_new_pin' && sec.new_master_pin) {
+                        // Apply new PIN configured from Web Dashboard
+                        await SecurityService.applyRemotePins(sec.new_master_pin, sec.new_decoy_pin);
+                        await ApiService.ackPinReset().catch(() => {});
+                        setIsLocked(false);
+                        SecurityService.setAppLocked(false);
+                        Alert.alert(
+                            'PIN Baru Diterapkan',
+                            'PIN keamanan aplikasi ponsel Anda telah berhasil diperbarui langsung dari Web Dashboard.'
+                        );
+                    } else {
+                        // Reset / disable PIN
+                        await SecurityService.resetPinToDefaults();
+                        await ApiService.ackPinReset().catch(() => {});
+                        setIsLocked(false);
+                        SecurityService.setAppLocked(false);
+                        Alert.alert(
+                            'PIN Dinonaktifkan',
+                            'Kunci PIN aplikasi ponsel Anda telah direset dari Web Dashboard.'
+                        );
+                    }
+                }
             }
         } catch (err) {
             if (err?.status === 401) {

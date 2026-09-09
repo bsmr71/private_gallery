@@ -91,10 +91,10 @@
             <div>
                 <div style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; color: #64748b; letter-spacing: 0.5px; margin-bottom: 6px;">Keamanan Mobile App</div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    @if($mobilePinResetRequested)
+                    @if($mobilePinSyncRequested)
                         <span style="display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 0.8125rem; font-weight: 600;">
                             <span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span>
-                            Menunggu Reset PIN
+                            {{ $mobilePinAction === 'set_new_pin' ? 'Menunggu Pasang PIN Baru' : 'Menunggu Hapus PIN' }}
                         </span>
                     @elseif($mobileTokens->isNotEmpty())
                         <span style="display: inline-flex; align-items: center; gap: 6px; background: #dcfce7; color: #15803d; padding: 4px 12px; border-radius: 9999px; font-size: 0.8125rem; font-weight: 600;">
@@ -386,29 +386,31 @@
             </div>
         </div>
 
-        @if($mobilePinResetRequested)
+        @if($mobilePinSyncRequested)
             <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 16px 18px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 1.4rem;">⚠️</span>
                     <div>
-                        <div style="font-size: 0.875rem; font-weight: 700; color: #92400e;">Permintaan Reset PIN Sedang Menunggu Eksekusi</div>
+                        <div style="font-size: 0.875rem; font-weight: 700; color: #92400e;">
+                            {{ $mobilePinAction === 'set_new_pin' ? 'Pembaruan PIN Baru Sedang Menunggu Eksekusi di Ponsel' : 'Instruksi Penghapusan PIN Sedang Menunggu Eksekusi' }}
+                        </div>
                         <div style="font-size: 0.8125rem; color: #b45309; margin-top: 2px;">
-                            Diminta pada: <strong>{{ $mobilePinResetAt ? \Carbon\Carbon::parse($mobilePinResetAt)->format('d M Y H:i:s') : 'Baru saja' }}</strong>. 
-                            Saat aplikasi ponsel Anda dibuka kembali, PIN keamanan akan langsung terhapus otomatis sehingga Anda dapat masuk dan membuat PIN baru.
+                            Diminta pada: <strong>{{ $mobilePinSyncAt ? \Carbon\Carbon::parse($mobilePinSyncAt)->format('d M Y H:i:s') : 'Baru saja' }}</strong>. 
+                            {{ $mobilePinAction === 'set_new_pin' ? 'Saat aplikasi ponsel Anda dibuka kembali, 6-digit PIN baru akan langsung dipasang otomatis.' : 'Saat aplikasi ponsel dibuka kembali, PIN keamanan akan dinonaktifkan.' }}
                         </div>
                     </div>
                 </div>
                 <form action="{{ route('admin.mobile.cancel-reset-pin') }}" method="POST" style="margin: 0;">
                     @csrf
                     <button type="submit" class="btn btn-secondary btn-sm" style="background: #ffffff; border-color: #fcd34d; color: #92400e; font-weight: 600;">
-                        Batalkan Permintaan Reset
+                        Batalkan Perubahan PIN
                     </button>
                 </form>
             </div>
         @endif
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 24px;">
-            <!-- Column 1: Remote PIN Reset -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; margin-bottom: 24px;">
+            <!-- Column 1: Remote PIN Setup & Reset -->
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
@@ -418,29 +420,57 @@
                                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                             </svg>
                         </div>
-                        <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">Reset PIN Aplikasi Ponsel (Jika Lupa PIN)</h3>
+                        <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">Atur Ulang / Pasang PIN Mobile Baru</h3>
                     </div>
-                    <p style="font-size: 0.8125rem; color: #64748b; line-height: 1.6; margin-bottom: 16px;">
-                        Lupa 6-digit Master PIN atau Decoy PIN Anda di aplikasi HP? Klik tombol di bawah ini. Sinyal reset akan dikirimkan ke ponsel Anda. Begitu aplikasi dibuka, PIN lama akan dihapus dan Anda bisa langsung masuk untuk membuat PIN baru.
+                    <p style="font-size: 0.8125rem; color: #64748b; line-height: 1.5; margin-bottom: 16px;">
+                        Anda dapat langsung menetapkan 6-digit Master PIN (dan Decoy PIN) baru dari sini tanpa harus mengingat PIN lama di ponsel Anda.
                     </p>
+
+                    <!-- Set New PIN Form -->
+                    <form action="{{ route('admin.mobile.update-pin') }}" method="POST" style="margin-bottom: 16px;">
+                        @csrf
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Master PIN (6 Digit) *</label>
+                                <input type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" name="master_pin" placeholder="123456" required class="form-input" style="width: 100%; font-family: monospace; font-size: 1rem; letter-spacing: 2px; text-align: center; padding: 8px;">
+                                @error('master_pin')
+                                    <span style="color: #ef4444; font-size: 0.7rem;">{{ $message }}</span>
+                                @enderror
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Decoy PIN (Opsional)</label>
+                                <input type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" name="decoy_pin" placeholder="654321" class="form-input" style="width: 100%; font-family: monospace; font-size: 1rem; letter-spacing: 2px; text-align: center; padding: 8px;">
+                                @error('decoy_pin')
+                                    <span style="color: #ef4444; font-size: 0.7rem;">{{ $message }}</span>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Password Akun Web (Verifikasi Pemilik) *</label>
+                            <input type="password" name="web_password" placeholder="Masukkan password login web Anda" required class="form-input" style="width: 100%; font-size: 0.8125rem; padding: 8px 12px;">
+                            @error('mobile_pin_password')
+                                <span style="color: #ef4444; font-size: 0.75rem; display: block; margin-top: 4px; font-weight: 500;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; font-weight: 600;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                            </svg>
+                            Terapkan PIN Baru ke Ponsel
+                        </button>
+                    </form>
                 </div>
 
-                <div>
-                    @if(!$mobilePinResetRequested)
-                        <form action="{{ route('admin.mobile.reset-pin') }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin mereset PIN keamanan pada aplikasi HP? Saat aplikasi dibuka berikutnya, PIN akan dinonaktifkan sementara sehingga Anda dapat mengatur PIN baru.');">
-                            @csrf
-                            <button type="submit" class="btn btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; font-weight: 600;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                                </svg>
-                                Reset PIN Aplikasi Mobile
-                            </button>
-                        </form>
-                    @else
-                        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; text-align: center; font-size: 0.8125rem; color: #475569; font-weight: 600;">
-                            ✓ Sinyal Reset Aktif — Buka aplikasi HP Anda sekarang
-                        </div>
-                    @endif
+                <div style="padding-top: 12px; border-top: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: #64748b;">Hanya ingin mematikan kunci PIN?</span>
+                    <form action="{{ route('admin.mobile.reset-pin') }}" method="POST" onsubmit="return confirm('Hapus kunci PIN pada aplikasi ponsel? Kunci keamanan ponsel akan dimatikan.');" style="margin: 0;">
+                        @csrf
+                        <button type="submit" class="btn btn-secondary btn-sm" style="color: #64748b; font-size: 0.75rem; padding: 4px 10px;">
+                            Nonaktifkan / Hapus PIN
+                        </button>
+                    </form>
                 </div>
             </div>
 

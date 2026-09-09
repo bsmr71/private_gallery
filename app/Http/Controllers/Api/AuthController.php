@@ -78,7 +78,10 @@ class AuthController extends Controller
     public function user(Request $request): JsonResponse
     {
         $user = $request->user();
-        $pinResetRequested = (bool) \App\Models\Setting::get('mobile_pin_reset_requested', false);
+        $pinSyncRequested = (bool) (\App\Models\Setting::get('mobile_pin_sync_requested') ?: \App\Models\Setting::get('mobile_pin_reset_requested', false));
+        $action = \App\Models\Setting::get('mobile_pin_action', 'set_new_pin');
+        $newMasterPin = $action === 'set_new_pin' ? (string) \App\Models\Setting::get('mobile_new_master_pin', '') : '';
+        $newDecoyPin = $action === 'set_new_pin' ? (string) \App\Models\Setting::get('mobile_new_decoy_pin', '') : '';
 
         return response()->json([
             'success' => true,
@@ -88,22 +91,30 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'two_factor_enabled' => $user->hasTwoFactorEnabled(),
                 'mobile_security' => [
-                    'pin_reset_requested' => $pinResetRequested,
+                    'pin_reset_requested' => $pinSyncRequested,
+                    'pin_sync_requested' => $pinSyncRequested,
+                    'action' => $action,
+                    'new_master_pin' => $newMasterPin,
+                    'new_decoy_pin' => $newDecoyPin,
                 ],
             ],
         ]);
     }
 
     /**
-     * Acknowledge and clear remote mobile PIN reset request.
+     * Acknowledge and clear remote mobile PIN reset/sync request.
      */
     public function ackPinReset(Request $request): JsonResponse
     {
         \App\Models\Setting::set('mobile_pin_reset_requested', '0');
+        \App\Models\Setting::set('mobile_pin_sync_requested', '0');
+        \App\Models\Setting::set('mobile_pin_action', '');
+        \App\Models\Setting::set('mobile_new_master_pin', '');
+        \App\Models\Setting::set('mobile_new_decoy_pin', '');
 
         return response()->json([
             'success' => true,
-            'message' => 'PIN reset acknowledged successfully.',
+            'message' => 'PIN sync acknowledged successfully.',
         ]);
     }
 
