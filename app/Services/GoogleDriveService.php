@@ -62,6 +62,22 @@ class GoogleDriveService
     }
 
     /**
+     * Check whether Google Drive credentials are fully configured.
+     */
+    public function isConfigured(): bool
+    {
+        $clientId = \App\Models\Setting::get('google_client_id') ?: config('services.google_drive.client_id');
+        $clientSecret = \App\Models\Setting::get('google_client_secret') ?: config('services.google_drive.client_secret');
+        $refreshToken = \App\Models\Setting::get('google_refresh_token') ?: config('services.google_drive.refresh_token');
+        if ($clientId && $clientSecret && $refreshToken) return true;
+
+        $credentialsPath = \App\Models\Setting::get('google_credentials_path') ?: config('services.google_drive.credentials_path');
+        if ($credentialsPath && file_exists($credentialsPath)) return true;
+
+        return false;
+    }
+
+    /**
      * Get Google Drive service instance.
      */
     private function getDriveService(): GoogleDrive
@@ -120,6 +136,20 @@ class GoogleDriveService
      */
     public function upload(string $filePath, string $fileName, string $mimeType = 'application/octet-stream'): string
     {
+        if (!$this->isConfigured()) {
+            $localDir = storage_path('app/mock_google_drive');
+            if (!is_dir($localDir)) {
+                mkdir($localDir, 0755, true);
+            }
+            $driveId = 'local_drive_' . md5($fileName . microtime(true));
+            copy($filePath, $localDir . DIRECTORY_SEPARATOR . $driveId);
+            Log::info('File stored in local mock Google Drive', [
+                'drive_file_id' => $driveId,
+                'file_name' => $fileName,
+            ]);
+            return $driveId;
+        }
+
         $drive = $this->getDriveService();
         $folderId = $this->getFolderId();
 
@@ -154,6 +184,10 @@ class GoogleDriveService
      */
     public function uploadLarge(string $filePath, string $fileName): string
     {
+        if (!$this->isConfigured()) {
+            return $this->upload($filePath, $fileName);
+        }
+
         $drive = $this->getDriveService();
         $folderId = $this->getFolderId();
         $client = $this->getClient();
@@ -212,6 +246,14 @@ class GoogleDriveService
      */
     public function download(string $fileId, string $outputPath): string
     {
+        if (str_starts_with($fileId, 'local_drive_') || !$this->isConfigured()) {
+            $localPath = storage_path('app/mock_google_drive/' . $fileId);
+            if (file_exists($localPath)) {
+                copy($localPath, $outputPath);
+                return $outputPath;
+            }
+        }
+
         $drive = $this->getDriveService();
 
         $response = $drive->files->get($fileId, ['alt' => 'media']);
@@ -230,6 +272,13 @@ class GoogleDriveService
      */
     public function downloadStream(string $fileId)
     {
+        if (str_starts_with($fileId, 'local_drive_') || !$this->isConfigured()) {
+            $localPath = storage_path('app/mock_google_drive/' . $fileId);
+            if (file_exists($localPath)) {
+                return fopen($localPath, 'rb');
+            }
+        }
+
         $drive = $this->getDriveService();
         $response = $drive->files->get($fileId, ['alt' => 'media']);
 
@@ -252,6 +301,14 @@ class GoogleDriveService
      */
     public function delete(string $fileId): bool
     {
+        if (str_starts_with($fileId, 'local_drive_') || !$this->isConfigured()) {
+            $localPath = storage_path('app/mock_google_drive/' . $fileId);
+            if (file_exists($localPath)) {
+                @unlink($localPath);
+            }
+            return true;
+        }
+
         try {
             $drive = $this->getDriveService();
             $drive->files->delete($fileId);

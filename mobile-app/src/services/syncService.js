@@ -228,6 +228,8 @@ export const SyncService = {
         const uploadedAssetIds = [];
         const total = assets.length;
 
+        let lastError = null;
+
         // Keep Android process alive even when app is minimized
         await NativeSyncService.startForegroundSync(
             'Lumina: Sinkronisasi Brankas',
@@ -311,6 +313,7 @@ export const SyncService = {
                         });
                     }
                 } catch (err) {
+                    lastError = err?.message || String(err);
                     console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
                     failCount++;
                     if (onProgress) {
@@ -340,6 +343,7 @@ export const SyncService = {
             failCount,
             deletedCount,
             autoDeleteRequested: autoDelete,
+            lastError,
         };
     },
 

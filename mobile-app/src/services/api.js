@@ -183,16 +183,12 @@ export const ApiService = {
 
             const type = fileAsset.mimeType || (isVideo ? (ext === 'mov' ? 'video/quicktime' : 'video/mp4') : (ext === 'png' ? 'image/png' : 'image/jpeg'));
 
-            // Ensure Android file access:
-            // For content:// URIs or files without extensions in cache, copy to app cache with explicit safe filename
-            if (fileUri && (fileUri.startsWith('content://') || fileUri.endsWith('.tmp') || !fileUri.includes('.'))) {
-                const safeName = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-                tempCacheUri = `${FileSystemLegacy.cacheDirectory}upload_${Date.now()}_${safeName}`;
-                await FileSystemLegacy.copyAsync({
-                    from: fileUri,
-                    to: tempCacheUri,
-                });
-                fileUri = tempCacheUri;
+            // Normalize fileUri for React Native NetworkingModule:
+            // React Native's native OkHttp engine streams directly from content:// URIs
+            // via ContentResolver.openInputStream(), with zero disk overhead.
+            let normalizedUri = fileUri;
+            if (normalizedUri && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
+                normalizedUri = `file://${normalizedUri}`;
             }
 
             const url = `${baseUrl.replace(/\/$/, '')}/media/upload`;
@@ -230,26 +226,31 @@ export const ApiService = {
 
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(parsed);
+                    } else if (parsed?.errors && Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+                        const firstErr = parsed.errors[0]?.error || parsed.errors[0]?.message || parsed.message;
+                        reject(new Error(firstErr || `Gagal mengunggah (HTTP ${xhr.status})`));
                     } else if (xhr.status === 413) {
-                        reject(new Error(parsed?.message || 'Ukuran video melebihi batas upload server.'));
+                        reject(new Error(parsed?.message || 'Ukuran berkas melebihi batas upload server.'));
                     } else if (xhr.status === 422) {
                         reject(new Error(parsed?.message || 'Validasi unggahan gagal pada server.'));
+                    } else if (xhr.status === 401) {
+                        reject(new Error('Sesi autentikasi telah berakhir. Silakan login ulang.'));
                     } else {
                         reject(new Error(parsed?.message || `Gagal mengunggah (HTTP ${xhr.status})`));
                     }
                 };
 
                 xhr.onerror = () => {
-                    reject(new Error('Koneksi jaringan terputus saat mengunggah berkas.'));
+                    reject(new Error('Koneksi terputus saat mengunggah. Periksa jaringan Anda.'));
                 };
 
                 xhr.ontimeout = () => {
-                    reject(new Error('Waktu unggah habis (timeout). Periksa koneksi internet Anda.'));
+                    reject(new Error('Waktu unggah habis (timeout).'));
                 };
 
                 const formData = new FormData();
                 formData.append('file', {
-                    uri: fileUri,
+                    uri: normalizedUri,
                     name: filename,
                     type: type,
                 });

@@ -122,9 +122,10 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             });
 
             if (res.failCount > 0 && res.successCount === 0) {
+                const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '\n\nPastikan koneksi internet stabil.';
                 Alert.alert(
                     'Sinkronisasi Belum Berhasil',
-                    `Gagal mengunggah ${res.failCount} berkas ke server. Pastikan koneksi internet stabil.`,
+                    `Gagal mengunggah ${res.failCount} berkas ke server.${detail}`,
                     [{ text: 'OK' }]
                 );
             } else {
