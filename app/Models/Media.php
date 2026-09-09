@@ -92,6 +92,7 @@ class Media extends Model
             'size' => $this->formattedSize(),
             'streamUrl' => $this->streamUrl(),
             'downloadUrl' => $this->downloadUrl(),
+            'deleteUrl' => route('admin.media.destroy', $this),
             'album' => $this->album ? $this->album->name : null,
             'created_at' => $this->created_at ? $this->created_at->format('d M Y') : null,
         ];

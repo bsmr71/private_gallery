@@ -47,6 +47,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/media', [MediaController::class, 'index'])->name('media.index');
     Route::get('/media/upload', [MediaController::class, 'create'])->name('media.create');
     Route::post('/media', [MediaController::class, 'store'])->name('media.store');
+    Route::post('/media/batch-delete', [MediaController::class, 'batchDelete'])->name('media.batch-delete');
     Route::put('/media/{media}', [MediaController::class, 'update'])->name('media.update');
     Route::delete('/media/{media}', [MediaController::class, 'destroy'])->name('media.destroy');
 

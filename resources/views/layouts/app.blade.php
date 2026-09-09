@@ -133,6 +133,17 @@
                     <span>Unduh</span>
                 </a>
 
+                @auth
+                <!-- Delete Button -->
+                <button type="button" class="lightbox-action-btn delete-btn" id="lightbox-delete-btn" onclick="deleteCurrentLightboxMedia()" title="Hapus Foto/Video Ini">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                    <span>Hapus</span>
+                </button>
+                @endauth
+
                 <!-- Fullscreen Toggle -->
                 <button type="button" class="lightbox-action-btn icon-only" onclick="toggleLightboxFullscreen()" id="lightbox-fs-btn" title="Layar Penuh (F)">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -179,6 +190,10 @@
             <span><strong>&larr; / &rarr;</strong> Navigasi</span>
             <span class="hint-dot">•</span>
             <span><strong>Esc</strong> Tutup</span>
+            @auth
+            <span class="hint-dot">•</span>
+            <span><strong>Del</strong> Hapus</span>
+            @endauth
         </div>
     </div>
 

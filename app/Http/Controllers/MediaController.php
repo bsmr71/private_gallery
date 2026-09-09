@@ -310,37 +310,89 @@ class MediaController extends Controller
     public function destroy(Media $media)
     {
         try {
-            // Delete from Drive
-            $this->driveService->delete($media->drive_file_id);
-
-            if ($media->thumb_drive_id) {
-                $this->driveService->delete($media->thumb_drive_id);
+            // Delete from Drive (best effort - prevent blocking deletion if file already deleted from Drive)
+            try {
+                if ($media->drive_file_id) {
+                    $this->driveService->delete($media->drive_file_id);
+                }
+                if ($media->thumb_drive_id) {
+                    $this->driveService->delete($media->thumb_drive_id);
+                }
+            } catch (\Exception $driveEx) {
+                Log::warning('Drive file deletion skipped or failed: ' . $driveEx->getMessage(), [
+                    'media_id' => $media->id,
+                ]);
             }
 
-            // Remove from cache
+            // Remove from local cache
             $this->cacheService->removeCached($media);
 
             // Delete from database
             $media->delete();
 
-            if (request()->ajax()) {
-                return response()->json(['success' => true]);
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Media berhasil dihapus.',
+                ]);
             }
 
-            return redirect()->route('admin.media.index')
-                ->with('success', 'Media deleted successfully.');
+            return redirect()->back()
+                ->with('success', 'Media berhasil dihapus.');
         } catch (\Exception $e) {
             Log::error('Media delete failed', [
                 'media_id' => $media->id,
                 'error' => $e->getMessage(),
             ]);
 
-            if (request()->ajax()) {
-                return response()->json(['error' => $e->getMessage()], 500);
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['error' => 'Gagal menghapus media: ' . $e->getMessage()], 500);
             }
 
-            return back()->with('error', 'Failed to delete media: ' . $e->getMessage());
+            return back()->with('error', 'Gagal menghapus media: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Admin: Batch delete multiple media items
+     */
+    public function batchDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:media,id',
+        ]);
+
+        $deletedCount = 0;
+        foreach ($validated['ids'] as $id) {
+            $media = Media::find($id);
+            if ($media) {
+                try {
+                    if ($media->drive_file_id) {
+                        $this->driveService->delete($media->drive_file_id);
+                    }
+                    if ($media->thumb_drive_id) {
+                        $this->driveService->delete($media->thumb_drive_id);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Drive batch delete skipped for media {$id}: " . $e->getMessage());
+                }
+
+                $this->cacheService->removeCached($media);
+                $media->delete();
+                $deletedCount++;
+            }
+        }
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'deleted' => $deletedCount,
+                'message' => "{$deletedCount} media berhasil dihapus.",
+            ]);
+        }
+
+        return redirect()->back()->with('success', "{$deletedCount} media berhasil dihapus.");
     }
 
     /**

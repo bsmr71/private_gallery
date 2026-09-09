@@ -136,6 +136,10 @@ document.addEventListener('keydown', (e) => {
                 window.location.href = dlBtn.href;
             }
             break;
+        case 'Delete':
+        case 'Backspace':
+            deleteCurrentLightboxMedia();
+            break;
     }
 });
 
@@ -332,10 +336,10 @@ function showNotification(message, type = 'success') {
 }
 
 // ============================================================
-// ADMIN: DELETE CONFIRMATION
+// DELETE CONFIRMATION & ACTIONS (GALLERY, LIGHTBOX, ADMIN)
 // ============================================================
 function confirmDelete(url, name) {
-    if (confirm(`Yakin ingin menghapus "${name}"?`)) {
+    if (confirm(`Yakin ingin menghapus "${name}"?\n\nFoto/video ini akan dihapus dari Google Drive dan database.`)) {
         fetch(url, {
             method: 'DELETE',
             headers: {
@@ -346,15 +350,129 @@ function confirmDelete(url, name) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                showNotification('Berhasil dihapus!', 'success');
-                // Remove the card/row from DOM
-                setTimeout(() => location.reload(), 1000);
+                showNotification(data.message || 'Berhasil dihapus!', 'success');
+                setTimeout(() => location.reload(), 600);
             } else {
                 showNotification(data.error || 'Gagal menghapus', 'error');
             }
         })
-        .catch(() => showNotification('Network error', 'error'));
+        .catch(() => showNotification('Terjadi kesalahan jaringan saat menghapus', 'error'));
     }
+}
+
+function deleteGalleryItem(id, url, title) {
+    if (!confirm(`Yakin ingin menghapus "${title}"?\n\nBerkas akan dihapus permanen dari Google Drive dan database.`)) {
+        return;
+    }
+
+    const card = document.getElementById(`media-item-${id}`) || document.querySelector(`.media-card[data-media*='"id":${id}']`);
+    if (card) {
+        card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        card.style.opacity = '0.4';
+        card.style.pointerEvents = 'none';
+    }
+
+    fetch(url, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message || 'Media berhasil dihapus!', 'success');
+            if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.85)';
+                setTimeout(() => {
+                    card.remove();
+                    // Update lightboxItems array
+                    lightboxItems = lightboxItems.filter(item => item.id != id);
+                    // Check if gallery is now empty
+                    const remaining = document.querySelectorAll('.media-card');
+                    if (remaining.length === 0) {
+                        location.reload();
+                    }
+                }, 320);
+            }
+        } else {
+            if (card) {
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+            showNotification(data.error || 'Gagal menghapus media', 'error');
+        }
+    })
+    .catch(() => {
+        if (card) {
+            card.style.opacity = '1';
+            card.style.pointerEvents = 'auto';
+        }
+        showNotification('Terjadi kesalahan jaringan saat menghapus media', 'error');
+    });
+}
+
+function deleteCurrentLightboxMedia() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+
+    const url = item.deleteUrl || `/admin/media/${item.id}`;
+    if (!confirm(`Yakin ingin menghapus "${item.title}"?\n\nBerkas akan dihapus permanen dari Google Drive dan database.`)) {
+        return;
+    }
+
+    const deleteBtn = document.getElementById('lightbox-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.style.opacity = '0.5';
+    }
+
+    fetch(url, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.style.opacity = '1';
+        }
+
+        if (data.success) {
+            showNotification(data.message || 'Media berhasil dihapus!', 'success');
+
+            // Remove card from DOM
+            const card = document.getElementById(`media-item-${item.id}`) || document.querySelector(`.media-card[data-media*='"id":${item.id}']`);
+            if (card) card.remove();
+
+            // Remove from lightboxItems array
+            lightboxItems.splice(lightboxIndex, 1);
+
+            if (lightboxItems.length === 0) {
+                closeLightbox();
+                setTimeout(() => location.reload(), 500);
+            } else {
+                lightboxIndex = lightboxIndex % lightboxItems.length;
+                updateLightboxContent();
+            }
+        } else {
+            showNotification(data.error || 'Gagal menghapus media', 'error');
+        }
+    })
+    .catch(() => {
+        if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.style.opacity = '1';
+        }
+        showNotification('Terjadi kesalahan jaringan saat menghapus media', 'error');
+    });
 }
 
 // ============================================================

@@ -23,10 +23,10 @@
         </div>
         @endif
 
-        <!-- Floating Quick Action: Download button on hover -->
+        <!-- Floating Quick Action: Download & Delete buttons on hover -->
         <div class="card-quick-actions">
             <a href="{{ route('media.download', $item) }}"
-               class="card-action-download"
+               class="card-action-btn btn-download"
                title="Unduh {{ $item->title }} ({{ $item->formattedSize() }})"
                download
                onclick="event.stopPropagation()">
@@ -37,6 +37,19 @@
                 </svg>
                 <span class="sr-only">Unduh</span>
             </a>
+
+            @auth
+            <button type="button"
+                    class="card-action-btn btn-delete"
+                    title="Hapus {{ $item->title }}"
+                    onclick="event.stopPropagation(); deleteGalleryItem({{ $item->id }}, '{{ route('admin.media.destroy', $item) }}', '{{ addslashes($item->title) }}')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span class="sr-only">Hapus</span>
+            </button>
+            @endauth
         </div>
 
         <!-- Clean Bottom Meta Overlay on Hover -->

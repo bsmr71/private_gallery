@@ -49,12 +49,33 @@
                onkeyup="debounceSearch(this.value)">
     </div>
 
+    <!-- Batch Actions Bar -->
+    <div id="batch-actions-bar" style="display:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); padding:10px 18px; border-radius:12px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span style="font-size:0.875rem; font-weight:600; color:#ef4444;"><span id="selected-count">0</span> media dipilih</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:0.8125rem;" onclick="toggleSelectAll()">Pilih Semua</button>
+            <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:0.8125rem;" onclick="clearSelection()">Batal</button>
+            <button type="button" class="btn" style="background:#dc2626; color:#ffffff; padding:6px 16px; font-size:0.8125rem; font-weight:600;" onclick="submitBatchDelete()">
+                🗑️ Hapus Terpilih
+            </button>
+        </div>
+    </div>
+
     <!-- Media Grid with Admin Actions -->
     @if($media->count() > 0)
     <div class="media-grid">
         @foreach($media as $item)
         <div class="media-card"
+             id="admin-media-{{ $item->id }}"
              data-media="{{ json_encode($item->toLightboxData()) }}">
+
+            <!-- Checkbox Selection -->
+            <label class="media-card-checkbox-label" onclick="event.stopPropagation()">
+                <input type="checkbox" class="media-select-cb" value="{{ $item->id }}" onchange="handleItemSelect(this)">
+            </label>
 
             <img class="media-card-image"
                  data-src="{{ $item->thumbnailUrl() }}"
@@ -143,6 +164,80 @@ function filterByType(value) {
     if (value) url.searchParams.set('type', value);
     else url.searchParams.delete('type');
     window.location = url;
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.media-select-cb:checked')).map(cb => cb.value);
+}
+
+function handleItemSelect(cb) {
+    if (cb) {
+        const label = cb.closest('.media-card-checkbox-label');
+        if (label) label.classList.toggle('is-checked', cb.checked);
+    }
+    const count = getSelectedIds().length;
+    const bar = document.getElementById('batch-actions-bar');
+    const countEl = document.getElementById('selected-count');
+    if (bar && countEl) {
+        countEl.textContent = count;
+        bar.style.display = count > 0 ? 'flex' : 'none';
+    }
+}
+
+function toggleSelectAll() {
+    const checkboxes = document.querySelectorAll('.media-select-cb');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => {
+        cb.checked = !allChecked;
+        const label = cb.closest('.media-card-checkbox-label');
+        if (label) label.classList.toggle('is-checked', cb.checked);
+    });
+    handleItemSelect();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.media-select-cb').forEach(cb => {
+        cb.checked = false;
+        const label = cb.closest('.media-card-checkbox-label');
+        if (label) label.classList.remove('is-checked');
+    });
+    handleItemSelect();
+}
+
+function submitBatchDelete() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+
+    if (!confirm(`Yakin ingin menghapus ${ids.length} media terpilih?\n\nBerkas akan dihapus permanen dari Google Drive dan database.`)) {
+        return;
+    }
+
+    fetch('{{ route('admin.media.batch-delete') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: ids }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message || `${data.deleted} media berhasil dihapus!`, 'success');
+            ids.forEach(id => {
+                const card = document.getElementById(`admin-media-${id}`);
+                if (card) card.remove();
+            });
+            clearSelection();
+            setTimeout(() => location.reload(), 600);
+        } else {
+            showNotification(data.error || 'Gagal menghapus media terpilih', 'error');
+        }
+    })
+    .catch(() => {
+        showNotification('Terjadi kesalahan jaringan saat menghapus media', 'error');
+    });
 }
 </script>
 @endpush
