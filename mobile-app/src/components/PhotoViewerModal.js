@@ -21,6 +21,9 @@ import SecureImage from './SecureImage';
 
 import SFSymbol from './SFSymbol';
 import { BlurView } from 'expo-blur';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { MediaUrlHelper } from '../services/mediaUrl';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,12 +38,14 @@ export default function PhotoViewerModal({
     const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
     const [chromeVisible, setChromeVisible] = useState(true);
     const [infoVisible, setInfoVisible] = useState(false);
+    const [downloading, setDownloading] = useState(false);
 
     useEffect(() => {
         if (visible) {
             setCurrentIndex(initialIndex || 0);
             setChromeVisible(true);
             setInfoVisible(false);
+            setDownloading(false);
         }
     }, [visible, initialIndex]);
 
@@ -91,6 +96,44 @@ export default function PhotoViewerModal({
                 url: activeItem.stream_url,
             });
         } catch (e) {}
+    };
+
+    const handleDownload = async () => {
+        if (!activeItem || downloading) return;
+        try {
+            setDownloading(true);
+            const rawUrl = activeItem.download_url || activeItem.stream_url;
+            const downloadUrl = MediaUrlHelper.resolve(rawUrl);
+
+            const isVideo = (activeItem.mime_type && activeItem.mime_type.includes('video')) || activeItem.type === 'video';
+            const ext = isVideo ? 'mp4' : 'jpg';
+            const cleanTitle = (activeItem.title || `media_${activeItem.id}`).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+            const filename = cleanTitle.toLowerCase().endsWith(`.${ext}`) ? cleanTitle : `${cleanTitle}.${ext}`;
+
+            const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${filename}`;
+            const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
+
+            setDownloading(false);
+
+            if (downloadRes.status !== 200) {
+                throw new Error(`Gagal mengunduh: status ${downloadRes.status}`);
+            }
+
+            const isSharingAvailable = await Sharing.isAvailableAsync();
+            if (isSharingAvailable) {
+                await Sharing.shareAsync(downloadRes.uri, {
+                    mimeType: activeItem.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                    dialogTitle: `Simpan ${filename}`,
+                    UTI: isVideo ? 'public.movie' : 'public.image',
+                });
+            } else {
+                Alert.alert('Unduhan Selesai', `Berkas berhasil diunduh:\n${filename}`);
+            }
+        } catch (err) {
+            setDownloading(false);
+            console.error('Download error:', err);
+            Alert.alert('Gagal Mengunduh', err?.message || 'Terjadi kesalahan saat mengunduh berkas.');
+        }
     };
 
     const handleDelete = () => {
@@ -222,6 +265,8 @@ export default function PhotoViewerModal({
                             onFavorite={handleToggleFavorite}
                             onInfo={() => setInfoVisible(true)}
                             onShare={handleShare}
+                            onDownload={handleDownload}
+                            downloading={downloading}
                             onMove={() => Alert.alert('Info', 'Gunakan menu rapikan pada album.')}
                             onDelete={handleDelete}
                         />

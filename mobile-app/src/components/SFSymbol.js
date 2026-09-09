@@ -328,6 +328,26 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
             );
         }
 
+        // --- 18. DOWNLOAD / SAVE ---
+        case 'arrow.down.circle':
+        case 'download': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth={strokeWidth} />
+                    <Path d="M12 7.5V14.5M12 14.5L9 11.5M12 14.5L15 11.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M9 16.5H15" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                </Svg>
+            );
+        }
+        case 'square.and.arrow.down': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M12 3.5V14.5M12 14.5L8.5 11M12 14.5L15.5 11" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M4.5 11.5V18.5C4.5 19.6 5.4 20.5 6.5 20.5H17.5C18.6 20.5 19.5 19.6 19.5 18.5V11.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+
         default:
             return null;
     }

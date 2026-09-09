@@ -8,8 +8,10 @@ export default function AppleDock({
     onFavorite,
     onInfo,
     onShare,
+    onDownload,
     onMove,
     onDelete,
+    downloading = false,
 }) {
     if (!item) return null;
 
@@ -19,15 +21,29 @@ export default function AppleDock({
             <View style={styles.dockInner}>
                 {/* Share */}
                 <TouchableOpacity style={styles.dockBtn} onPress={onShare} activeOpacity={0.6}>
-                    <SFSymbol name="share" size={21} color="#0A84FF" />
+                    <SFSymbol name="share" size={20} color="#0A84FF" />
                     <Text style={styles.dockLabel}>Bagikan</Text>
+                </TouchableOpacity>
+
+                {/* Download / Save */}
+                <TouchableOpacity style={styles.dockBtn} onPress={onDownload} disabled={downloading} activeOpacity={0.6}>
+                    {downloading ? (
+                        <View style={{ height: 20, justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 13, color: '#30D158' }}>⏳</Text>
+                        </View>
+                    ) : (
+                        <SFSymbol name="download" size={20} color="#30D158" />
+                    )}
+                    <Text style={[styles.dockLabel, { color: '#30D158' }]}>
+                        {downloading ? 'Mengunduh' : 'Unduh'}
+                    </Text>
                 </TouchableOpacity>
 
                 {/* Favorite */}
                 <TouchableOpacity style={styles.dockBtn} onPress={onFavorite} activeOpacity={0.6}>
                     <SFSymbol
                         name="heart"
-                        size={21}
+                        size={20}
                         color={item.is_favorite ? '#FF375F' : '#ffffff'}
                         focused={item.is_favorite}
                     />
@@ -38,19 +54,19 @@ export default function AppleDock({
 
                 {/* Info */}
                 <TouchableOpacity style={styles.dockBtn} onPress={onInfo} activeOpacity={0.6}>
-                    <SFSymbol name="info" size={21} color="#ffffff" />
+                    <SFSymbol name="info" size={20} color="#ffffff" />
                     <Text style={styles.dockLabel}>Info</Text>
                 </TouchableOpacity>
 
                 {/* Move / Album */}
                 <TouchableOpacity style={styles.dockBtn} onPress={onMove} activeOpacity={0.6}>
-                    <SFSymbol name="folder" size={21} color="#ffffff" />
+                    <SFSymbol name="folder" size={20} color="#ffffff" />
                     <Text style={styles.dockLabel}>Album</Text>
                 </TouchableOpacity>
 
                 {/* Delete */}
                 <TouchableOpacity style={styles.dockBtn} onPress={onDelete} activeOpacity={0.6}>
-                    <SFSymbol name="trash" size={21} color="#FF453A" />
+                    <SFSymbol name="trash" size={20} color="#FF453A" />
                     <Text style={[styles.dockLabel, styles.dangerLabel]}>Hapus</Text>
                 </TouchableOpacity>
             </View>
@@ -63,7 +79,7 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         overflow: 'hidden',
         alignSelf: 'center',
-        width: '92%',
+        width: '95%',
         marginBottom: 16,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'rgba(255, 255, 255, 0.18)',
@@ -77,16 +93,16 @@ const styles = StyleSheet.create({
     dockInner: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-around',
+        justifyContent: 'space-between',
         paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingHorizontal: 8,
     },
     dockBtn: {
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 2,
-        paddingHorizontal: 10,
-        minWidth: 52,
+        paddingHorizontal: 4,
+        minWidth: 46,
     },
     dockLabel: {
         color: '#EBEBF5',
