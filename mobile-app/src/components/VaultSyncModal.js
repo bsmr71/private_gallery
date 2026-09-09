@@ -30,6 +30,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const [pendingAssets, setPendingAssets] = useState([]);
     const [autoDelete, setAutoDelete] = useState(true);
     const [autoSync, setAutoSync] = useState(true);
+    const [stealthMode, setStealthMode] = useState(false);
 
     const loadAndScan = useCallback(async () => {
         try {
@@ -326,6 +327,31 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                 <Text style={styles.syncingSubtitle}>
                                     Terenkripsi biner AES-256 menuju Google Drive...
                                 </Text>
+
+                                {/* Background Sync & Stealth Mode Action Buttons */}
+                                <View style={styles.syncAuxRow}>
+                                    <TouchableOpacity
+                                        style={styles.auxBtn}
+                                        onPress={() => setStealthMode(true)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <SFSymbol name="eye.slash.fill" size={14} color="#FF9F0A" style={{ marginRight: 6 }} />
+                                        <Text style={styles.auxBtnTextAmber}>Layar Senyap (Stealth)</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.auxBtn}
+                                        onPress={onClose}
+                                        activeOpacity={0.7}
+                                    >
+                                        <SFSymbol name="arrow.down.right.and.arrow.up.left" size={13} color="#0A84FF" style={{ marginRight: 6 }} />
+                                        <Text style={styles.auxBtnTextBlue}>Lanjut di Background</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <Text style={styles.bgSyncHint}>
+                                    🔒 Aman: Anda dapat beralih aplikasi atau mengunci HP, sinkronisasi tetap berjalan senyap di latar belakang.
+                                </Text>
                             </View>
                         ) : (
                             <TouchableOpacity
@@ -348,6 +374,21 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                     </ScrollView>
                 </View>
             </View>
+
+            {/* Stealth Blackout Mode (Layar Hitam Senyap) */}
+            <Modal visible={stealthMode} transparent={false} animationType="fade">
+                <TouchableOpacity
+                    style={styles.stealthBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setStealthMode(false)}
+                >
+                    <View style={styles.stealthCenter}>
+                        <View style={styles.stealthPulseDot} />
+                        <Text style={styles.stealthProgressText}>{progress.percentage}%</Text>
+                    </View>
+                    <Text style={styles.stealthHintText}>Ketuk di mana saja untuk mengembalikan layar</Text>
+                </TouchableOpacity>
+            </Modal>
         </Modal>
     );
 }
@@ -600,5 +641,73 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontSize: 16,
         fontWeight: '700',
+    },
+    syncAuxRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 14,
+        marginBottom: 10,
+        width: '100%',
+        justifyContent: 'center',
+    },
+    auxBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#2c2c2e',
+        borderRadius: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    auxBtnTextAmber: {
+        color: '#FF9F0A',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    auxBtnTextBlue: {
+        color: '#0A84FF',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    bgSyncHint: {
+        color: '#8E8E93',
+        fontSize: 11,
+        textAlign: 'center',
+        lineHeight: 16,
+        marginTop: 6,
+        paddingHorizontal: 8,
+    },
+    stealthBackdrop: {
+        flex: 1,
+        backgroundColor: '#000000',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    stealthCenter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        opacity: 0.35,
+    },
+    stealthPulseDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#30D158',
+    },
+    stealthProgressText: {
+        color: '#ffffff',
+        fontSize: 13,
+        fontWeight: '500',
+        letterSpacing: 0.5,
+    },
+    stealthHintText: {
+        position: 'absolute',
+        bottom: 40,
+        color: '#3a3a3c',
+        fontSize: 11,
+        textAlign: 'center',
     },
 });
