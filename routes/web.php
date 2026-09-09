@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->group(function () {
     Route::get('/', [GalleryController::class, 'index'])->name('gallery.index');
+    Route::get('/albums', [GalleryController::class, 'albums'])->name('gallery.albums');
     Route::get('/album/{album:slug}', [GalleryController::class, 'album'])->name('gallery.album');
     Route::get('/media/{media}/stream', [MediaController::class, 'stream'])->name('media.stream');
     Route::get('/media/{media}/thumbnail', [MediaController::class, 'thumbnail'])->name('media.thumbnail');

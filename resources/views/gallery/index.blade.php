@@ -116,6 +116,17 @@
                     @endif
                 </a>
 
+                <a href="{{ route('gallery.albums') }}"
+                   class="segment-tab {{ request()->routeIs('gallery.albums*') ? 'active' : '' }}" title="Lihat Koleksi Album">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>Album</span>
+                    @if(isset($stats['albums']))
+                        <span class="tab-badge">{{ $stats['albums'] }}</span>
+                    @endif
+                </a>
+
                 <a href="{{ route('gallery.index', ['favorite' => '1']) }}"
                    class="segment-tab {{ request('favorite') ? 'active' : '' }}" title="Foto & Video Favorit">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">

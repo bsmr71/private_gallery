@@ -212,4 +212,17 @@ class GalleryFeaturesTest extends TestCase
             ->assertSee('Foto Favorit')
             ->assertDontSee('Foto Biasa');
     }
+
+    public function test_user_can_view_visual_albums_showcase(): void
+    {
+        $album = Album::create(['name' => 'Album Kenangan', 'slug' => 'album-kenangan']);
+
+        $response = $this->actingAs($this->user)
+            ->get(route('gallery.albums'));
+
+        $response->assertStatus(200)
+            ->assertSee('Koleksi Album')
+            ->assertSee('Album Kenangan')
+            ->assertSee('Buat Album Baru');
+    }
 }

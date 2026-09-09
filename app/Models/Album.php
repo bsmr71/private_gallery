@@ -47,4 +47,16 @@ class Album extends Model
     {
         return $this->media()->count();
     }
+
+    public function getCoverThumbnailUrl(): ?string
+    {
+        if ($this->coverMedia) {
+            return $this->coverMedia->thumbnailUrl();
+        }
+        $latest = $this->media()->latest()->first();
+        if ($latest) {
+            return $latest->thumbnailUrl();
+        }
+        return null;
+    }
 }

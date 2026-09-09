@@ -58,12 +58,41 @@ class GalleryController extends Controller
     }
 
     /**
+     * Show all albums as visual gallery album cards (Apple / Google Photos style).
+     */
+    public function albums(Request $request)
+    {
+        $albums = Album::with(['media' => fn($q) => $q->latest()])
+            ->withCount('media')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $stats = [
+            'total' => Media::count(),
+            'albums' => $albums->count(),
+            'images' => Media::where('type', 'image')->count(),
+            'videos' => Media::where('type', 'video')->count(),
+            'favorites' => Media::where('is_favorite', true)->count(),
+        ];
+
+        return view('gallery.albums', compact('albums', 'stats'));
+    }
+
+    /**
      * Show a specific album.
      */
     public function album(Album $album)
     {
-        $media = $album->media()->paginate(24);
+        $media = $album->media()->latest()->paginate(24);
         $albums = Album::withCount('media')->orderBy('sort_order')->get();
+
+        $stats = [
+            'total' => $album->media()->count(),
+            'images' => $album->media()->where('type', 'image')->count(),
+            'videos' => $album->media()->where('type', 'video')->count(),
+            'albums' => $albums->count(),
+        ];
 
         if (request()->ajax()) {
             return response()->json([
@@ -73,6 +102,6 @@ class GalleryController extends Controller
             ]);
         }
 
-        return view('gallery.index', compact('media', 'albums', 'album'));
+        return view('gallery.index', compact('media', 'albums', 'album', 'stats'));
     }
 }
