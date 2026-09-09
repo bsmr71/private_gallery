@@ -40,6 +40,11 @@ export const MediaUrlHelper = {
         if (apiUrl) {
             const serverOrigin = apiUrl.replace(/\/api\/?$/, '');
 
+            // Rewrite web routes /media/ to API routes /api/media/
+            if (resolved.includes('/media/') && !resolved.includes('/api/media/')) {
+                resolved = resolved.replace(/\/media\//, '/api/media/');
+            }
+
             // If backend returned gallery.test or localhost, rewrite to active server
             if (
                 resolved.includes('gallery.test') ||
