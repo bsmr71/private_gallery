@@ -11,10 +11,13 @@ import {
     Alert,
     RefreshControl,
     Platform,
+    AppState,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
+import { SyncService } from '../services/syncService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -45,6 +48,7 @@ export default function LibraryScreen() {
 
     // Vault Sync state
     const [syncModalVisible, setSyncModalVisible] = useState(false);
+    const [autoSyncStatus, setAutoSyncStatus] = useState(null);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
@@ -69,9 +73,70 @@ export default function LibraryScreen() {
         }
     }, []);
 
+    // Automatic background vault synchronization
+    const runAutoSync = useCallback(async () => {
+        try {
+            await SyncService.triggerAutoSyncIfPending({
+                onStart: ({ total }) => {
+                    setAutoSyncStatus({
+                        type: 'syncing',
+                        message: `Menyinkronkan Vault... (1/${total})`,
+                    });
+                },
+                onProgress: ({ current, total }) => {
+                    setAutoSyncStatus({
+                        type: 'syncing',
+                        message: `Menyinkronkan Vault... (${current}/${total})`,
+                    });
+                },
+                onComplete: (res) => {
+                    if (res && res.successCount > 0) {
+                        setAutoSyncStatus({
+                            type: 'done',
+                            message: `${res.successCount} foto baru terenkripsi ke Cloud`,
+                        });
+                        fetchMedia(1, true);
+                        setTimeout(() => {
+                            setAutoSyncStatus(null);
+                        }, 3500);
+                    } else {
+                        setAutoSyncStatus(null);
+                    }
+                },
+                onError: () => {
+                    setAutoSyncStatus(null);
+                },
+            });
+        } catch (e) {
+            setAutoSyncStatus(null);
+        }
+    }, [fetchMedia]);
+
     useEffect(() => {
         fetchMedia(1);
-    }, [fetchMedia]);
+        runAutoSync();
+    }, [fetchMedia, runAutoSync]);
+
+    // Listen for app returning to foreground (after user puts photos in folder)
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                runAutoSync();
+            }
+        });
+
+        // Also check periodically while app is actively kept open
+        const interval = setInterval(() => {
+            if (AppState.currentState === 'active') {
+                runAutoSync();
+            }
+        }, 25000);
+
+        return () => {
+            subscription.remove();
+            clearInterval(interval);
+        };
+    }, [runAutoSync]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -162,6 +227,21 @@ export default function LibraryScreen() {
 
     return (
         <View style={styles.container}>
+            {/* iOS Dynamic Island Style AutoSync Pill */}
+            {autoSyncStatus && (
+                <View style={styles.autoSyncPillOuter}>
+                    <BlurView tint="dark" intensity={85} style={StyleSheet.absoluteFill} />
+                    <View style={styles.autoSyncPillInner}>
+                        {autoSyncStatus.type === 'syncing' ? (
+                            <ActivityIndicator size="small" color="#0A84FF" style={{ marginRight: 8 }} />
+                        ) : (
+                            <SFSymbol name="checkmark" size={14} color="#30D158" style={{ marginRight: 8 }} />
+                        )}
+                        <Text style={styles.autoSyncPillText}>{autoSyncStatus.message}</Text>
+                    </View>
+                </View>
+            )}
+
             {/* Header (Authentic Apple Photos Style) */}
             <View style={styles.header}>
                 <View style={styles.headerTopRow}>
@@ -569,5 +649,33 @@ const styles = StyleSheet.create({
         color: '#FF453A',
         fontWeight: '600',
         fontSize: 14,
+    },
+    autoSyncPillOuter: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 56 : 46,
+        alignSelf: 'center',
+        zIndex: 9999,
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    autoSyncPillInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(30, 30, 32, 0.94)',
+    },
+    autoSyncPillText: {
+        color: '#ffffff',
+        fontSize: 13,
+        fontWeight: '600',
+        letterSpacing: -0.2,
     },
 });

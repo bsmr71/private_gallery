@@ -29,6 +29,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const [hasFolderUri, setHasFolderUri] = useState(false);
     const [pendingAssets, setPendingAssets] = useState([]);
     const [autoDelete, setAutoDelete] = useState(true);
+    const [autoSync, setAutoSync] = useState(true);
 
     const loadAndScan = useCallback(async () => {
         try {
@@ -36,10 +37,12 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             const name = await StorageService.getVaultFolderName();
             const uri = await StorageService.getVaultDirectoryUri();
             const del = await StorageService.getAutoDeleteLocal();
+            const syncOnOpen = await StorageService.getAutoSyncEnabled();
 
             setFolderName(name);
             setHasFolderUri(!!uri);
             setAutoDelete(del);
+            setAutoSync(syncOnOpen);
 
             if (uri) {
                 // Auto scan the designated folder
@@ -95,6 +98,11 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const handleToggleAutoDelete = async (val) => {
         setAutoDelete(val);
         await StorageService.setAutoDeleteLocal(val);
+    };
+
+    const handleToggleAutoSync = async (val) => {
+        setAutoSync(val);
+        await StorageService.setAutoSyncEnabled(val);
     };
 
     const handleRemoveItem = (index) => {
@@ -280,6 +288,25 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                     value={autoDelete}
                                     onValueChange={handleToggleAutoDelete}
                                     trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                                    thumbColor="#ffffff"
+                                    disabled={syncing}
+                                />
+                            </View>
+
+                            <View style={styles.divider} />
+
+                            {/* Auto-Sync Toggle */}
+                            <View style={styles.toggleRow}>
+                                <View style={{ flex: 1, marginRight: 12 }}>
+                                    <Text style={styles.toggleTitle}>Auto-Sync Saat Buka Aplikasi</Text>
+                                    <Text style={styles.toggleDesc}>
+                                        Otomatis memindai dan mencadangkan foto baru saat Anda membuka atau beralih ke galeri tanpa perlu menekan tombol manual.
+                                    </Text>
+                                </View>
+                                <Switch
+                                    value={autoSync}
+                                    onValueChange={handleToggleAutoSync}
+                                    trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
                                     thumbColor="#ffffff"
                                     disabled={syncing}
                                 />
@@ -502,6 +529,11 @@ const styles = StyleSheet.create({
         right: 2,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         borderRadius: 8,
+    },
+    divider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        marginVertical: 12,
     },
     toggleRow: {
         flexDirection: 'row',

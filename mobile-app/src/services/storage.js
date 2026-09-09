@@ -130,9 +130,9 @@ export const StorageService = {
     async getAutoSyncOnOpen() {
         try {
             const val = await AsyncStorage.getItem('@vault_auto_sync_on_open');
-            return val === 'true'; // Default false
+            return val !== 'false'; // Default true for seamless experience
         } catch (e) {
-            return false;
+            return true;
         }
     },
 
@@ -140,6 +140,14 @@ export const StorageService = {
         try {
             await AsyncStorage.setItem('@vault_auto_sync_on_open', boolVal ? 'true' : 'false');
         } catch (e) {}
+    },
+
+    async getAutoSyncEnabled() {
+        return this.getAutoSyncOnOpen();
+    },
+
+    async setAutoSyncEnabled(boolVal) {
+        return this.setAutoSyncOnOpen(boolVal);
     },
 
     async getSyncedAssetIds() {

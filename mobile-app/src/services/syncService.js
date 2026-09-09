@@ -299,4 +299,60 @@ export const SyncService = {
             autoDeleteRequested: autoDelete,
         };
     },
+
+    isAutoSyncActive() {
+        return isAutoSyncRunning;
+    },
+
+    /**
+     * Checks if auto-sync is enabled, scans the designated Vault folder,
+     * and automatically uploads/encrypts pending files in background.
+     * Single-execution lock prevents race conditions.
+     */
+    async triggerAutoSyncIfPending(callbacks = {}) {
+        const { onStart, onProgress, onComplete, onError } = callbacks;
+
+        if (isAutoSyncRunning) {
+            return null;
+        }
+
+        const autoSyncEnabled = await StorageService.getAutoSyncEnabled();
+        if (!autoSyncEnabled) {
+            return null;
+        }
+
+        const folderUri = await StorageService.getVaultDirectoryUri();
+        if (!folderUri) {
+            return null;
+        }
+
+        try {
+            isAutoSyncRunning = true;
+            const pending = await this.scanVaultFolder();
+            if (!pending || pending.length === 0) {
+                isAutoSyncRunning = false;
+                return null;
+            }
+
+            console.log(`[SyncService] AutoSync detected ${pending.length} pending files in Vault.`);
+            onStart && onStart({ total: pending.length, assets: pending });
+
+            const result = await this.syncAssets(pending, {
+                onProgress: (p) => {
+                    onProgress && onProgress(p);
+                },
+            });
+
+            onComplete && onComplete(result);
+            return result;
+        } catch (err) {
+            console.error('[SyncService] AutoSync error:', err);
+            onError && onError(err);
+            return null;
+        } finally {
+            isAutoSyncRunning = false;
+        }
+    },
 };
+
+let isAutoSyncRunning = false;
