@@ -91,10 +91,12 @@ class MediaController extends Controller
                 $file->move($tempDir, $tempFilename);
                 $tempPath = $tempDir . DIRECTORY_SEPARATOR . $tempFilename;
 
-                // Generate thumbnail for images
+                // Generate thumbnail for images or videos
                 $thumbDriveId = null;
                 if ($type === 'image') {
                     $thumbDriveId = $this->generateAndUploadThumbnail($tempPath, $mimeType);
+                } elseif ($type === 'video') {
+                    $thumbDriveId = $this->generateAndUploadVideoThumbnail($tempPath, $title, $ext);
                 }
 
                 // Encrypt the file
@@ -258,7 +260,6 @@ class MediaController extends Controller
                     @unlink($decryptedPath);
                 } catch (\Exception $e) {
                     @unlink($tempEncrypted ?? '');
-                    // Return a placeholder
                     return $this->placeholderResponse($media);
                 }
             } elseif ($media->isVideo()) {
@@ -271,16 +272,14 @@ class MediaController extends Controller
                     }
                     $cmd = sprintf('ffmpeg -y -ss 00:00:01 -i %s -vframes 1 -q:v 2 %s 2>&1', escapeshellarg($cachedPath), escapeshellarg($thumbPath));
                     @exec($cmd);
-                    if (file_exists($thumbPath) && filesize($thumbPath) > 0) {
-                        return response()->file($thumbPath, [
-                            'Content-Type' => 'image/jpeg',
-                            'Cache-Control' => 'public, max-age=86400',
-                        ]);
-                    }
                 }
-                return $this->placeholderResponse($media);
+                // If ffmpeg was unavailable or produced no file, generate sleek dark GD thumbnail
+                if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                    $ext = strtoupper(pathinfo($media->original_filename ?: 'MP4', PATHINFO_EXTENSION) ?: 'MP4');
+                    $this->createVideoPlaceholderGd($thumbPath, $media->title ?: 'Video', $ext);
+                }
             } else {
-                // Generate thumbnail from original
+                // Generate thumbnail from original image
                 $cachedPath = $this->cacheService->getCachedPath($media);
                 if (!$cachedPath) {
                     // Need to download and decrypt first
@@ -296,11 +295,16 @@ class MediaController extends Controller
                     }
                 }
 
-                $this->createThumbnailFromImage($cachedPath, $thumbPath);
+                try {
+                    $this->createThumbnailFromImage($cachedPath, $thumbPath);
+                } catch (\Exception $e) {
+                    $ext = strtoupper(pathinfo($media->original_filename ?: 'JPG', PATHINFO_EXTENSION) ?: 'JPG');
+                    $this->createImagePlaceholderGd($thumbPath, $media->title ?: 'Foto', $ext);
+                }
             }
         }
 
-        if (file_exists($thumbPath)) {
+        if (file_exists($thumbPath) && filesize($thumbPath) > 0) {
             return response()->file($thumbPath, [
                 'Content-Type' => 'image/jpeg',
                 'Cache-Control' => 'public, max-age=86400',
@@ -669,9 +673,9 @@ class MediaController extends Controller
     }
 
     /**
-     * Generate thumbnail and upload it to Drive (encrypted).
+     * Generate thumbnail for image and upload it to Drive (encrypted).
      */
-    private function generateAndUploadThumbnail(string $imagePath, string $mimeType): ?string
+    public function generateAndUploadThumbnail(string $imagePath, string $mimeType): ?string
     {
         if (empty($imagePath) || !file_exists($imagePath)) {
             return null;
@@ -721,9 +725,67 @@ class MediaController extends Controller
     }
 
     /**
+     * Generate thumbnail for video and upload it to Drive (encrypted).
+     */
+    public function generateAndUploadVideoThumbnail(string $videoPath, string $title = 'Video', string $format = 'MP4'): ?string
+    {
+        if (empty($videoPath) || !file_exists($videoPath)) {
+            return null;
+        }
+
+        $thumbPath = null;
+        $encryptedThumb = null;
+
+        try {
+            $tempDir = storage_path('app/temp_uploads');
+            if (!is_dir($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+            $thumbPath = $tempDir . DIRECTORY_SEPARATOR . 'thumb_' . Str::random(32) . '.jpg';
+
+            // 1. Try ffmpeg if available
+            $cmd = sprintf('ffmpeg -y -ss 00:00:01 -i %s -vframes 1 -q:v 2 %s 2>&1', escapeshellarg($videoPath), escapeshellarg($thumbPath));
+            @exec($cmd);
+
+            // 2. Fallback to sleek dark GD video thumbnail
+            if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                $this->createVideoPlaceholderGd($thumbPath, $title, $format);
+            }
+
+            if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                return null;
+            }
+
+            // Encrypt thumbnail
+            $encryptedThumb = $this->encryptionService->encryptFile($thumbPath);
+            @unlink($thumbPath);
+            $thumbPath = null;
+
+            // Upload to Drive
+            $thumbDriveId = $this->driveService->upload(
+                $encryptedThumb,
+                'thumb_' . Str::random(32) . '.enc'
+            );
+            @unlink($encryptedThumb);
+            $encryptedThumb = null;
+
+            return $thumbDriveId;
+        } catch (\Throwable $e) {
+            if ($thumbPath && file_exists($thumbPath)) {
+                @unlink($thumbPath);
+            }
+            if ($encryptedThumb && file_exists($encryptedThumb)) {
+                @unlink($encryptedThumb);
+            }
+            Log::warning('Video thumbnail generation failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Create a thumbnail using GD.
      */
-    private function createThumbnailFromImage(string $source, string $destination, int $maxWidth = 400, int $maxHeight = 400): void
+    public function createThumbnailFromImage(string $source, string $destination, int $maxWidth = 400, int $maxHeight = 400): void
     {
         if (empty($source) || !file_exists($source)) {
             throw new \RuntimeException('Source image file not found: ' . $source);
@@ -773,57 +835,162 @@ class MediaController extends Controller
     }
 
     /**
-     * Return a placeholder image response.
+     * Generate a dark Apple-style video thumbnail using GD.
      */
-    private function placeholderResponse(Media $media): Response
+    public function createVideoPlaceholderGd(string $destination, string $title, string $format = 'MP4', int $width = 480, int $height = 480): void
     {
-        $isVideo = $media->isVideo();
-        $title = htmlspecialchars(mb_strimwidth($media->title, 0, 32, '...'), ENT_QUOTES, 'UTF-8');
-        $ext = strtoupper(pathinfo($media->original_filename ?: ($isVideo ? 'MP4' : 'IMG'), PATHINFO_EXTENSION) ?: ($isVideo ? 'MP4' : 'IMG'));
-        $size = $media->formattedSize();
+        $img = imagecreatetruecolor($width, $height);
+        imageantialias($img, true);
 
-        $svg = <<<SVG
-        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
-            <defs>
-                <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#18181b"/>
-                    <stop offset="100%" stop-color="#0e0e11"/>
-                </linearGradient>
-            </defs>
-            <rect width="400" height="400" fill="url(#bgGrad)"/>
-            <rect x="1" y="1" width="398" height="398" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-            
-            <g transform="translate(200, 160)">
-                <circle r="36" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
-SVG;
-        if ($isVideo) {
-            $svg .= <<<SVG
-                <polygon points="-6,-11 11,0 -6,11" fill="#e4e4e7"/>
-            </g>
-            <rect x="175" y="212" width="50" height="20" rx="4" fill="rgba(255,255,255,0.07)"/>
-            <text x="200" y="226" text-anchor="middle" font-size="10" font-weight="700" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="1">{$ext}</text>
-SVG;
-        } else {
-            $svg .= <<<SVG
-                <rect x="-14" y="-10" width="28" height="20" rx="3" fill="none" stroke="#e4e4e7" stroke-width="1.8"/>
-                <circle cx="-5" cy="-3" r="2" fill="#e4e4e7"/>
-                <path d="M-12 6 L-4 -1 L4 6 L8 2 L12 6" fill="none" stroke="#e4e4e7" stroke-width="1.8" stroke-linejoin="round"/>
-            </g>
-            <rect x="175" y="212" width="50" height="20" rx="4" fill="rgba(255,255,255,0.07)"/>
-            <text x="200" y="226" text-anchor="middle" font-size="10" font-weight="700" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="1">{$ext}</text>
-SVG;
+        // Dark gradient background
+        for ($y = 0; $y < $height; $y++) {
+            $ratio = $y / $height;
+            $r = (int)(15 + (8 - 15) * $ratio);
+            $g = (int)(18 + (10 - 18) * $ratio);
+            $b = (int)(25 + (16 - 25) * $ratio);
+            $lineColor = imagecolorallocate($img, $r, $g, $b);
+            imageline($img, 0, $y, $width, $y, $lineColor);
         }
 
-        $svg .= <<<SVG
-            <text x="200" y="260" text-anchor="middle" font-size="13" font-weight="500" fill="#e4e4e7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">{$title}</text>
-            <text x="200" y="280" text-anchor="middle" font-size="11" fill="#71717a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">{$size}</text>
-        </svg>
-        SVG;
+        // Subtle borders
+        $borderCol = imagecolorallocatealpha($img, 255, 255, 255, 110);
+        imageline($img, 0, 0, $width, 0, $borderCol);
+        imageline($img, 0, $height - 1, $width, $height - 1, $borderCol);
 
-        return response($svg, 200, [
-            'Content-Type' => 'image/svg+xml',
-            'Cache-Control' => 'public, max-age=3600',
-        ]);
+        // Glowing cyan/blue concentric aura
+        $cx = (int)($width / 2);
+        $cy = (int)($height / 2) - 15;
+        for ($radius = 65; $radius >= 35; $radius -= 2) {
+            $alpha = (int)(115 + (127 - 115) * (($radius - 35) / 30));
+            $glowCol = imagecolorallocatealpha($img, 10, 132, 255, $alpha);
+            imagefilledellipse($img, $cx, $cy, $radius * 2, $radius * 2, $glowCol);
+        }
+
+        // Frosted glass circle behind play icon
+        $glassCol = imagecolorallocatealpha($img, 24, 24, 30, 25);
+        imagefilledellipse($img, $cx, $cy, 80, 80, $glassCol);
+        $circleBorder = imagecolorallocatealpha($img, 255, 255, 255, 65);
+        imageellipse($img, $cx, $cy, 80, 80, $circleBorder);
+
+        // Bright play triangle
+        $white = imagecolorallocate($img, 255, 255, 255);
+        $trianglePoints = [
+            $cx - 10, $cy - 16,
+            $cx + 18, $cy,
+            $cx - 10, $cy + 16,
+        ];
+        imagefilledpolygon($img, $trianglePoints, $white);
+
+        // Format badge
+        $badgeW = 54;
+        $badgeH = 24;
+        $badgeX = $width - $badgeW - 16;
+        $badgeY = $height - $badgeH - 16;
+        $badgeBg = imagecolorallocatealpha($img, 0, 0, 0, 50);
+        imagefilledrectangle($img, $badgeX, $badgeY, $badgeX + $badgeW, $badgeY + $badgeH, $badgeBg);
+        $badgeBorder = imagecolorallocatealpha($img, 255, 255, 255, 80);
+        imagerectangle($img, $badgeX, $badgeY, $badgeX + $badgeW, $badgeY + $badgeH, $badgeBorder);
+
+        $badgeText = strtoupper(substr($format ?: 'MP4', 0, 4));
+        imagestring($img, 3, $badgeX + 12, $badgeY + 5, $badgeText, $white);
+
+        // Video title
+        $cleanTitle = mb_strimwidth($title ?: 'Video', 0, 24, '...');
+        $titleCol = imagecolorallocate($img, 220, 225, 235);
+        imagestring($img, 4, 18, $height - 32, $cleanTitle, $titleCol);
+
+        $dir = dirname($destination);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        imagejpeg($img, $destination, 90);
+        imagedestroy($img);
+    }
+
+    /**
+     * Generate a dark Apple-style image thumbnail placeholder using GD.
+     */
+    public function createImagePlaceholderGd(string $destination, string $title, string $format = 'JPG', int $width = 480, int $height = 480): void
+    {
+        $img = imagecreatetruecolor($width, $height);
+        imageantialias($img, true);
+
+        // Dark gradient
+        for ($y = 0; $y < $height; $y++) {
+            $ratio = $y / $height;
+            $r = (int)(20 + (10 - 20) * $ratio);
+            $g = (int)(20 + (10 - 20) * $ratio);
+            $b = (int)(28 + (15 - 28) * $ratio);
+            $lineColor = imagecolorallocate($img, $r, $g, $b);
+            imageline($img, 0, $y, $width, $y, $lineColor);
+        }
+
+        $cx = (int)($width / 2);
+        $cy = (int)($height / 2) - 15;
+
+        // Image frame icon
+        $dimWhite = imagecolorallocatealpha($img, 255, 255, 255, 60);
+        imagerectangle($img, $cx - 36, $cy - 28, $cx + 36, $cy + 28, $dimWhite);
+        imagefilledellipse($img, $cx - 16, $cy - 12, 10, 10, $dimWhite);
+
+        // Mountain peak
+        $pts = [
+            $cx - 36, $cy + 28,
+            $cx - 10, $cy - 4,
+            $cx + 8, $cy + 14,
+            $cx + 20, $cy + 2,
+            $cx + 36, $cy + 28,
+        ];
+        imagefilledpolygon($img, $pts, $dimWhite);
+
+        // Title
+        $cleanTitle = mb_strimwidth($title ?: 'Foto', 0, 24, '...');
+        $titleCol = imagecolorallocate($img, 200, 205, 215);
+        imagestring($img, 4, 18, $height - 32, $cleanTitle, $titleCol);
+
+        $dir = dirname($destination);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        imagejpeg($img, $destination, 85);
+        imagedestroy($img);
+    }
+
+    /**
+     * Return a placeholder JPEG image response (GD-generated) and cache it.
+     */
+    private function placeholderResponse(Media $media): Response|BinaryFileResponse
+    {
+        $thumbPath = $this->cacheService->getThumbPath($media);
+        if (file_exists($thumbPath) && filesize($thumbPath) > 0) {
+            return response()->file($thumbPath, [
+                'Content-Type' => 'image/jpeg',
+                'Cache-Control' => 'public, max-age=86400',
+            ]);
+        }
+
+        $dir = dirname($thumbPath);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $isVideo = $media->isVideo();
+        $ext = strtoupper(pathinfo($media->original_filename ?: ($isVideo ? 'MP4' : 'JPG'), PATHINFO_EXTENSION) ?: ($isVideo ? 'MP4' : 'JPG'));
+
+        if ($isVideo) {
+            $this->createVideoPlaceholderGd($thumbPath, $media->title ?: 'Video', $ext);
+        } else {
+            $this->createImagePlaceholderGd($thumbPath, $media->title ?: 'Foto', $ext);
+        }
+
+        if (file_exists($thumbPath) && filesize($thumbPath) > 0) {
+            return response()->file($thumbPath, [
+                'Content-Type' => 'image/jpeg',
+                'Cache-Control' => 'public, max-age=86400',
+            ]);
+        }
+
+        return response('', 404);
     }
 
     /**

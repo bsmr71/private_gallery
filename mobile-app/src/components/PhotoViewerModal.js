@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,7 +11,10 @@ import {
     Share,
     StatusBar,
     PanResponder,
+    Platform,
+    Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../constants/theme';
 import Filmstrip from './Filmstrip';
 import AppleDock from './AppleDock';
@@ -55,10 +58,14 @@ export default function PhotoViewerModal({
     onMediaUpdated,
     onMediaDeleted,
 }) {
+    const insets = useSafeAreaInsets();
     const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
     const [chromeVisible, setChromeVisible] = useState(true);
     const [infoVisible, setInfoVisible] = useState(false);
     const [downloading, setDownloading] = useState(false);
+
+    // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
+    const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
     useEffect(() => {
         if (visible) {
@@ -66,6 +73,7 @@ export default function PhotoViewerModal({
             setChromeVisible(true);
             setInfoVisible(false);
             setDownloading(false);
+            pan.setValue({ x: 0, y: 0 });
         }
     }, [visible, initialIndex]);
 
@@ -76,39 +84,131 @@ export default function PhotoViewerModal({
         (activeItem?.mime_type && activeItem.mime_type.includes('video'))
     );
 
-    // PanResponder for swiping photos/videos & dismissing viewer
-    const panResponder = PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (evt, gestureState) => {
-            const { dx, dy } = gestureState;
-            // For video, only capture deliberate swipe gestures so controls aren't blocked
-            if (isCurrentVideo) {
-                return (
-                    (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) ||
-                    (dy > 80 && Math.abs(dy) > Math.abs(dx) * 2)
-                );
-            }
-            return Math.abs(dx) > 15 || Math.abs(dy) > 15;
-        },
-        onPanResponderRelease: (evt, gestureState) => {
-            const { dx, dy } = gestureState;
-
-            // Horizontal Swipe
-            if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                if (dx < 0 && currentIndex < items.length - 1) {
-                    setCurrentIndex((prev) => prev + 1); // Swipe left -> Next
-                } else if (dx > 0 && currentIndex > 0) {
-                    setCurrentIndex((prev) => prev - 1); // Swipe right -> Prev
+    // PanResponder for smooth sliding gestures:
+    // - Slide Left / Right: Navigate to Next / Prev item (for both photos and videos)
+    // - Slide Up / Down: Dismiss / Exit viewer (for both photos and videos)
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => false,
+            onStartShouldSetPanResponderCapture: () => false,
+            onMoveShouldSetPanResponder: (evt, gestureState) => {
+                const { dx, dy } = gestureState;
+                const isHorizontal = Math.abs(dx) > 18 && Math.abs(dx) > Math.abs(dy) * 1.1;
+                const isVertical = Math.abs(dy) > 18 && Math.abs(dy) > Math.abs(dx) * 1.1;
+                return isHorizontal || isVertical;
+            },
+            onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+                const { dx, dy } = gestureState;
+                // Capture gestures over child components (like native VideoView textureView)
+                const isHorizontal = Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.15;
+                const isVertical = Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx) * 1.15;
+                return isHorizontal || isVertical;
+            },
+            onPanResponderGrant: () => {
+                pan.setOffset({
+                    x: pan.x._value || 0,
+                    y: pan.y._value || 0,
+                });
+                pan.setValue({ x: 0, y: 0 });
+            },
+            onPanResponderMove: (evt, gestureState) => {
+                const { dx, dy } = gestureState;
+                // If moving predominantly vertically (swipe up or down)
+                if (Math.abs(dy) > Math.abs(dx) * 1.1) {
+                    pan.setValue({ x: 0, y: dy });
+                } else {
+                    // Moving predominantly horizontally (swipe left or right)
+                    pan.setValue({ x: dx * 0.75, y: 0 });
                 }
-            } else if (!isCurrentVideo && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-                // Tap on photo -> Toggle cinema mode
-                setChromeVisible((prev) => !prev);
-            } else if (dy > 100 && Math.abs(dy) > Math.abs(dx) * 2) {
-                // Swipe down to dismiss
-                onClose();
-            }
-        },
-    });
+            },
+            onPanResponderRelease: (evt, gestureState) => {
+                pan.flattenOffset();
+                const { dx, dy, vx, vy } = gestureState;
+
+                // 1. Vertical Swipe: Slide UP or DOWN to dismiss
+                const isVerticalSwipe =
+                    (Math.abs(dy) > 55 || Math.abs(vy) > 0.45) &&
+                    Math.abs(dy) > Math.abs(dx) * 1.1;
+
+                if (isVerticalSwipe) {
+                    Animated.timing(pan, {
+                        toValue: { x: 0, y: dy > 0 ? SCREEN_HEIGHT : -SCREEN_HEIGHT },
+                        duration: 160,
+                        useNativeDriver: true,
+                    }).start(() => {
+                        pan.setValue({ x: 0, y: 0 });
+                        onClose();
+                    });
+                    return;
+                }
+
+                // 2. Horizontal Swipe: Slide LEFT (Next) or RIGHT (Prev)
+                const isHorizontalSwipe =
+                    (Math.abs(dx) > 35 || Math.abs(vx) > 0.35) &&
+                    Math.abs(dx) > Math.abs(dy) * 1.1;
+
+                if (isHorizontalSwipe) {
+                    if (dx < 0 && currentIndex < items.length - 1) {
+                        // Slide Left -> NEXT
+                        Animated.timing(pan, {
+                            toValue: { x: -SCREEN_WIDTH * 0.35, y: 0 },
+                            duration: 100,
+                            useNativeDriver: true,
+                        }).start(() => {
+                            setCurrentIndex((prev) => prev + 1);
+                            pan.setValue({ x: SCREEN_WIDTH * 0.35, y: 0 });
+                            Animated.spring(pan, {
+                                toValue: { x: 0, y: 0 },
+                                friction: 8,
+                                tension: 65,
+                                useNativeDriver: true,
+                            }).start();
+                        });
+                        return;
+                    } else if (dx > 0 && currentIndex > 0) {
+                        // Slide Right -> PREV
+                        Animated.timing(pan, {
+                            toValue: { x: SCREEN_WIDTH * 0.35, y: 0 },
+                            duration: 100,
+                            useNativeDriver: true,
+                        }).start(() => {
+                            setCurrentIndex((prev) => prev - 1);
+                            pan.setValue({ x: -SCREEN_WIDTH * 0.35, y: 0 });
+                            Animated.spring(pan, {
+                                toValue: { x: 0, y: 0 },
+                                friction: 8,
+                                tension: 65,
+                                useNativeDriver: true,
+                            }).start();
+                        });
+                        return;
+                    }
+                }
+
+                // 3. Fallback: Snap smoothly back to center
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    friction: 7,
+                    tension: 50,
+                    useNativeDriver: true,
+                }).start();
+
+                // 4. Tap handling (finger barely moved): Toggle cinema mode
+                if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
+                    setChromeVisible((prev) => !prev);
+                }
+            },
+            onPanResponderTerminate: () => {
+                pan.flattenOffset();
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    friction: 7,
+                    tension: 50,
+                    useNativeDriver: true,
+                }).start();
+            },
+        })
+    ).current;
 
     const handleToggleFavorite = async () => {
         if (!activeItem) return;
@@ -228,6 +328,12 @@ export default function PhotoViewerModal({
 
     if (!visible || !activeItem) return null;
 
+    const bgOpacity = pan.y.interpolate({
+        inputRange: [-SCREEN_HEIGHT * 0.45, 0, SCREEN_HEIGHT * 0.45],
+        outputRange: [0.35, 1, 0.35],
+        extrapolate: 'clamp',
+    });
+
     return (
         <Modal
             visible={visible}
@@ -237,11 +343,11 @@ export default function PhotoViewerModal({
             onRequestClose={onClose}
         >
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
-            <View style={styles.container}>
+            <Animated.View style={[styles.container, { opacity: bgOpacity }]}>
 
                 {/* Top Bar (Apple Photos Header) */}
                 {chromeVisible && (
-                    <View style={styles.topBar}>
+                    <View style={[styles.topBar, { paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 48 : 36) }]}>
                         <BlurView tint="dark" intensity={70} style={StyleSheet.absoluteFill} />
                         <TouchableOpacity
                             style={styles.backButton}
@@ -270,8 +376,56 @@ export default function PhotoViewerModal({
                     </View>
                 )}
 
-                {/* Center Image / Video Viewport */}
-                <View style={styles.viewport} {...panResponder.panHandlers}>
+                {/* Floating Left / Right Navigation Chevrons */}
+                {chromeVisible && currentIndex > 0 && (
+                    <TouchableOpacity
+                        style={styles.floatingNavLeft}
+                        onPress={() => {
+                            pan.setValue({ x: SCREEN_WIDTH * 0.25, y: 0 });
+                            setCurrentIndex((prev) => prev - 1);
+                            Animated.spring(pan, {
+                                toValue: { x: 0, y: 0 },
+                                friction: 8,
+                                tension: 65,
+                                useNativeDriver: true,
+                            }).start();
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                    >
+                        <SFSymbol name="chevron.left" size={20} color="#ffffff" weight="bold" />
+                    </TouchableOpacity>
+                )}
+                {chromeVisible && currentIndex < items.length - 1 && (
+                    <TouchableOpacity
+                        style={styles.floatingNavRight}
+                        onPress={() => {
+                            pan.setValue({ x: -SCREEN_WIDTH * 0.25, y: 0 });
+                            setCurrentIndex((prev) => prev + 1);
+                            Animated.spring(pan, {
+                                toValue: { x: 0, y: 0 },
+                                friction: 8,
+                                tension: 65,
+                                useNativeDriver: true,
+                            }).start();
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                    >
+                        <SFSymbol name="chevron.right" size={20} color="#ffffff" weight="bold" />
+                    </TouchableOpacity>
+                )}
+
+                {/* Center Image / Video Viewport with Smooth Gesture Translation */}
+                <Animated.View
+                    style={[
+                        styles.viewport,
+                        {
+                            transform: pan.getTranslateTransform(),
+                        },
+                    ]}
+                    {...panResponder.panHandlers}
+                >
                     {isCurrentVideo ? (
                         <VideoErrorBoundary
                             fallback={
@@ -296,11 +450,11 @@ export default function PhotoViewerModal({
                             resizeMode="contain"
                         />
                     )}
-                </View>
+                </Animated.View>
 
                 {/* Bottom Section (Filmstrip + Dock) */}
                 {chromeVisible && (
-                    <View style={styles.bottomSection}>
+                    <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
                         <Filmstrip
                             items={items}
                             activeIndex={currentIndex}
@@ -327,7 +481,7 @@ export default function PhotoViewerModal({
                     onClose={() => setInfoVisible(false)}
                     onRename={handleRenamePrompt}
                 />
-            </View>
+            </Animated.View>
         </Modal>
     );
 }
@@ -428,5 +582,35 @@ const styles = StyleSheet.create({
         zIndex: 50,
         alignItems: 'center',
         paddingBottom: 15,
+    },
+    floatingNavLeft: {
+        position: 'absolute',
+        left: 12,
+        top: '48%',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(20, 20, 26, 0.65)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 55,
+        elevation: 8,
+    },
+    floatingNavRight: {
+        position: 'absolute',
+        right: 12,
+        top: '48%',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(20, 20, 26, 0.65)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 55,
+        elevation: 8,
     },
 });

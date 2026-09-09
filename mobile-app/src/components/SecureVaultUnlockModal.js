@@ -17,8 +17,10 @@ import {
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import SFSymbol from './SFSymbol';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SecureVaultUnlockModal({ visible, onClose, onUnlocked }) {
+    const insets = useSafeAreaInsets();
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [otpCode, setOtpCode] = useState('');
@@ -113,7 +115,7 @@ export default function SecureVaultUnlockModal({ visible, onClose, onUnlocked })
         >
             <KeyboardAvoidingView
                 style={styles.overlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={styles.backdrop}>
@@ -121,7 +123,7 @@ export default function SecureVaultUnlockModal({ visible, onClose, onUnlocked })
                             <ScrollView
                                 showsVerticalScrollIndicator={false}
                                 keyboardShouldPersistTaps="handled"
-                                contentContainerStyle={styles.scrollInner}
+                                contentContainerStyle={[styles.scrollInner, { paddingBottom: Math.max(insets.bottom, 20) + 24 }]}
                             >
                                 {/* Vault Icon Emblem */}
                                 <View style={styles.iconCircle}>

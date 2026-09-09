@@ -19,18 +19,48 @@ class MediaApiController extends Controller
         protected FileEncryptionService $encryptionService
     ) {}
 
+    private function hasLockedMedia(): bool
+    {
+        static $hasColumn = null;
+        if ($hasColumn !== null) return $hasColumn;
+
+        try {
+            \Illuminate\Support\Facades\DB::select("SELECT `is_locked` FROM `media` LIMIT 0");
+            $hasColumn = true;
+        } catch (\Throwable $e) {
+            $hasColumn = false;
+        }
+        return $hasColumn;
+    }
+
+    private function hasLockedAlbums(): bool
+    {
+        static $hasColumn = null;
+        if ($hasColumn !== null) return $hasColumn;
+
+        try {
+            \Illuminate\Support\Facades\DB::select("SELECT `is_locked` FROM `albums` LIMIT 0");
+            $hasColumn = true;
+        } catch (\Throwable $e) {
+            $hasColumn = false;
+        }
+        return $hasColumn;
+    }
+
     /**
      * Get paginated media stream for mobile/web with filters and stats.
      */
     public function index(Request $request): JsonResponse
     {
-        $hasLockedMedia = \Illuminate\Support\Facades\Schema::hasColumn('media', 'is_locked');
-        $hasLockedAlbums = \Illuminate\Support\Facades\Schema::hasColumn('albums', 'is_locked');
+        $hasLockedMedia = $this->hasLockedMedia();
+        $hasLockedAlbums = $this->hasLockedAlbums();
 
         $query = Media::with('album')->latest();
 
         if ($hasLockedMedia) {
-            $query->where('is_locked', false);
+            try {
+                $query->where('is_locked', false);
+            } catch (\Throwable $e) {}
         }
 
         if ($request->filled('type') && in_array($request->type, ['image', 'video'])) {
@@ -62,12 +92,37 @@ class MediaApiController extends Controller
         });
 
         $stats = [
-            'total' => $hasLockedMedia ? Media::where('is_locked', false)->count() : Media::count(),
-            'images' => $hasLockedMedia ? Media::where('is_locked', false)->where('type', 'image')->count() : Media::where('type', 'image')->count(),
-            'videos' => $hasLockedMedia ? Media::where('is_locked', false)->where('type', 'video')->count() : Media::where('type', 'video')->count(),
-            'favorites' => $hasLockedMedia ? Media::where('is_locked', false)->where('is_favorite', true)->count() : Media::where('is_favorite', true)->count(),
-            'albums' => $hasLockedAlbums ? Album::where('is_locked', false)->count() : Album::count(),
+            'total' => 0,
+            'images' => 0,
+            'videos' => 0,
+            'favorites' => 0,
+            'albums' => 0,
         ];
+
+        try {
+            if ($hasLockedMedia) {
+                $stats['total'] = Media::where('is_locked', false)->count();
+                $stats['images'] = Media::where('is_locked', false)->where('type', 'image')->count();
+                $stats['videos'] = Media::where('is_locked', false)->where('type', 'video')->count();
+                $stats['favorites'] = Media::where('is_locked', false)->where('is_favorite', true)->count();
+            } else {
+                $stats['total'] = Media::count();
+                $stats['images'] = Media::where('type', 'image')->count();
+                $stats['videos'] = Media::where('type', 'video')->count();
+                $stats['favorites'] = Media::where('is_favorite', true)->count();
+            }
+        } catch (\Throwable $e) {
+            $stats['total'] = Media::count();
+            $stats['images'] = Media::where('type', 'image')->count();
+            $stats['videos'] = Media::where('type', 'video')->count();
+            $stats['favorites'] = Media::where('is_favorite', true)->count();
+        }
+
+        try {
+            $stats['albums'] = $hasLockedAlbums ? Album::where('is_locked', false)->count() : Album::count();
+        } catch (\Throwable $e) {
+            $stats['albums'] = Album::count();
+        }
 
         return response()->json([
             'success' => true,
@@ -333,15 +388,18 @@ class MediaApiController extends Controller
                 $tempPath = $tempDir . DIRECTORY_SEPARATOR . $tempFilename;
 
                 $thumbDriveId = null;
+                $mediaCtrl = app(\App\Http\Controllers\MediaController::class);
                 if ($type === 'image') {
-                    $mediaCtrl = app(\App\Http\Controllers\MediaController::class);
-                    // Generate and upload thumbnail if supported
                     try {
-                        $reflector = new \ReflectionMethod($mediaCtrl, 'generateAndUploadThumbnail');
-                        $reflector->setAccessible(true);
-                        $thumbDriveId = $reflector->invoke($mediaCtrl, $tempPath, $mimeType);
+                        $thumbDriveId = $mediaCtrl->generateAndUploadThumbnail($tempPath, $mimeType);
                     } catch (\Throwable $th) {
-                        Log::warning('Thumbnail generation skipped: ' . $th->getMessage());
+                        Log::warning('Image thumbnail generation skipped: ' . $th->getMessage());
+                    }
+                } elseif ($type === 'video') {
+                    try {
+                        $thumbDriveId = $mediaCtrl->generateAndUploadVideoThumbnail($tempPath, $title, $ext);
+                    } catch (\Throwable $th) {
+                        Log::warning('Video thumbnail generation skipped: ' . $th->getMessage());
                     }
                 }
 

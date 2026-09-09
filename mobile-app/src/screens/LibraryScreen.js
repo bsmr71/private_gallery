@@ -25,6 +25,7 @@ import SFSymbol from '../components/SFSymbol';
 import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import { NativeSyncService } from '../services/nativeSyncService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -32,6 +33,7 @@ const ITEM_MARGIN = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function LibraryScreen() {
+    const insets = useSafeAreaInsets();
     const isDecoy = useDecoyMode();
     const isLocked = useAppLocked();
     const [mediaItems, setMediaItems] = useState([]);
@@ -181,9 +183,22 @@ export default function LibraryScreen() {
     };
 
     const toggleSelect = (id) => {
-        setSelectedIds((prev) =>
-            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-        );
+        setSelectedIds((prev) => {
+            const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+            if (next.length === 0) {
+                setIsSelectMode(false);
+            }
+            return next;
+        });
+    };
+
+    const handleToggleSelectAll = () => {
+        if (selectedIds.length === displayedItems.length && displayedItems.length > 0) {
+            setSelectedIds([]);
+            setIsSelectMode(false);
+        } else {
+            setSelectedIds(displayedItems.map((m) => m.id));
+        }
     };
 
     const handleUploadPick = async () => {
@@ -424,12 +439,23 @@ export default function LibraryScreen() {
                                 style={styles.gridItem}
                                 activeOpacity={0.85}
                                 onPress={() => handleItemPress(item, index)}
+                                onLongPress={() => {
+                                    if (!isSelectMode) {
+                                        setIsSelectMode(true);
+                                        setSelectedIds([item.id]);
+                                    } else {
+                                        toggleSelect(item.id);
+                                    }
+                                }}
+                                delayLongPress={220}
                             >
                                 <SecureImage
                                     source={item.thumbnail_url || item.stream_url}
                                     style={styles.itemImage}
                                     resizeMode="cover"
                                 />
+
+                                {isSelected && <View style={styles.selectedOverlay} />}
 
                                 {item.type === 'video' && (
                                     <View style={styles.videoBadge}>
@@ -473,18 +499,58 @@ export default function LibraryScreen() {
                 />
             )}
 
-            {/* Multi-Select Floating Action Bar */}
-            {isSelectMode && selectedIds.length > 0 && (
-                <View style={styles.floatingSelectBar}>
-                    <Text style={styles.selectCountText}>{selectedIds.length} Dipilih</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                        <TouchableOpacity style={styles.barActionBtn} onPress={handleLockSelectedToVault} activeOpacity={0.7}>
-                            <SFSymbol name="lock.fill" size={17} color="#FF9F0A" />
-                            <Text style={[styles.barDangerText, { color: '#FF9F0A' }]}>Kunci</Text>
+            {/* Multi-Select Floating Action Bar (Floats above tab bar) */}
+            {isSelectMode && (
+                <View style={[styles.floatingSelectBar, { bottom: Math.max(insets.bottom, 16) + 64 }]}>
+                    <View style={styles.floatingBarLeft}>
+                        <TouchableOpacity
+                            style={styles.selectToggleBtn}
+                            onPress={handleToggleSelectAll}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                        >
+                            <Text style={styles.selectToggleText}>
+                                {selectedIds.length === displayedItems.length && displayedItems.length > 0
+                                    ? 'Batal Semua'
+                                    : 'Pilih Semua'}
+                            </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.barActionBtn} onPress={handleBatchDelete} activeOpacity={0.7}>
-                            <SFSymbol name="trash" size={18} color="#FF453A" />
-                            <Text style={styles.barDangerText}>Hapus</Text>
+                        <Text style={styles.selectCountText}>{selectedIds.length} Dipilih</Text>
+                    </View>
+
+                    <View style={styles.floatingBarRight}>
+                        {selectedIds.length > 0 && (
+                            <>
+                                <TouchableOpacity
+                                    style={styles.barActionBtn}
+                                    onPress={handleLockSelectedToVault}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                >
+                                    <SFSymbol name="lock.fill" size={15} color="#FF9F0A" />
+                                    <Text style={[styles.barActionText, { color: '#FF9F0A' }]}>Kunci</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.barActionBtn}
+                                    onPress={handleBatchDelete}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                >
+                                    <SFSymbol name="trash" size={15} color="#FF453A" />
+                                    <Text style={[styles.barActionText, { color: '#FF453A' }]}>Hapus</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
+                        <TouchableOpacity
+                            style={styles.barDoneBtn}
+                            onPress={() => {
+                                setIsSelectMode(false);
+                                setSelectedIds([]);
+                            }}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                        >
+                            <Text style={styles.barDoneText}>Selesai</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -528,7 +594,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#000000',
     },
     header: {
-        paddingTop: Platform.OS === 'ios' ? 52 : 44,
+        paddingTop: Platform.OS === 'ios' ? 52 : 46,
         paddingBottom: 10,
         paddingHorizontal: 16,
         backgroundColor: '#000000',
@@ -632,7 +698,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     listContent: {
-        paddingBottom: 110,
+        paddingBottom: 140,
     },
     gridItem: {
         width: ITEM_SIZE,
@@ -641,6 +707,13 @@ const styles = StyleSheet.create({
         marginBottom: ITEM_MARGIN,
         position: 'relative',
         backgroundColor: '#121214',
+    },
+    selectedOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(10, 132, 255, 0.22)',
+        borderWidth: 2.5,
+        borderColor: '#0A84FF',
+        zIndex: 2,
     },
     itemImage: {
         width: '100%',
@@ -718,36 +791,73 @@ const styles = StyleSheet.create({
     },
     floatingSelectBar: {
         position: 'absolute',
-        bottom: 75,
         alignSelf: 'center',
-        width: '88%',
-        backgroundColor: 'rgba(30, 30, 35, 0.95)',
-        borderRadius: 22,
+        width: '92%',
+        backgroundColor: 'rgba(28, 28, 34, 0.96)',
+        borderRadius: 20,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderWidth: StyleSheet.hairlineWidth,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.16)',
-        elevation: 8,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 12,
+        zIndex: 999,
+    },
+    floatingBarLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    selectToggleBtn: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 8,
+    },
+    selectToggleText: {
+        color: '#0A84FF',
+        fontSize: 12,
+        fontWeight: '600',
     },
     selectCountText: {
         color: '#ffffff',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 13,
+    },
+    floatingBarRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     barActionBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        paddingVertical: 4,
+        gap: 4,
+        paddingVertical: 5,
         paddingHorizontal: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: 8,
     },
-    barDangerText: {
-        color: '#FF453A',
+    barActionText: {
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 12,
+    },
+    barDoneBtn: {
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        backgroundColor: '#0A84FF',
+        borderRadius: 8,
+    },
+    barDoneText: {
+        color: '#ffffff',
+        fontWeight: '700',
+        fontSize: 12,
     },
     autoSyncPillOuter: {
         position: 'absolute',

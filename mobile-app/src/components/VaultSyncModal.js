@@ -16,11 +16,13 @@ import {
 import SFSymbol from './SFSymbol';
 import { SyncService } from '../services/syncService';
 import { StorageService } from '../services/storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const THUMB_SIZE = (SCREEN_WIDTH - 72) / 4;
 
 export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
+    const insets = useSafeAreaInsets();
     const [loadingFolder, setLoadingFolder] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [progress, setProgress] = useState({ current: 0, total: 0, percentage: 0 });
@@ -160,7 +162,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             onRequestClose={onClose}
         >
             <View style={styles.backdrop}>
-                <View style={styles.sheet}>
+                <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
                     {/* Grab Handle */}
                     <View style={styles.handle} />
 
@@ -180,7 +182,11 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                    <ScrollView
+                        style={styles.body}
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 36 }}
+                    >
                         {/* 1 Designated Folder Selector Card */}
                         <View style={styles.card}>
                             <Text style={styles.cardLabel}>1 FOLDER KHUSUS DI HP</Text>

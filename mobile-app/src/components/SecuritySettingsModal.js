@@ -9,11 +9,15 @@ import {
     TextInput,
     Alert,
     ScrollView,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import SFSymbol from './SFSymbol';
 import { SecurityService } from '../services/securityService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SecuritySettingsModal({ visible, onClose }) {
+    const insets = useSafeAreaInsets();
     const [enabled, setEnabled] = useState(false);
     const [hasMaster, setHasMaster] = useState(false);
     const [hasDecoy, setHasDecoy] = useState(false);
@@ -109,8 +113,11 @@ export default function SecuritySettingsModal({ visible, onClose }) {
             transparent
             onRequestClose={onClose}
         >
-            <View style={styles.backdrop}>
-                <View style={styles.sheet}>
+            <KeyboardAvoidingView
+                style={styles.backdrop}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
                     <View style={styles.handle} />
 
                     {/* Header */}
@@ -124,7 +131,12 @@ export default function SecuritySettingsModal({ visible, onClose }) {
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                    <ScrollView
+                        style={styles.body}
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 30 }}
+                        keyboardShouldPersistTaps="handled"
+                    >
                         {/* 1. Master Toggle */}
                         <View style={styles.card}>
                             <View style={styles.toggleRow}>
@@ -269,7 +281,7 @@ export default function SecuritySettingsModal({ visible, onClose }) {
                         </View>
                     </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }

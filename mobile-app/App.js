@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox, AppState, Text, Alert } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox, AppState, Text, Alert, Image } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -278,7 +278,24 @@ export default function App() {
         return (
             <View style={styles.splashContainer}>
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <ActivityIndicator size="large" color="#0A84FF" />
+                <View style={styles.splashContent}>
+                    <View style={styles.splashEmblemGlow}>
+                        <Image
+                            source={require('./assets/splash-icon.png')}
+                            style={styles.splashLogo}
+                            resizeMode="contain"
+                        />
+                    </View>
+                    <Text style={styles.splashTitle}>Lumina</Text>
+                    <Text style={styles.splashSubtitle}>Personal Media Vault</Text>
+                </View>
+                <View style={styles.splashFooter}>
+                    <ActivityIndicator size="small" color="#0A84FF" style={{ marginBottom: 12 }} />
+                    <View style={styles.splashSecBadge}>
+                        <SFSymbol name="lock.fill" size={11} color="#30D158" style={{ marginRight: 6 }} />
+                        <Text style={styles.splashSecText}>Terenkripsi Privat AES-256</Text>
+                    </View>
+                </View>
             </View>
         );
     }
@@ -325,7 +342,65 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000000',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 64,
+    },
+    splashContent: {
+        flex: 1,
+        alignItems: 'center',
         justifyContent: 'center',
+    },
+    splashEmblemGlow: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: 'rgba(10, 132, 255, 0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        marginBottom: 20,
+        shadowColor: '#0A84FF',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 24,
+        elevation: 10,
+    },
+    splashLogo: {
+        width: 80,
+        height: 80,
+    },
+    splashTitle: {
+        color: '#ffffff',
+        fontSize: 32,
+        fontWeight: '800',
+        letterSpacing: -0.6,
+    },
+    splashSubtitle: {
+        color: '#8E8E93',
+        fontSize: 14,
+        fontWeight: '500',
+        marginTop: 6,
+        letterSpacing: -0.2,
+    },
+    splashFooter: {
+        alignItems: 'center',
+    },
+    splashSecBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        paddingVertical: 6,
+        paddingHorizontal: 14,
+        borderRadius: 14,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    splashSecText: {
+        color: '#8E8E93',
+        fontSize: 11,
+        fontWeight: '600',
+        letterSpacing: 0.2,
     },
     privacyShield: {
         zIndex: 999999,

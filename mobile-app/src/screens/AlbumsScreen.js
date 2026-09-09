@@ -12,6 +12,8 @@ import {
     RefreshControl,
     Modal,
     TextInput,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
@@ -20,11 +22,13 @@ import SFSymbol from '../components/SFSymbol';
 import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 import SecureVaultUnlockModal from '../components/SecureVaultUnlockModal';
 import SecureVaultScreen from './SecureVaultScreen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
 
 export default function AlbumsScreen({ navigation }) {
+    const insets = useSafeAreaInsets();
     const isDecoy = useDecoyMode();
     const isLocked = useAppLocked();
     const [albums, setAlbums] = useState([]);
@@ -244,7 +248,10 @@ export default function AlbumsScreen({ navigation }) {
 
             {/* Create Album Modal */}
             <Modal visible={modalVisible} transparent animationType="fade">
-                <View style={styles.modalBackdrop}>
+                <KeyboardAvoidingView
+                    style={styles.modalBackdrop}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
                     <View style={styles.modalBox}>
                         <Text style={styles.modalTitle}>Buat Album Baru</Text>
                         <Text style={styles.modalSub}>Masukkan nama untuk album baru ini:</Text>
@@ -276,7 +283,7 @@ export default function AlbumsScreen({ navigation }) {
                             </TouchableOpacity>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
 
             {/* Secure Vault Unlock Challenge Modal (Password + OTP) */}
@@ -311,8 +318,8 @@ const styles = StyleSheet.create({
     },
     listContainer: {
         paddingHorizontal: 16,
-        paddingTop: 48,
-        paddingBottom: 90,
+        paddingTop: Platform.OS === 'ios' ? 52 : 46,
+        paddingBottom: 130,
     },
     headerArea: {
         marginBottom: 16,

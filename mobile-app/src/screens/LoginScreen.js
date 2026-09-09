@@ -18,8 +18,10 @@ import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
 
 import SFSymbol from '../components/SFSymbol';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen({ onLoginSuccess }) {
+    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -71,7 +73,13 @@ export default function LoginScreen({ onLoginSuccess }) {
         >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        {
+                            paddingTop: Math.max(insets.top, 36),
+                            paddingBottom: Math.max(insets.bottom, 24) + 12,
+                        },
+                    ]}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     bounces={false}

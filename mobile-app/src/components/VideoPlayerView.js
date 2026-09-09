@@ -115,14 +115,23 @@ export default function VideoPlayerView({
                 nativeControls={true}
                 contentFit="contain"
                 allowsFullscreen={true}
-                surfaceType="surfaceView"
+                surfaceType="textureView"
             />
 
-            {/* Buffering Indicator */}
+            {/* Buffering Indicator with Thumbnail Poster Backdrop */}
             {isBuffering && !loadError && (
                 <View style={styles.loadingOverlay} pointerEvents="none">
-                    <ActivityIndicator size="large" color="#0A84FF" />
-                    <Text style={styles.loadingText}>Memuat Video...</Text>
+                    {Boolean(item?.thumbnail_url) && (
+                        <SecureImage
+                            source={item.thumbnail_url}
+                            style={StyleSheet.absoluteFillObject}
+                            resizeMode="contain"
+                        />
+                    )}
+                    <View style={styles.bufferingBackdrop}>
+                        <ActivityIndicator size="large" color="#0A84FF" />
+                        <Text style={styles.loadingText}>Memuat Video...</Text>
+                    </View>
                 </View>
             )}
 
@@ -157,7 +166,15 @@ const styles = StyleSheet.create({
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        backgroundColor: '#000000',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    bufferingBackdrop: {
+        backgroundColor: 'rgba(0, 0, 0, 0.65)',
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
     },

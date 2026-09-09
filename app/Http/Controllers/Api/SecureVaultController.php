@@ -26,7 +26,10 @@ class SecureVaultController extends Controller
     public function status(Request $request): JsonResponse
     {
         $user = $request->user();
-        $lockedCount = Media::where('is_locked', true)->count();
+        $lockedCount = 0;
+        try {
+            $lockedCount = Media::where('is_locked', true)->count();
+        } catch (\Throwable $e) {}
 
         return response()->json([
             'success' => true,

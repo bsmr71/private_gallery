@@ -19,17 +19,34 @@ class AlbumApiController extends Controller
         $tokenParam = $request->bearerToken() ? '?token=' . urlencode($request->bearerToken()) : '';
         $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
 
-        $hasLockedMedia = \Illuminate\Support\Facades\Schema::hasColumn('media', 'is_locked');
-        $hasLockedAlbums = \Illuminate\Support\Facades\Schema::hasColumn('albums', 'is_locked');
+        $hasLockedMedia = false;
+        try {
+            \Illuminate\Support\Facades\DB::select("SELECT `is_locked` FROM `media` LIMIT 0");
+            $hasLockedMedia = true;
+        } catch (\Throwable $e) {
+            $hasLockedMedia = false;
+        }
+
+        $hasLockedAlbums = false;
+        try {
+            \Illuminate\Support\Facades\DB::select("SELECT `is_locked` FROM `albums` LIMIT 0");
+            $hasLockedAlbums = true;
+        } catch (\Throwable $e) {
+            $hasLockedAlbums = false;
+        }
 
         $albumsQuery = Album::query();
         if ($hasLockedAlbums) {
-            $albumsQuery->where('is_locked', false);
+            try {
+                $albumsQuery->where('is_locked', false);
+            } catch (\Throwable $e) {}
         }
 
         $albums = $albumsQuery->withCount(['media' => function ($q) use ($hasLockedMedia) {
                 if ($hasLockedMedia) {
-                    $q->where('is_locked', false);
+                    try {
+                        $q->where('is_locked', false);
+                    } catch (\Throwable $e) {}
                 }
             }])
             ->orderBy('name')

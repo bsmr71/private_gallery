@@ -19,6 +19,7 @@ import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -26,6 +27,7 @@ const ITEM_MARGIN = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function SecureVaultScreen({ visible, vaultToken, onClose }) {
+    const insets = useSafeAreaInsets();
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -101,10 +103,21 @@ export default function SecureVaultScreen({ visible, vaultToken, onClose }) {
     };
 
     const handleToggleSelect = (id) => {
-        if (selectedIds.includes(id)) {
-            setSelectedIds(selectedIds.filter((item) => item !== id));
+        setSelectedIds((prev) => {
+            const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+            if (next.length === 0) {
+                setIsSelectMode(false);
+            }
+            return next;
+        });
+    };
+
+    const handleToggleSelectAll = () => {
+        if (selectedIds.length === mediaItems.length && mediaItems.length > 0) {
+            setSelectedIds([]);
+            setIsSelectMode(false);
         } else {
-            setSelectedIds([...selectedIds, id]);
+            setSelectedIds(mediaItems.map((m) => m.id));
         }
     };
 
@@ -295,12 +308,23 @@ export default function SecureVaultScreen({ visible, vaultToken, onClose }) {
                                             setViewerVisible(true);
                                         }
                                     }}
+                                    onLongPress={() => {
+                                        if (!isSelectMode) {
+                                            setIsSelectMode(true);
+                                            setSelectedIds([item.id]);
+                                        } else {
+                                            handleToggleSelect(item.id);
+                                        }
+                                    }}
+                                    delayLongPress={220}
                                 >
                                     <SecureImage
                                         source={item.thumbnail_url}
                                         style={styles.thumbImage}
                                         resizeMode="cover"
                                     />
+
+                                    {isSelected && <View style={styles.selectedOverlay} />}
 
                                     {item.type === 'video' && (
                                         <View style={styles.videoBadge}>
@@ -320,24 +344,52 @@ export default function SecureVaultScreen({ visible, vaultToken, onClose }) {
                 )}
 
                 {/* Floating Multi-Select Action Bar */}
-                {isSelectMode && selectedIds.length > 0 && (
-                    <View style={styles.floatingBar}>
-                        <Text style={styles.floatingCount}>{selectedIds.length} Dipilih</Text>
-                        <TouchableOpacity
-                            style={styles.unlockActionBtn}
-                            onPress={handleUnlockSelected}
-                            disabled={actionLoading}
-                            activeOpacity={0.8}
-                        >
-                            {actionLoading ? (
-                                <ActivityIndicator size="small" color="#ffffff" />
-                            ) : (
-                                <>
-                                    <SFSymbol name="lock.open.fill" size={14} color="#ffffff" style={{ marginRight: 6 }} />
-                                    <Text style={styles.unlockActionText}>Keluarkan ke Galeri</Text>
-                                </>
+                {isSelectMode && (
+                    <View style={[styles.floatingBar, { bottom: Math.max(insets.bottom, 20) + 12 }]}>
+                        <View style={styles.floatingBarLeft}>
+                            <TouchableOpacity
+                                style={styles.selectToggleBtn}
+                                onPress={handleToggleSelectAll}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.selectToggleText}>
+                                    {selectedIds.length === mediaItems.length && mediaItems.length > 0
+                                        ? 'Batal Semua'
+                                        : 'Pilih Semua'}
+                                </Text>
+                            </TouchableOpacity>
+                            <Text style={styles.floatingCount}>{selectedIds.length} Dipilih</Text>
+                        </View>
+
+                        <View style={styles.floatingBarRight}>
+                            {selectedIds.length > 0 && (
+                                <TouchableOpacity
+                                    style={styles.unlockActionBtn}
+                                    onPress={handleUnlockSelected}
+                                    disabled={actionLoading}
+                                    activeOpacity={0.8}
+                                >
+                                    {actionLoading ? (
+                                        <ActivityIndicator size="small" color="#ffffff" />
+                                    ) : (
+                                        <>
+                                            <SFSymbol name="lock.open.fill" size={13} color="#ffffff" style={{ marginRight: 5 }} />
+                                            <Text style={styles.unlockActionText}>Keluarkan</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
                             )}
-                        </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.doneBtn}
+                                onPress={() => {
+                                    setIsSelectMode(false);
+                                    setSelectedIds([]);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.doneBtnText}>Selesai</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 )}
 
@@ -482,14 +534,23 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     gridContent: {
-        paddingBottom: 80,
+        paddingHorizontal: 2,
+        paddingTop: 8,
+        paddingBottom: 110,
     },
     gridItem: {
         width: ITEM_SIZE,
         height: ITEM_SIZE,
-        marginRight: ITEM_MARGIN,
-        marginBottom: ITEM_MARGIN,
+        margin: ITEM_MARGIN,
         backgroundColor: '#121214',
+        position: 'relative',
+    },
+    selectedOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(255, 159, 10, 0.22)',
+        borderWidth: 2.5,
+        borderColor: '#FF9F0A',
+        zIndex: 2,
     },
     thumbImage: {
         width: '100%',
@@ -522,36 +583,72 @@ const styles = StyleSheet.create({
     },
     floatingBar: {
         position: 'absolute',
-        bottom: 24,
-        left: 20,
-        right: 20,
-        backgroundColor: 'rgba(28, 28, 30, 0.95)',
-        borderRadius: 16,
-        paddingVertical: 12,
-        paddingHorizontal: 18,
+        left: 16,
+        right: 16,
+        backgroundColor: 'rgba(28, 28, 32, 0.96)',
+        borderRadius: 18,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
-        elevation: 10,
+        borderColor: 'rgba(255, 255, 255, 0.16)',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 12,
+        zIndex: 999,
+    },
+    floatingBarLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    selectToggleBtn: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 8,
+    },
+    selectToggleText: {
+        color: '#FF9F0A',
+        fontSize: 12,
+        fontWeight: '600',
     },
     floatingCount: {
         color: '#ffffff',
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
+    },
+    floatingBarRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     unlockActionBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#0A84FF',
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 10,
+        backgroundColor: '#FF9F0A',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 8,
     },
     unlockActionText: {
         color: '#ffffff',
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: '700',
+    },
+    doneBtn: {
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderRadius: 8,
+    },
+    doneBtnText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

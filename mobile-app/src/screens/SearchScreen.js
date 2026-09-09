@@ -10,7 +10,10 @@ import {
     ActivityIndicator,
     Alert,
     ScrollView,
+    Platform,
+    KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
@@ -24,6 +27,7 @@ const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * 2) / 3;
 
 export default function SearchScreen({ onLogout }) {
+    const insets = useSafeAreaInsets();
     const isDecoy = useDecoyMode();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
@@ -103,7 +107,7 @@ export default function SearchScreen({ onLogout }) {
     return (
         <View style={styles.container}>
             {/* Apple Photos Large Title Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 48 : 36) }]}>
                 <Text style={styles.screenTitle}>Cari</Text>
                 <View style={styles.searchBar}>
                     <SFSymbol name="search" size={16} color="#8E8E93" style={styles.searchIcon} />
@@ -137,7 +141,7 @@ export default function SearchScreen({ onLogout }) {
                             data={results}
                             keyExtractor={(item) => String(item.id)}
                             numColumns={3}
-                            contentContainerStyle={styles.resultsListContent}
+                            contentContainerStyle={[styles.resultsListContent, { paddingBottom: Math.max(insets.bottom, 16) + 120 }]}
                             renderItem={({ item, index }) => (
                                 <TouchableOpacity
                                     style={styles.resultItem}
@@ -175,7 +179,11 @@ export default function SearchScreen({ onLogout }) {
                 </View>
             ) : (
                 // Settings & Storage Info (Apple Inset Grouped Style)
-                <ScrollView style={styles.settingsScroll} contentContainerStyle={{ paddingBottom: 120 }}>
+                <ScrollView
+                    style={styles.settingsScroll}
+                    contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 120 }}
+                    keyboardShouldPersistTaps="handled"
+                >
                     {/* User Profile Card */}
                     <View style={styles.card}>
                         <View style={styles.userRow}>
