@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as LocalAuthentication from 'expo-local-authentication';
 
 const SEC_KEYS = {
     ENABLED: '@sec_app_lock_enabled',
@@ -122,21 +121,6 @@ export const SecurityService = {
         } catch (e) {}
     },
 
-    async isBiometricsEnabled() {
-        try {
-            const val = await AsyncStorage.getItem(SEC_KEYS.BIOMETRICS);
-            return val !== 'false'; // Default true
-        } catch (e) {
-            return true;
-        }
-    },
-
-    async setBiometricsEnabled(boolVal) {
-        try {
-            await AsyncStorage.setItem(SEC_KEYS.BIOMETRICS, boolVal ? 'true' : 'false');
-        } catch (e) {}
-    },
-
     async getAutoLockTimeout() {
         try {
             const val = await AsyncStorage.getItem(SEC_KEYS.TIMEOUT);
@@ -152,51 +136,6 @@ export const SecurityService = {
             cachedTimeout = timeoutVal;
             await AsyncStorage.setItem(SEC_KEYS.TIMEOUT, timeoutVal);
         } catch (e) {}
-    },
-
-    // --- Biometric Verification ---
-    async checkBiometricsAvailable() {
-        try {
-            const hasHardware = await LocalAuthentication.hasHardwareAsync();
-            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-            const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-            return {
-                available: hasHardware && isEnrolled,
-                hasHardware,
-                isEnrolled,
-                isFaceId: types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION),
-                isFingerprint: types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT),
-            };
-        } catch (e) {
-            return { available: false, hasHardware: false, isEnrolled: false };
-        }
-    },
-
-    async authenticateWithBiometrics(promptMessage = 'Verifikasi Sidik Jari untuk Membuka Galeri') {
-        const biometricsAvailable = await this.checkBiometricsAvailable();
-        const enabled = await this.isBiometricsEnabled();
-
-        if (!biometricsAvailable.available || !enabled) {
-            return { success: false, error: 'not_available' };
-        }
-
-        try {
-            const res = await LocalAuthentication.authenticateAsync({
-                promptMessage,
-                cancelLabel: 'Batal',
-                disableDeviceFallback: true, // Force our custom in-app PIN instead of system screen lock
-            });
-
-            if (res.success) {
-                runtimeDecoyMode = false;
-                runtimeIsLocked = false;
-                notifyListeners();
-            }
-
-            return res;
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
     },
 
     // --- PIN Verification ---

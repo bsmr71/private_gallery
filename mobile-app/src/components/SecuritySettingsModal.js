@@ -17,12 +17,7 @@ export default function SecuritySettingsModal({ visible, onClose }) {
     const [enabled, setEnabled] = useState(false);
     const [hasMaster, setHasMaster] = useState(false);
     const [hasDecoy, setHasDecoy] = useState(false);
-    const [biometricsEnabled, setBiometricsEnabled] = useState(true);
     const [autoLockTimeout, setAutoLockTimeout] = useState('immediately');
-
-    // Biometric hardware check
-    const [bioAvailable, setBioAvailable] = useState(false);
-    const [isFaceId, setIsFaceId] = useState(false);
 
     // Editing PIN states
     const [settingMaster, setSettingMaster] = useState(false);
@@ -34,17 +29,11 @@ export default function SecuritySettingsModal({ visible, onClose }) {
         const isEn = await SecurityService.isLockEnabled();
         const hasM = await SecurityService.hasMasterPin();
         const hasD = await SecurityService.hasDecoyPin();
-        const bioEn = await SecurityService.isBiometricsEnabled();
         const timeout = await SecurityService.getAutoLockTimeout();
-
-        const bioCheck = await SecurityService.checkBiometricsAvailable();
-        setBioAvailable(bioCheck.available);
-        setIsFaceId(bioCheck.isFaceId);
 
         setEnabled(isEn);
         setHasMaster(hasM);
         setHasDecoy(hasD);
-        setBiometricsEnabled(bioEn);
         setAutoLockTimeout(timeout);
     };
 
@@ -104,11 +93,6 @@ export default function SecuritySettingsModal({ visible, onClose }) {
         await SecurityService.setDecoyPin(null);
         setHasDecoy(false);
         Alert.alert('Dihapus', 'PIN Umpan telah dinonaktifkan.');
-    };
-
-    const handleToggleBio = async (val) => {
-        setBiometricsEnabled(val);
-        await SecurityService.setBiometricsEnabled(val);
     };
 
     const handleSelectTimeout = async (val) => {
@@ -241,29 +225,18 @@ export default function SecuritySettingsModal({ visible, onClose }) {
                             )}
                         </View>
 
-                        {/* 3. Biometrics */}
-                        {bioAvailable && (
-                            <View style={styles.card}>
-                                <Text style={styles.sectionLabel}>BIOMETRIK</Text>
-                                <View style={styles.toggleRow}>
-                                    <View style={{ flex: 1, marginRight: 12 }}>
-                                        <Text style={styles.rowTitle}>
-                                            Gunakan {isFaceId ? 'Face ID' : 'Sidik Jari (Fingerprint)'}
-                                        </Text>
-                                        <Text style={styles.rowDesc}>
-                                            Buka galeri secara instan tanpa perlu mengetik PIN setiap saat.
-                                        </Text>
-                                    </View>
-                                    <Switch
-                                        value={biometricsEnabled}
-                                        onValueChange={handleToggleBio}
-                                        trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
-                                        thumbColor="#ffffff"
-                                        disabled={!enabled}
-                                    />
-                                </View>
+                        {/* 3. Pure PIN Security Notice */}
+                        <View style={styles.card}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                <SFSymbol name="lock.fill" size={15} color="#30D158" style={{ marginRight: 8 }} />
+                                <Text style={[styles.sectionLabel, { marginBottom: 0, color: '#30D158' }]}>
+                                    PERLINDUNGAN MURNI PIN AKTIF
+                                </Text>
                             </View>
-                        )}
+                            <Text style={styles.cardDesc}>
+                                Biometrik dinonaktifkan secara permanen demi keamanan mutlak. Orang lain tidak dapat memaksa Anda menempelkan sidik jari saat tidur atau terdesak. Hanya Anda yang memegang kendali penuh dengan PIN 6 digit.
+                            </Text>
+                        </View>
 
                         {/* 4. Auto-Lock Timeout */}
                         <View style={styles.card}>

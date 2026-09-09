@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -27,7 +27,7 @@ const KEYPAD = [
     { number: '7', letters: 'PQRS' },
     { number: '8', letters: 'TUV' },
     { number: '9', letters: 'WXYZ' },
-    { number: 'bio', letters: '' },
+    { number: '', letters: '' },
     { number: '0', letters: '' },
     { number: 'del', letters: '' },
 ];
@@ -35,39 +35,15 @@ const KEYPAD = [
 export default function AppLockOverlay({ visible, onUnlock }) {
     const [pin, setPin] = useState('');
     const [errorText, setErrorText] = useState('');
-    const [biometricsAvailable, setBiometricsAvailable] = useState(false);
-    const [isFaceId, setIsFaceId] = useState(false);
 
     const shakeAnim = useRef(new Animated.Value(0)).current;
-
-    const triggerBiometrics = useCallback(async () => {
-        try {
-            const res = await SecurityService.authenticateWithBiometrics();
-            if (res.success) {
-                setPin('');
-                setErrorText('');
-                onUnlock && onUnlock({ type: 'master' });
-            }
-        } catch (e) {}
-    }, [onUnlock]);
 
     useEffect(() => {
         if (visible) {
             setPin('');
             setErrorText('');
-
-            SecurityService.checkBiometricsAvailable().then((bio) => {
-                setBiometricsAvailable(bio.available);
-                setIsFaceId(bio.isFaceId);
-                // Prompt biometrics on open if available
-                if (bio.available) {
-                    setTimeout(() => {
-                        triggerBiometrics();
-                    }, 250);
-                }
-            });
         }
-    }, [visible, triggerBiometrics]);
+    }, [visible]);
 
     const shake = () => {
         try {
@@ -85,10 +61,7 @@ export default function AppLockOverlay({ visible, onUnlock }) {
     };
 
     const handleKeyPress = async (key) => {
-        if (key === 'bio') {
-            triggerBiometrics();
-            return;
-        }
+        if (!key) return;
 
         if (key === 'del') {
             setPin((prev) => prev.slice(0, -1));
@@ -158,7 +131,7 @@ export default function AppLockOverlay({ visible, onUnlock }) {
                 {/* Numeric Keypad (Authentic Apple iOS Passcode) */}
                 <View style={styles.keypad}>
                     {KEYPAD.map((btn, index) => {
-                        if (btn.number === 'bio' && !biometricsAvailable) {
+                        if (!btn.number) {
                             return <View key={index} style={styles.keypadBtnPlaceholder} />;
                         }
 
@@ -171,18 +144,12 @@ export default function AppLockOverlay({ visible, onUnlock }) {
                                 key={index}
                                 style={[
                                     styles.keypadBtn,
-                                    (btn.number === 'bio' || btn.number === 'del') && styles.keypadUtilityBtn,
+                                    btn.number === 'del' && styles.keypadUtilityBtn,
                                 ]}
                                 activeOpacity={0.4}
                                 onPress={() => handleKeyPress(btn.number)}
                             >
-                                {btn.number === 'bio' ? (
-                                    <SFSymbol
-                                        name={isFaceId ? 'faceid' : 'fingerprint'}
-                                        size={28}
-                                        color="#ffffff"
-                                    />
-                                ) : btn.number === 'del' ? (
+                                {btn.number === 'del' ? (
                                     <SFSymbol name="delete.left" size={24} color="#ffffff" />
                                 ) : (
                                     <View style={styles.keypadNumberWrap}>
