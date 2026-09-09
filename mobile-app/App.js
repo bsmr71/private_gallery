@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, StatusBar, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,12 @@ import { BlurView } from 'expo-blur';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
 import SFSymbol from './src/components/SFSymbol';
+
+// Suppress harmless development connection warnings so user screen remains clean
+LogBox.ignoreLogs([
+    'Cannot connect to Expo CLI',
+    'Unsupported FormDataPart',
+]);
 
 import LibraryScreen from './src/screens/LibraryScreen';
 import AlbumsScreen from './src/screens/AlbumsScreen';
