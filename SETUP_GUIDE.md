@@ -44,7 +44,7 @@ Ikuti langkah-langkah berikut untuk menghubungkan aplikasi Media Gallery dengan 
 
 ## Step 5: Share Drive Folder ke Service Account
 
-Karena kamu menggunakan **Google One Pro** (2TB), kita akan menyimpan file di Drive akun personal kamu.
+Untuk menyimpan berkas media ke dalam akun Google Drive pribadi, kita akan mengatur folder penyimpanan di Drive.
 
 1. Buka [Google Drive](https://drive.google.com/)
 2. Buat folder baru: **"MediaGalleryEncrypted"**

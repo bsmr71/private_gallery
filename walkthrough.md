@@ -19,7 +19,7 @@ Seluruh kode sumber aplikasi **Private Media Gallery** telah berhasil di-push ke
    - `git remote add origin https://github.com/bsmr71/private_gallery.git`
 3. **Commit Awal**:
    - 94 files source code, views Blade, aset CSS & JS (Mode Gelap & Terang), layanan enkripsi AES-256, autentikasi 2FA, dan unit/feature tests.
-   - Pesan commit: `Initial commit: Private Media Gallery with Google Drive 2TB, AES-256 encryption, 2FA, Dark & Light Mode`
+   - Pesan commit: `Initial commit: Private Media Gallery with Google Drive, AES-256 encryption, 2FA, Dark & Light Mode`
 4. **Push ke GitHub**:
    - `git push -u origin main` berhasil dieksekusi ke branch `main`.
 
@@ -27,7 +27,7 @@ Seluruh kode sumber aplikasi **Private Media Gallery** telah berhasil di-push ke
 
 ## 2. Fitur-Fitur yang Sudah Tersemat di Repository
 
-- **Penyimpanan Terenkripsi Google Drive (2TB)**: Integrasi OAuth 2.0 & AES-256-CBC.
+- **Penyimpanan Terenkripsi Google Drive**: Integrasi OAuth 2.0 & AES-256-CBC.
 - **Autentikasi 2-Langkah (2FA / Google Authenticator)**: Dengan QR code & kode pemulihan.
 - **Desain Galeri Modern (Apple & Google Photos Inspired)**:
   - Antarmuka foto/video rapat, bersih, tanpa elemen marketing berlebih.

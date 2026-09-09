@@ -8,7 +8,7 @@
     <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 28px; flex-wrap: wrap; gap: 16px;">
         <div>
             <h1 class="page-title" style="margin-bottom: 6px;">Pengaturan &amp; Keamanan Sistem</h1>
-            <p class="page-subtitle" style="margin: 0;">Konfigurasi Google Drive 2TB, autentikasi 2FA, dan enkripsi data database</p>
+            <p class="page-subtitle" style="margin: 0;">Konfigurasi penyimpanan cloud Google Drive, autentikasi 2FA, dan enkripsi data database</p>
         </div>
         <div>
             <form action="{{ route('admin.settings.test') }}" method="POST" style="margin: 0;">
@@ -31,7 +31,7 @@
                     @if($isOauthConnected || request('connected'))
                         <span style="display: inline-flex; align-items: center; gap: 6px; background: #dcfce7; color: #15803d; padding: 4px 12px; border-radius: 9999px; font-size: 0.8125rem; font-weight: 600;">
                             <span style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a;"></span>
-                            Terhubung (2TB Aktif)
+                            Terhubung &amp; Siap Digunakan
                         </span>
                     @elseif($clientId && $clientSecret)
                         <span style="display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 0.8125rem; font-weight: 600;">
@@ -333,15 +333,15 @@
         </div>
     </div>
 
-    <!-- SECTION 3: OAUTH 2.0 (GOOGLE ONE PRO 2TB) -->
+    <!-- SECTION 3: OAUTH 2.0 (GOOGLE DRIVE STORAGE) -->
     <div class="settings-card">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
             <div style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.25rem;">
                 G
             </div>
             <div>
-                <h2 style="font-size: 1.125rem; font-weight: 600; color: #0f172a; margin: 0 0 2px 0;">Otorisasi Akun Google One (2TB)</h2>
-                <p style="font-size: 0.8125rem; color: #64748b; margin: 0;">Gunakan kredensial OAuth agar file disimpan langsung di kuota 2TB milik akun Google pribadimu</p>
+                <h2 style="font-size: 1.125rem; font-weight: 600; color: #0f172a; margin: 0 0 2px 0;">Otorisasi Akun Google Drive</h2>
+                <p style="font-size: 0.8125rem; color: #64748b; margin: 0;">Gunakan kredensial OAuth agar berkas tersimpan langsung di akun Google Drive pribadi Anda</p>
             </div>
         </div>
 
@@ -406,7 +406,7 @@
 
                 @if($clientId && $clientSecret)
                     <a href="{{ route('admin.google.connect') }}" class="btn btn-secondary" style="padding: 9px 20px; color: #1e40af; border-color: #bfdbfe; background: #eff6ff;">
-                        {{ ($isOauthConnected || request('connected')) ? '✓ Hubungkan Ulang Akun Google' : '🔗 Hubungkan Akun Google One (2TB) →' }}
+                        {{ ($isOauthConnected || request('connected')) ? '✓ Hubungkan Ulang Akun Google' : '🔗 Hubungkan Akun Google Drive →' }}
                     </a>
                 @endif
             </div>
@@ -444,7 +444,7 @@
     <div class="settings-card">
         <h3 style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-bottom: 18px; display: flex; align-items: center; gap: 8px;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Panduan 3 Langkah Mudah Menghubungkan Google One (2TB)
+            Panduan 3 Langkah Mudah Menghubungkan Google Drive
         </h3>
 
         <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -476,8 +476,8 @@
                 <div style="width: 28px; height: 28px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8125rem; flex-shrink: 0;">3</div>
                 <div style="font-size: 0.875rem; color: #334155; line-height: 1.6;">
                     <strong>Otorisasi &amp; Selesai:</strong><br>
-                    Klik tombol <strong>"🔗 Hubungkan Akun Google One (2TB)"</strong> di atas &rarr; kamu akan diarahkan ke halaman login Google &rarr; pilih akun Google One kamu &rarr; klik <strong>Continue / Izinkan</strong>.<br>
-                    Setelah itu, akun resmi terhubung permanen dan kuota 2TB langsung aktif untuk upload foto &amp; video terenkripsi!
+                    Klik tombol <strong>"🔗 Hubungkan Akun Google Drive"</strong> di atas &rarr; kamu akan diarahkan ke halaman login Google &rarr; pilih akun Google kamu &rarr; klik <strong>Continue / Izinkan</strong>.<br>
+                    Setelah itu, akun resmi terhubung dan penyimpanan Google Drive langsung aktif untuk upload foto &amp; video terenkripsi!
                 </div>
             </div>
         </div>

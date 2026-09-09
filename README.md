@@ -2,7 +2,7 @@
 
 # 📷 Private Media Gallery
 
-**Galeri Foto & Video Pribadi Mandiri (*Self-Hosted*) dengan Enkripsi AES-256, Google Drive 2TB, & Autentikasi 2FA**
+**Galeri Foto & Video Pribadi Mandiri (*Self-Hosted*) dengan Enkripsi AES-256, Penyimpanan Cloud Google Drive, & Autentikasi 2FA**
 
 [![Laravel](https://img.shields.io/badge/Laravel-11.x-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)](https://laravel.com)
 [![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net)
@@ -17,7 +17,7 @@
 
 ## 🌟 Tentang Aplikasi
 
-**Private Media Gallery** adalah aplikasi galeri foto dan video pribadi yang dirancang untuk pengguna yang menginginkan kendali penuh atas privasi data visual mereka. Media dienkripsi secara otomatis menggunakan algoritma **AES-256-CBC** sebelum disimpan ke Google Drive (mendukung kuota 2TB Google One) sehingga pihak penyedia hosting maupun pihak ketiga tidak dapat melihat isi foto, video, maupun kredensial rahasia Anda.
+**Private Media Gallery** adalah aplikasi galeri foto dan video pribadi yang dirancang untuk pengguna yang menginginkan kendali penuh atas privasi data visual mereka. Media dienkripsi secara otomatis menggunakan algoritma **AES-256-CBC** sebelum disimpan ke Google Drive pribadi Anda, sehingga pihak penyedia hosting maupun pihak ketiga tidak dapat melihat isi foto, video, maupun kredensial rahasia Anda.
 
 Antarmuka dirancang bersih, intuitif, dan responsif dengan inspirasi dari antarmuka modern **Apple Photos** dan **Google Photos**, lengkap dengan dukungan **Mode Gelap (Dark Mode)** dan **Mode Terang (Light Mode)**.
 
@@ -30,8 +30,8 @@ Antarmuka dirancang bersih, intuitif, dan responsif dengan inspirasi dari antarm
 - **Enkripsi Kredensial Database**: Seluruh data sensitif (Client Secret OAuth, Refresh Token, TOTP Secret 2FA, dan Recovery Codes) dienkripsi secara otomatis saat disimpan di database untuk mencegah kebocoran data dari pihak pengelola hosting.
 - **Proteksi Brute-Force**: Pembatasan percobaan login (*Rate Limiting*) otomatis mengunci akun selama 15 menit setelah 5 kali kesalahan input password berturut-turut.
 
-### ☁️ 2. Penyimpanan Cloud Google Drive (Google One 2TB)
-- **Integrasi OAuth 2.0**: Menghubungkan penyimpanan langsung ke akun Google One pribadi Anda tanpa bergantung pada kuota shared hosting.
+### ☁️ 2. Penyimpanan Cloud Google Drive
+- **Integrasi OAuth 2.0**: Menghubungkan penyimpanan langsung ke akun Google Drive pribadi Anda tanpa bergantung pada kuota shared hosting.
 - **Streaming Video Halus**: Didukung oleh HTTP Range Requests (`206 Partial Content`) sehingga video dapat diputar langsung dan dipercepat (*seek*) tanpa harus menunggu unduhan penuh.
 - **Unduh Berkas Asli**: Tombol unduh instan pada kartu thumbnail maupun di layar Lightbox, yang mendekripsi berkas secara otomatis saat diunduh.
 
@@ -112,7 +112,7 @@ Akses aplikasi melalui peramban di: **`http://localhost:8000`**
 
 ---
 
-## ⚙️ Menghubungkan Google Drive (2TB)
+## ⚙️ Menghubungkan Google Drive
 
 1. Masuk ke [Google Cloud Console](https://console.cloud.google.com/).
 2. Buat proyek baru dan aktifkan **Google Drive API**.

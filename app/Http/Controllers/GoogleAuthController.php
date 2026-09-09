@@ -155,7 +155,7 @@ class GoogleAuthController extends Controller
         if (!empty($clientId) && empty($refreshToken)) {
             return redirect()->route('admin.settings')->with('error', 
                 "⚠️ Kamu sudah mengisi Client ID & Secret, tetapi BELUM mengotorisasi akun Google.\n" .
-                "Silakan klik tombol '🔗 Hubungkan Akun Google One (2TB)' di bawah untuk login dan memberikan izin."
+                "Silakan klik tombol '🔗 Hubungkan Akun Google Drive' di bawah untuk login dan memberikan izin."
             );
         }
 
@@ -218,7 +218,7 @@ class GoogleAuthController extends Controller
                 if (str_contains($msg, 'storageQuotaExceeded') || str_contains($msg, 'Service Accounts do not have storage quota')) {
                     return redirect()->route('admin.settings')->with('error', 
                         "⚠️ Google menolak upload Service Account karena kuota 0 Byte.\n" .
-                        "Klik tombol '🔗 Hubungkan Akun Google One (2TB)' di bawah agar upload langsung memakai kuota 2TB milikmu."
+                        "Klik tombol '🔗 Hubungkan Akun Google Drive' di bawah agar upload langsung tersimpan di akun Google Drive milikmu."
                     );
                 }
 
@@ -295,7 +295,7 @@ class GoogleAuthController extends Controller
                 $returnUrl = $request->state ?: route('admin.settings');
                 $sep = str_contains($returnUrl, '?') ? '&' : '?';
                 return redirect()->away($returnUrl . $sep . 'connected=1')
-                    ->with('success', '✅ Akun Google One (2TB) Berhasil Terhubung! Media gallery siap upload.');
+                    ->with('success', '✅ Akun Google Drive Berhasil Terhubung! Media gallery siap digunakan.');
             }
 
             return redirect()->route('admin.settings')
