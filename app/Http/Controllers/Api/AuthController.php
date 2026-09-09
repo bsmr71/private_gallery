@@ -78,6 +78,7 @@ class AuthController extends Controller
     public function user(Request $request): JsonResponse
     {
         $user = $request->user();
+        $pinResetRequested = (bool) \App\Models\Setting::get('mobile_pin_reset_requested', false);
 
         return response()->json([
             'success' => true,
@@ -86,7 +87,23 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'two_factor_enabled' => $user->hasTwoFactorEnabled(),
+                'mobile_security' => [
+                    'pin_reset_requested' => $pinResetRequested,
+                ],
             ],
+        ]);
+    }
+
+    /**
+     * Acknowledge and clear remote mobile PIN reset request.
+     */
+    public function ackPinReset(Request $request): JsonResponse
+    {
+        \App\Models\Setting::set('mobile_pin_reset_requested', '0');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'PIN reset acknowledged successfully.',
         ]);
     }
 

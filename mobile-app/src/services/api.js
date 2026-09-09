@@ -64,6 +64,10 @@ export const ApiService = {
         return this.request('/auth/logout', { method: 'POST' });
     },
 
+    async ackPinReset() {
+        return this.request('/auth/ack-pin-reset', { method: 'POST' });
+    },
+
     // Media
     async getMedia(params = {}) {
         const qs = new URLSearchParams();

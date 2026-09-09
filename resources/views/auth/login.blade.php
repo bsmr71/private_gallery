@@ -10,6 +10,12 @@
             <p class="login-subtitle">Enter your credentials to continue</p>
         </div>
 
+        @if (session('status'))
+            <div style="background: rgba(48, 209, 88, 0.12); border: 1px solid rgba(48, 209, 88, 0.3); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; color: #30D158; font-size: 13px; font-weight: 500; line-height: 1.5;">
+                {{ session('status') }}
+            </div>
+        @endif
+
         <form method="POST" action="{{ route('login') }}">
             @csrf
 
@@ -30,7 +36,10 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="password">Password</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-label" for="password" style="margin-bottom: 0;">Password</label>
+                    <a href="{{ route('password.request') }}" style="font-size: 12px; color: var(--accent, #0A84FF); text-decoration: none; font-weight: 500;">Lupa password?</a>
+                </div>
                 <input type="password"
                        class="form-input"
                        id="password"

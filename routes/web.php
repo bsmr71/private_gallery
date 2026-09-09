@@ -5,7 +5,9 @@ use App\Http\Controllers\MediaController;
 use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\MobileSecurityController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,6 +44,12 @@ Route::get('/login/2fa', [AuthController::class, 'show2fa'])->name('login.2fa');
 Route::post('/login/2fa', [AuthController::class, 'verify2fa'])->name('login.2fa.verify');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Password Reset Routes
+Route::get('/forgot-password', [PasswordResetController::class, 'showForgotForm'])->name('password.request');
+Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLinkEmail'])->name('password.email');
+Route::get('/reset-password/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->name('password.update');
+
 /*
 |--------------------------------------------------------------------------
 | Admin Routes (Protected by auth middleware)
@@ -74,4 +82,10 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/2fa/confirm', [AuthController::class, 'confirm2fa'])->name('2fa.confirm');
     Route::post('/2fa/disable', [AuthController::class, 'disable2fa'])->name('2fa.disable');
     Route::post('/2fa/recovery-codes', [AuthController::class, 'regenerateRecoveryCodes'])->name('2fa.recovery-codes');
+
+    // Mobile Security & Remote Device Management
+    Route::post('/mobile/reset-pin', [MobileSecurityController::class, 'resetMobilePin'])->name('mobile.reset-pin');
+    Route::post('/mobile/cancel-reset-pin', [MobileSecurityController::class, 'cancelResetMobilePin'])->name('mobile.cancel-reset-pin');
+    Route::delete('/mobile/devices/{id}', [MobileSecurityController::class, 'revokeDevice'])->name('mobile.revoke-device');
+    Route::post('/mobile/revoke-all', [MobileSecurityController::class, 'revokeAllDevices'])->name('mobile.revoke-all');
 });

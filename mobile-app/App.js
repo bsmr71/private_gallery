@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox, AppState, Text } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox, AppState, Text, Alert } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { BlurView } from 'expo-blur';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
 import { SecurityService } from './src/services/securityService';
+import { ApiService } from './src/services/api';
 import * as ScreenCapture from 'expo-screen-capture';
 import AppLockOverlay from './src/components/AppLockOverlay';
 import SFSymbol from './src/components/SFSymbol';
@@ -131,6 +132,39 @@ export default function App() {
         checkAuth();
     }, []);
 
+    const checkSecuritySync = async () => {
+        try {
+            const token = await StorageService.getToken();
+            if (!token) return;
+
+            const res = await ApiService.getUser();
+            if (res && res.user && res.user.mobile_security?.pin_reset_requested) {
+                // Execute remote PIN reset requested from web dashboard
+                await SecurityService.resetPinToDefaults();
+                await ApiService.ackPinReset().catch(() => {});
+                setIsLocked(false);
+                SecurityService.setAppLocked(false);
+                Alert.alert(
+                    'PIN Direset',
+                    'PIN aplikasi ponsel Anda telah berhasil direset melalui Web Dashboard. Anda dapat masuk dan membuat PIN baru di menu Pengaturan.'
+                );
+            }
+        } catch (err) {
+            if (err?.status === 401) {
+                // Session revoked by Web Dashboard or token expired
+                await StorageService.removeToken();
+                await SecurityService.resetPinToDefaults();
+                setIsAuthenticated(false);
+                setIsLocked(false);
+                SecurityService.setAppLocked(false);
+                Alert.alert(
+                    'Sesi Berakhir',
+                    'Sesi aplikasi mobile ini telah dicabut dari Web Dashboard. Silakan login kembali.'
+                );
+            }
+        }
+    };
+
     const checkAuth = async () => {
         try {
             await SecurityService.init();
@@ -142,6 +176,8 @@ export default function App() {
                     setIsLocked(true);
                     SecurityService.setAppLocked(true);
                 }
+                // Verify session with server and check for remote PIN reset
+                checkSecuritySync();
             }
         } catch (e) {
             setIsAuthenticated(false);
@@ -176,6 +212,9 @@ export default function App() {
                     }
                 }
 
+                // Check for remote PIN reset or remote session revoke
+                checkSecuritySync();
+
                 // Dismiss privacy shield safely after lock state settles
                 setTimeout(() => {
                     setPrivacyShield(false);
@@ -197,6 +236,17 @@ export default function App() {
             SecurityService.setDecoyMode(true);
         } else {
             SecurityService.setDecoyMode(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await ApiService.logout().catch(() => {});
+        } finally {
+            await StorageService.removeToken();
+            setIsAuthenticated(false);
+            setIsLocked(false);
+            SecurityService.setAppLocked(false);
         }
     };
 
@@ -233,7 +283,7 @@ export default function App() {
             <View style={[StyleSheet.absoluteFill, { opacity: isLocked ? 0 : 1 }]}>
                 <NavigationContainer theme={appTheme}>
                     <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                    <MainTabs onLogout={() => setIsAuthenticated(false)} />
+                    <MainTabs onLogout={handleLogout} />
                 </NavigationContainer>
             </View>
 

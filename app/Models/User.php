@@ -68,4 +68,12 @@ class User extends Authenticatable
     {
         return $this->hasEnabledTwoFactor();
     }
+
+    /**
+     * Send the password reset notification.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new \App\Notifications\ResetPasswordNotification($token));
+    }
 }

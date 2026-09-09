@@ -76,6 +76,23 @@ export const SecurityService = {
         } catch (e) {}
     },
 
+    // --- Remote Reset from Web Dashboard ---
+    async resetPinToDefaults() {
+        try {
+            await AsyncStorage.removeItem(SEC_KEYS.MASTER_PIN);
+            await AsyncStorage.removeItem(SEC_KEYS.DECOY_PIN);
+            await AsyncStorage.setItem(SEC_KEYS.ENABLED, 'false');
+            cachedLockEnabled = false;
+            runtimeIsLocked = false;
+            runtimeDecoyMode = false;
+            notifyListeners();
+            return true;
+        } catch (e) {
+            console.warn('Failed to reset PIN to defaults:', e);
+            return false;
+        }
+    },
+
     async hasMasterPin() {
         try {
             const pin = await AsyncStorage.getItem(SEC_KEYS.MASTER_PIN);

@@ -22,6 +22,7 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     Route::prefix('auth')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/ack-pin-reset', [AuthController::class, 'ackPinReset']);
     });
 
     // Media Resource Endpoints

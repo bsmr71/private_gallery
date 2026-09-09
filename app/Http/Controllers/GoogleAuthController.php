@@ -46,6 +46,9 @@ class GoogleAuthController extends Controller
         $redirectUri = $this->getRedirectUri();
 
         $user = \Illuminate\Support\Facades\Auth::user();
+        $mobileTokens = $user ? $user->tokens()->orderByDesc('created_at')->get() : collect();
+        $mobilePinResetRequested = (bool) \App\Models\Setting::get('mobile_pin_reset_requested', false);
+        $mobilePinResetAt = \App\Models\Setting::get('mobile_pin_reset_at');
 
         return view('admin.settings', compact(
             'credentialsPath',
@@ -58,7 +61,10 @@ class GoogleAuthController extends Controller
             'refreshToken',
             'isOauthConnected',
             'redirectUri',
-            'user'
+            'user',
+            'mobileTokens',
+            'mobilePinResetRequested',
+            'mobilePinResetAt'
         ));
     }
 
