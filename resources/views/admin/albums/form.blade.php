@@ -2,6 +2,7 @@
 @section('title', ($album ? 'Edit' : 'Create') . ' Album — Admin')
 
 @section('content')
+<div class="admin-shell">
 <div class="page-header">
     <h1 class="page-title">{{ $album ? 'Edit Album' : 'New Album' }}</h1>
     <p class="page-subtitle">{{ $album ? 'Update album details' : 'Create a new album to organize your media' }}</p>
@@ -47,5 +48,6 @@
             </div>
         </form>
     </div>
+</div>
 </div>
 @endsection

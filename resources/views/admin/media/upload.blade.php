@@ -2,6 +2,7 @@
 @section('title', 'Upload Media — Admin')
 
 @section('content')
+<div class="admin-shell">
 <div class="page-header">
     <h1 class="page-title">Upload Media</h1>
     <p class="page-subtitle">Drag & drop or click to upload images and videos</p>
@@ -50,5 +51,6 @@
             ← Back to Media
         </a>
     </div>
+</div>
 </div>
 @endsection

@@ -223,9 +223,9 @@ img, video {
 }
 
 .nav-container {
-    max-width: 1360px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 32px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -348,9 +348,140 @@ img, video {
     width: 100%;
 }
 
+/* ---- UNIFIED PAGE SHELLS & MARGINS (APPLE / GOOGLE PHOTOS INSPIRED) ---- */
+.gallery-shell,
+.admin-shell,
+.container,
+.page-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px 32px 80px;
+    width: 100%;
+}
+
+.settings-shell {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 32px 32px 80px;
+    width: 100%;
+}
+
+/* Page Header & Typography */
+.page-header {
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.page-title {
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.4px;
+    margin-bottom: 6px;
+    line-height: 1.25;
+}
+
+.page-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.admin-content {
+    width: 100%;
+}
+
+/* Dashboard Stats Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.stat-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+
+.stat-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stat-label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.stat-icon-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+.stat-icon-sm.icon-emerald { background: var(--emerald-subtle); color: var(--emerald); }
+.stat-icon-sm.icon-amber { background: rgba(245, 158, 11, 0.14); color: var(--warning); }
+.stat-icon-sm.icon-purple { background: rgba(168, 85, 247, 0.14); color: #c084fc; }
+.stat-icon-sm.icon-pink { background: rgba(236, 72, 153, 0.14); color: #f472b6; }
+.stat-icon-sm.icon-cyan { background: rgba(6, 182, 212, 0.14); color: #22d3ee; }
+
+.stat-value {
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.4px;
+}
+
+.stat-footnote {
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+
+.quick-action-strip {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+}
+
+.section-heading {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+}
+
+.section-link {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+}
+.section-link:hover {
+    text-decoration: underline;
+}
+
 /* ---- ALERTS ---- */
 .alert {
-    max-width: 1360px;
+    max-width: 1400px;
     margin: 16px auto 0;
     padding: 10px 18px;
     border-radius: var(--radius-sm);
@@ -381,15 +512,6 @@ img, video {
     line-height: 1;
 }
 .alert-close:hover { opacity: 1; }
-
-/* ============================================================
-   AUTHENTIC GALLERY TOOLBAR & HEADER (APPLE / GOOGLE PHOTOS)
-   ============================================================ */
-.gallery-shell {
-    max-width: 1360px;
-    margin: 0 auto;
-    padding: 20px 20px 60px;
-}
 
 .gallery-toolbar-top {
     margin-bottom: 24px;
@@ -1691,6 +1813,16 @@ img, video {
    RESPONSIVE DESIGN
    ============================================================ */
 @media (max-width: 768px) {
+    .nav-container {
+        padding: 0 16px;
+    }
+    .gallery-shell,
+    .admin-shell,
+    .settings-shell,
+    .container,
+    .page-container {
+        padding: 20px 16px 60px;
+    }
     .toolbar-main {
         flex-direction: column;
         align-items: stretch;

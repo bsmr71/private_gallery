@@ -2,6 +2,7 @@
 @section('title', 'Manage Media — Admin')
 
 @section('content')
+<div class="admin-shell">
 <div class="page-header">
     <h1 class="page-title">Manage Media</h1>
     <p class="page-subtitle">{{ $media->total() }} media items</p>
@@ -137,6 +138,7 @@
         <a href="{{ route('admin.media.create') }}" class="btn btn-primary mt-24">Upload Media</a>
     </div>
     @endif
+</div>
 </div>
 
 @push('scripts')

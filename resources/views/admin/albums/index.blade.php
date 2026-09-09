@@ -2,6 +2,7 @@
 @section('title', 'Manage Albums — Admin')
 
 @section('content')
+<div class="admin-shell">
 <div class="page-header">
     <h1 class="page-title">Albums</h1>
     <p class="page-subtitle">Organize your media into collections</p>
@@ -47,5 +48,6 @@
         <a href="{{ route('admin.albums.create') }}" class="btn btn-primary mt-24">Create Album</a>
     </div>
     @endif
+</div>
 </div>
 @endsection
