@@ -111,10 +111,20 @@
     <div class="lightbox" id="lightbox" style="display:none">
         <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
 
+        <!-- Slideshow Progress Bar -->
+        <div class="slideshow-progress-bar" id="slideshow-progress" style="display:none;"><div class="slideshow-fill"></div></div>
+
         <!-- Floating Top Bar -->
         <div class="lightbox-topbar">
             <div class="lightbox-header-info">
-                <div class="lightbox-title" id="lightbox-title">Loading...</div>
+                <div class="lightbox-title-row">
+                    <span class="lightbox-title" id="lightbox-title">Loading...</span>
+                    @auth
+                    <button type="button" class="lightbox-inline-rename-btn" onclick="renameCurrentLightboxMedia()" title="Ganti Nama Judul">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </button>
+                    @endauth
+                </div>
                 <div class="lightbox-meta-row" id="lightbox-meta">
                     <span id="lightbox-size">-</span>
                     <span class="meta-dot">•</span>
@@ -128,9 +138,57 @@
                 <!-- Counter -->
                 <div class="lightbox-counter-pill" id="lightbox-counter">1 / 1</div>
 
+                <!-- Favorite Toggle Button -->
+                <button type="button" class="lightbox-action-btn icon-only" id="lightbox-favorite-btn" onclick="toggleCurrentLightboxFavorite()" title="Favorit (Tombol L / Spasi)">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" id="lightbox-favorite-icon">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </button>
+
+                @auth
+                <!-- Move to Album Button -->
+                <button type="button" class="lightbox-action-btn icon-only" id="lightbox-move-btn" onclick="moveCurrentLightboxMedia()" title="Pindahkan ke Album Lain">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </button>
+
+                <!-- Copy to Album Button -->
+                <button type="button" class="lightbox-action-btn icon-only" id="lightbox-copy-btn" onclick="copyCurrentLightboxMedia()" title="Salin ke Album Lain">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                </button>
+                @endauth
+
+                <!-- Share / Copy Link Button -->
+                <button type="button" class="lightbox-action-btn icon-only" onclick="shareCurrentLightboxMedia()" title="Salin Tautan Media">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                </button>
+
+                <!-- Slideshow Play / Pause -->
+                <button type="button" class="lightbox-action-btn icon-only" id="lightbox-slideshow-btn" onclick="toggleLightboxSlideshow()" title="Slideshow Otomatis (S)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" id="slideshow-icon-svg">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                </button>
+
+                <!-- Info / Metadata Inspector Drawer Toggle -->
+                <button type="button" class="lightbox-action-btn icon-only" id="lightbox-info-btn" onclick="toggleLightboxInfoDrawer()" title="Detail & Metadata Media (I)">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
+
                 <!-- Download Button -->
-                <a href="#" class="lightbox-action-btn download-btn" id="lightbox-download-btn" download title="Unduh File Asli ke Perangkat (Tombol D)">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <a href="#" class="lightbox-action-btn download-btn" id="lightbox-download-btn" download title="Unduh File Asli (D)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                         <polyline points="7 10 12 15 17 10"/>
                         <line x1="12" y1="15" x2="12" y2="3"/>
@@ -140,8 +198,8 @@
 
                 @auth
                 <!-- Delete Button -->
-                <button type="button" class="lightbox-action-btn delete-btn" id="lightbox-delete-btn" onclick="deleteCurrentLightboxMedia()" title="Hapus Foto/Video Ini">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <button type="button" class="lightbox-action-btn delete-btn" id="lightbox-delete-btn" onclick="deleteCurrentLightboxMedia()" title="Hapus Foto/Video Ini (Del)">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     </svg>
@@ -151,7 +209,7 @@
 
                 <!-- Fullscreen Toggle -->
                 <button type="button" class="lightbox-action-btn icon-only" onclick="toggleLightboxFullscreen()" id="lightbox-fs-btn" title="Layar Penuh (F)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="15 3 21 3 21 9"/>
                         <polyline points="9 21 3 21 3 15"/>
                         <line x1="21" y1="3" x2="14" y2="10"/>
@@ -161,7 +219,7 @@
 
                 <!-- Close Button -->
                 <button type="button" class="lightbox-action-btn close-btn icon-only" onclick="closeLightbox()" title="Tutup (Esc)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
@@ -169,28 +227,100 @@
             </div>
         </div>
 
-        <!-- Media Stage -->
-        <div class="lightbox-stage">
-            <button class="lightbox-nav-btn prev-btn" onclick="navigateLightbox(-1)" id="lightbox-prev" title="Sebelumnya (Panah Kiri)">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <polyline points="15 18 9 12 15 6"/>
-                </svg>
-            </button>
+        <!-- Media Stage & Inspector Drawer Wrapper -->
+        <div class="lightbox-main-body">
+            <div class="lightbox-stage">
+                <button class="lightbox-nav-btn prev-btn" onclick="navigateLightbox(-1)" id="lightbox-prev" title="Sebelumnya (Panah Kiri)">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                </button>
 
-            <div class="lightbox-media-viewport" id="lightbox-media"></div>
+                <div class="lightbox-media-viewport" id="lightbox-media"></div>
 
-            <button class="lightbox-nav-btn next-btn" onclick="navigateLightbox(1)" id="lightbox-next" title="Selanjutnya (Panah Kanan)">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
-            </button>
+                <button class="lightbox-nav-btn next-btn" onclick="navigateLightbox(1)" id="lightbox-next" title="Selanjutnya (Panah Kanan)">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Slide-Over Metadata Info Drawer (Google / Apple Photos Style) -->
+            <aside class="lightbox-info-drawer" id="lightbox-info-drawer" aria-label="Informasi Detail Media">
+                <div class="drawer-header">
+                    <h3 class="drawer-title">Info Media</h3>
+                    <button type="button" class="drawer-close-btn" onclick="toggleLightboxInfoDrawer(false)">✕</button>
+                </div>
+
+                <div class="drawer-content">
+                    <div class="info-section">
+                        <h4 class="info-sec-title">Informasi Berkas</h4>
+                        <div class="info-data-grid">
+                            <div class="info-row">
+                                <span class="info-label">Judul</span>
+                                <span class="info-val" id="info-title">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Nama File Asli</span>
+                                <span class="info-val" id="info-filename">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Format / Tipe</span>
+                                <span class="info-val" id="info-type">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Ukuran Berkas</span>
+                                <span class="info-val" id="info-size">-</span>
+                            </div>
+                            <div class="info-row" id="info-resolution-row">
+                                <span class="info-label">Dimensi / Resolusi</span>
+                                <span class="info-val" id="info-resolution">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Tanggal Unggah</span>
+                                <span class="info-val" id="info-date">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Album</span>
+                                <span class="info-val" id="info-album">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-section">
+                        <h4 class="info-sec-title">Keamanan &amp; Penyimpanan</h4>
+                        <div class="info-storage-card">
+                            <div class="storage-badge-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                    <polyline points="9 12 11 14 15 10"/>
+                                </svg>
+                            </div>
+                            <div class="storage-badge-text">
+                                <strong>Penyimpanan Google Drive</strong>
+                                <p>Terenkripsi AES-256-CBC End-to-End dengan Private Encryption Key.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-actions-bottom">
+                        <button type="button" class="btn btn-secondary btn-block" onclick="renameCurrentLightboxMedia()">
+                            ✏️ Ubah Judul Media
+                        </button>
+                    </div>
+                </div>
+            </aside>
         </div>
 
         <!-- Bottom Keyboard Shortcuts Hint -->
         <div class="lightbox-bottom-hint">
-            <span>Tekan <strong>D</strong> untuk Unduh</span>
+            <span><strong>D</strong> Unduh</span>
             <span class="hint-dot">•</span>
             <span><strong>F</strong> Fullscreen</span>
+            <span class="hint-dot">•</span>
+            <span><strong>I</strong> Info</span>
+            <span class="hint-dot">•</span>
+            <span><strong>S</strong> Slideshow</span>
             <span class="hint-dot">•</span>
             <span><strong>&larr; / &rarr;</strong> Navigasi</span>
             <span class="hint-dot">•</span>

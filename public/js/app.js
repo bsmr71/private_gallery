@@ -11,6 +11,8 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 // ============================================================
 let lightboxItems = [];
 let lightboxIndex = 0;
+let isSlideshowActive = false;
+let slideshowTimer = null;
 
 function openLightbox(index) {
     lightboxIndex = index;
@@ -19,11 +21,12 @@ function openLightbox(index) {
     lightbox.style.display = 'flex';
     document.body.style.overflow = 'hidden';
     updateLightboxContent();
-    // Animate in
     requestAnimationFrame(() => lightbox.classList.add('active'));
 }
 
 function closeLightbox() {
+    stopLightboxSlideshow();
+    toggleLightboxInfoDrawer(false);
     const lightbox = document.getElementById('lightbox');
     if (!lightbox) return;
     lightbox.classList.remove('active');
@@ -41,6 +44,10 @@ function navigateLightbox(direction) {
     if (lightboxItems.length === 0) return;
     lightboxIndex = (lightboxIndex + direction + lightboxItems.length) % lightboxItems.length;
     updateLightboxContent();
+
+    if (isSlideshowActive) {
+        resetSlideshowTimer();
+    }
 }
 
 function updateLightboxContent() {
@@ -54,20 +61,35 @@ function updateLightboxContent() {
     const dateEl = document.getElementById('lightbox-date');
     const counterEl = document.getElementById('lightbox-counter');
     const downloadBtn = document.getElementById('lightbox-download-btn');
+    const favBtn = document.getElementById('lightbox-favorite-btn');
+    const favIcon = document.getElementById('lightbox-favorite-icon');
 
     if (titleEl) titleEl.textContent = item.title;
     if (sizeEl) sizeEl.textContent = item.size || '';
     if (albumEl) {
-        albumEl.textContent = item.album ? item.album : 'Umum';
-        albumEl.style.display = item.album ? 'inline' : 'none';
+        albumEl.textContent = item.album ? item.album : 'Tanpa Album';
+        albumEl.style.display = 'inline';
     }
-    if (dateEl) dateEl.textContent = item.created_at || '';
+    if (dateEl) dateEl.textContent = item.created_date || item.created_at || '';
     if (counterEl) counterEl.textContent = `${lightboxIndex + 1} / ${lightboxItems.length}`;
+
+    // Update Favorite Icon
+    if (favBtn && favIcon) {
+        if (item.is_favorite) {
+            favBtn.classList.add('is-active');
+            favIcon.setAttribute('fill', '#ef4444');
+            favIcon.setAttribute('stroke', '#ef4444');
+        } else {
+            favBtn.classList.remove('is-active');
+            favIcon.setAttribute('fill', 'none');
+            favIcon.setAttribute('stroke', 'currentColor');
+        }
+    }
 
     if (downloadBtn) {
         const url = item.downloadUrl || `/media/${item.id}/download`;
         downloadBtn.href = url;
-        downloadBtn.setAttribute('download', item.title || 'media');
+        downloadBtn.setAttribute('download', item.original_filename || item.title || 'media');
     }
 
     if (item.type === 'video') {
@@ -79,13 +101,34 @@ function updateLightboxContent() {
                 </video>
             </div>
         `;
+        const vid = mediaContainer.querySelector('video');
+        if (vid) {
+            vid.addEventListener('loadedmetadata', () => {
+                const resEl = document.getElementById('info-resolution');
+                if (resEl && vid.videoWidth) {
+                    resEl.textContent = `${vid.videoWidth} × ${vid.videoHeight} px`;
+                }
+            });
+        }
     } else {
         mediaContainer.innerHTML = `
             <div class="lightbox-image-frame">
                 <img src="${item.streamUrl}" alt="${item.title}" class="lightbox-image-element" loading="eager">
             </div>
         `;
+        const img = mediaContainer.querySelector('img');
+        if (img) {
+            img.addEventListener('load', () => {
+                const resEl = document.getElementById('info-resolution');
+                if (resEl && img.naturalWidth) {
+                    resEl.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+                }
+            });
+        }
     }
+
+    // Update info drawer if currently open
+    updateLightboxInfoDrawer(item);
 
     // Update nav visibility
     const prevBtn = document.getElementById('lightbox-prev');
@@ -107,6 +150,100 @@ function toggleLightboxFullscreen() {
     }
 }
 
+// Info / Metadata Drawer
+function toggleLightboxInfoDrawer(forceState) {
+    const drawer = document.getElementById('lightbox-info-drawer');
+    const btn = document.getElementById('lightbox-info-btn');
+    if (!drawer) return;
+
+    const isOpen = typeof forceState === 'boolean' ? forceState : !drawer.classList.contains('open');
+    drawer.classList.toggle('open', isOpen);
+    if (btn) btn.classList.toggle('is-active', isOpen);
+
+    if (isOpen && lightboxItems[lightboxIndex]) {
+        updateLightboxInfoDrawer(lightboxItems[lightboxIndex]);
+    }
+}
+
+function updateLightboxInfoDrawer(item) {
+    const drawer = document.getElementById('lightbox-info-drawer');
+    if (!drawer || !drawer.classList.contains('open')) return;
+
+    const title = document.getElementById('info-title');
+    const filename = document.getElementById('info-filename');
+    const type = document.getElementById('info-type');
+    const size = document.getElementById('info-size');
+    const date = document.getElementById('info-date');
+    const album = document.getElementById('info-album');
+
+    if (title) title.textContent = item.title || '-';
+    if (filename) filename.textContent = item.original_filename || '-';
+    if (type) type.textContent = (item.mimeType || item.type || '-').toUpperCase();
+    if (size) size.textContent = item.size || '-';
+    if (date) date.textContent = item.created_at || item.created_date || '-';
+    if (album) album.textContent = item.album || 'Tanpa Album (Umum)';
+}
+
+// Slideshow
+function toggleLightboxSlideshow() {
+    isSlideshowActive = !isSlideshowActive;
+    const btn = document.getElementById('lightbox-slideshow-btn');
+    const prog = document.getElementById('slideshow-progress');
+    const icon = document.getElementById('slideshow-icon-svg');
+
+    if (isSlideshowActive) {
+        if (btn) btn.classList.add('is-active');
+        if (prog) {
+            prog.style.display = 'block';
+            startSlideshowAnimation();
+        }
+        if (icon) {
+            icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+        }
+        showNotification('Slideshow dimulai ▶️ (Tekan S untuk jeda)', 'success');
+        slideshowTimer = setTimeout(() => {
+            navigateLightbox(1);
+        }, 4500);
+    } else {
+        stopLightboxSlideshow();
+        showNotification('Slideshow dijeda ⏸️', 'info');
+    }
+}
+
+function startSlideshowAnimation() {
+    const fill = document.querySelector('.slideshow-fill');
+    if (fill) {
+        fill.style.transition = 'none';
+        fill.style.width = '0%';
+        requestAnimationFrame(() => {
+            fill.style.transition = 'width 4.5s linear';
+            fill.style.width = '100%';
+        });
+    }
+}
+
+function resetSlideshowTimer() {
+    if (!isSlideshowActive) return;
+    clearTimeout(slideshowTimer);
+    startSlideshowAnimation();
+    slideshowTimer = setTimeout(() => {
+        navigateLightbox(1);
+    }, 4500);
+}
+
+function stopLightboxSlideshow() {
+    isSlideshowActive = false;
+    clearTimeout(slideshowTimer);
+    const btn = document.getElementById('lightbox-slideshow-btn');
+    const prog = document.getElementById('slideshow-progress');
+    const icon = document.getElementById('slideshow-icon-svg');
+    if (btn) btn.classList.remove('is-active');
+    if (prog) prog.style.display = 'none';
+    if (icon) {
+        icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+    }
+}
+
 // Keyboard navigation & shortcuts
 document.addEventListener('keydown', (e) => {
     const lightbox = document.getElementById('lightbox');
@@ -117,7 +254,12 @@ document.addEventListener('keydown', (e) => {
 
     switch (e.key) {
         case 'Escape':
-            closeLightbox();
+            const drawer = document.getElementById('lightbox-info-drawer');
+            if (drawer && drawer.classList.contains('open')) {
+                toggleLightboxInfoDrawer(false);
+            } else {
+                closeLightbox();
+            }
             break;
         case 'ArrowLeft':
             navigateLightbox(-1);
@@ -128,6 +270,18 @@ document.addEventListener('keydown', (e) => {
         case 'f':
         case 'F':
             toggleLightboxFullscreen();
+            break;
+        case 'i':
+        case 'I':
+            toggleLightboxInfoDrawer();
+            break;
+        case 's':
+        case 'S':
+            toggleLightboxSlideshow();
+            break;
+        case 'l':
+        case 'L':
+            toggleCurrentLightboxFavorite();
             break;
         case 'd':
         case 'D':
@@ -153,14 +307,29 @@ function initMediaGrid() {
             const data = JSON.parse(card.dataset.media);
             lightboxItems.push(data);
             card.addEventListener('click', (e) => {
+                if (isSelectionMode) {
+                    toggleCardSelection(data.id, e);
+                    return;
+                }
                 // Don't open lightbox if clicking action buttons or links
-                if (e.target.closest('.card-action-download') || e.target.closest('.card-quick-actions') || e.target.closest('.media-card-actions') || e.target.closest('a') || e.target.closest('button')) return;
+                if (e.target.closest('.card-action-btn') ||
+                    e.target.closest('.card-select-checkbox') ||
+                    e.target.closest('.card-favorite-badge') ||
+                    e.target.closest('.card-quick-actions') ||
+                    e.target.closest('a') ||
+                    e.target.closest('button')) {
+                    return;
+                }
                 openLightbox(idx);
             });
             card.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    openLightbox(idx);
+                    if (isSelectionMode) {
+                        toggleCardSelection(data.id, e);
+                    } else {
+                        openLightbox(idx);
+                    }
                 }
             });
         } catch (err) {
@@ -561,6 +730,474 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============================================================
+// MULTI-SELECTION MODE & FLOATING ACTION BAR
+// ============================================================
+let isSelectionMode = false;
+let selectedMediaIds = new Set();
+
+function toggleSelectionMode() {
+    isSelectionMode = !isSelectionMode;
+    const btn = document.getElementById('btn-toggle-select');
+    const label = document.getElementById('select-mode-text');
+
+    if (isSelectionMode) {
+        document.body.classList.add('selection-active');
+        if (btn) btn.classList.add('active');
+        if (label) label.textContent = 'Selesai';
+        showNotification('Mode seleksi aktif. Klik foto untuk memilih.', 'info');
+    } else {
+        exitSelectionMode();
+    }
+}
+
+function toggleCardSelection(id, event) {
+    if (event) event.stopPropagation();
+
+    id = parseInt(id, 10);
+    const card = document.getElementById(`media-item-${id}`);
+
+    if (selectedMediaIds.has(id)) {
+        selectedMediaIds.delete(id);
+        if (card) card.classList.remove('is-selected');
+    } else {
+        selectedMediaIds.add(id);
+        if (card) card.classList.add('is-selected');
+        // Auto-activate selection mode if user clicked checkbox directly
+        if (!isSelectionMode) {
+            isSelectionMode = true;
+            document.body.classList.add('selection-active');
+            const btn = document.getElementById('btn-toggle-select');
+            const label = document.getElementById('select-mode-text');
+            if (btn) btn.classList.add('active');
+            if (label) label.textContent = 'Selesai';
+        }
+    }
+
+    updateSelectionBarUI();
+}
+
+function updateSelectionBarUI() {
+    const bar = document.getElementById('floating-selection-bar');
+    const badge = document.getElementById('selection-count-badge');
+    const selectAllLabel = document.getElementById('select-all-label');
+    const count = selectedMediaIds.size;
+
+    if (!bar) return;
+
+    if (count > 0) {
+        bar.style.display = 'block';
+        if (badge) badge.textContent = count;
+    } else {
+        bar.style.display = 'none';
+    }
+
+    const allCards = document.querySelectorAll('.media-card');
+    if (selectAllLabel) {
+        selectAllLabel.textContent = (count > 0 && count >= allCards.length) ? 'Batal' : 'Semua';
+    }
+}
+
+function toggleSelectAll() {
+    const allCards = document.querySelectorAll('.media-card');
+    if (selectedMediaIds.size >= allCards.length) {
+        // Deselect all
+        selectedMediaIds.clear();
+        allCards.forEach(c => c.classList.remove('is-selected'));
+    } else {
+        // Select all
+        allCards.forEach(c => {
+            const id = parseInt(c.dataset.id, 10);
+            if (id) {
+                selectedMediaIds.add(id);
+                c.classList.add('is-selected');
+            }
+        });
+    }
+    updateSelectionBarUI();
+}
+
+function exitSelectionMode() {
+    isSelectionMode = false;
+    selectedMediaIds.clear();
+    document.body.classList.remove('selection-active');
+    document.querySelectorAll('.media-card.is-selected').forEach(c => c.classList.remove('is-selected'));
+
+    const bar = document.getElementById('floating-selection-bar');
+    if (bar) bar.style.display = 'none';
+
+    const btn = document.getElementById('btn-toggle-select');
+    const label = document.getElementById('select-mode-text');
+    if (btn) btn.classList.remove('active');
+    if (label) label.textContent = 'Pilih';
+}
+
+// ============================================================
+// MOVE & COPY TO ALBUM
+// ============================================================
+function openMoveCopyModal(ids, titleHint, currentAlbumId, defaultMode = 'move') {
+    if (!ids || ids.length === 0) return;
+
+    const modal = document.getElementById('organize-modal');
+    if (!modal) return;
+
+    document.getElementById('organize-mode').value = defaultMode;
+    document.getElementById('organize-media-ids').value = JSON.stringify(ids);
+
+    const titleEl = document.getElementById('organize-modal-title');
+    const subtitleEl = document.getElementById('organize-modal-subtitle');
+    const submitText = document.getElementById('organize-submit-text');
+    const count = ids.length;
+
+    if (defaultMode === 'move') {
+        if (titleEl) titleEl.textContent = `Pindahkan ${count > 1 ? count + ' Media' : 'Foto'} ke Album`;
+        if (subtitleEl) subtitleEl.textContent = `Foto akan dipindahkan ke album yang Anda pilih`;
+        if (submitText) submitText.textContent = 'Pindahkan';
+    } else {
+        if (titleEl) titleEl.textContent = `Salin / Duplikasi ${count > 1 ? count + ' Media' : 'Foto'} ke Album`;
+        if (subtitleEl) subtitleEl.textContent = `Foto akan diduplikasi ke album yang Anda pilih`;
+        if (submitText) submitText.textContent = 'Salin ke Album';
+    }
+
+    // Populate radio selection
+    const radios = document.querySelectorAll('input[name="target_album_id"]');
+    radios.forEach(radio => {
+        if (currentAlbumId && radio.value == currentAlbumId) {
+            radio.checked = true;
+        } else if (!currentAlbumId && radio.value === 'none') {
+            radio.checked = true;
+        }
+    });
+
+    const newAlbumInput = document.getElementById('organize-new-album-name');
+    if (newAlbumInput) newAlbumInput.value = '';
+
+    modal.style.display = 'flex';
+}
+
+function openMoveCopyFromSelection(mode) {
+    if (selectedMediaIds.size === 0) {
+        showNotification('Pilih setidaknya 1 foto/video terlebih dahulu', 'error');
+        return;
+    }
+    openMoveCopyModal(Array.from(selectedMediaIds), '', null, mode);
+}
+
+function closeMoveCopyModal() {
+    const modal = document.getElementById('organize-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function submitMoveCopyForm(event) {
+    event.preventDefault();
+
+    const mode = document.getElementById('organize-mode').value;
+    const ids = JSON.parse(document.getElementById('organize-media-ids').value || '[]');
+    const selectedRadio = document.querySelector('input[name="target_album_id"]:checked');
+    const targetAlbumId = selectedRadio ? selectedRadio.value : 'none';
+    const newAlbumName = document.getElementById('organize-new-album-name')?.value || '';
+
+    const submitBtn = document.getElementById('organize-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.6';
+    }
+
+    const endpoint = mode === 'copy' ? '/media/copy-album' : '/media/move-album';
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            media_ids: ids,
+            album_id: targetAlbumId,
+            new_album_name: newAlbumName,
+        }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+        }
+
+        if (data.success) {
+            showNotification(data.message || 'Berhasil disimpan!', 'success');
+            closeMoveCopyModal();
+            exitSelectionMode();
+
+            // Refresh page to display updated albums and media
+            setTimeout(() => location.reload(), 700);
+        } else {
+            showNotification(data.error || 'Gagal memproses permintaan', 'error');
+        }
+    })
+    .catch(() => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+        }
+        showNotification('Terjadi kesalahan jaringan', 'error');
+    });
+}
+
+function moveCurrentLightboxMedia() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+    openMoveCopyModal([item.id], item.title, item.album_id, 'move');
+}
+
+function copyCurrentLightboxMedia() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+    openMoveCopyModal([item.id], item.title, item.album_id, 'copy');
+}
+
+// ============================================================
+// QUICK RENAME
+// ============================================================
+function openQuickRenameModal(id, title, url) {
+    const modal = document.getElementById('rename-modal');
+    if (!modal) return;
+
+    document.getElementById('rename-media-id').value = id;
+    document.getElementById('rename-url').value = url || `/media/${id}/quick-rename`;
+    document.getElementById('rename-input-title').value = title || '';
+    document.getElementById('rename-input-desc').value = '';
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        document.getElementById('rename-input-title')?.focus();
+        document.getElementById('rename-input-title')?.select();
+    }, 100);
+}
+
+function renameCurrentLightboxMedia() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+    openQuickRenameModal(item.id, item.title, item.renameUrl);
+}
+
+function closeQuickRenameModal() {
+    const modal = document.getElementById('rename-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function submitQuickRenameForm(event) {
+    event.preventDefault();
+
+    const id = document.getElementById('rename-media-id').value;
+    const url = document.getElementById('rename-url').value;
+    const title = document.getElementById('rename-input-title').value;
+    const desc = document.getElementById('rename-input-desc').value;
+
+    const btn = document.getElementById('rename-submit-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+    }
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title, description: desc }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+
+        if (data.success) {
+            showNotification(data.message || 'Judul berhasil diperbarui!', 'success');
+            closeQuickRenameModal();
+
+            // Update DOM title on card
+            const titleEl = document.getElementById(`media-card-title-${id}`);
+            if (titleEl) titleEl.textContent = title;
+
+            // Update active lightbox item if open
+            if (lightboxItems[lightboxIndex] && lightboxItems[lightboxIndex].id == id) {
+                lightboxItems[lightboxIndex].title = title;
+                lightboxItems[lightboxIndex].description = desc;
+                const lt = document.getElementById('lightbox-title');
+                if (lt) lt.textContent = title;
+                const it = document.getElementById('info-title');
+                if (it) it.textContent = title;
+            }
+        } else {
+            showNotification(data.error || 'Gagal mengubah judul', 'error');
+        }
+    })
+    .catch(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+        showNotification('Terjadi kesalahan jaringan', 'error');
+    });
+}
+
+// ============================================================
+// FAVORITES (❤️)
+// ============================================================
+function toggleItemFavorite(id, url, btnElement) {
+    url = url || `/media/${id}/favorite`;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const isFav = data.is_favorite;
+
+            if (btnElement) {
+                btnElement.classList.toggle('is-active', isFav);
+                const svg = btnElement.querySelector('svg');
+                if (svg) {
+                    svg.setAttribute('fill', isFav ? '#ef4444' : 'none');
+                    svg.setAttribute('stroke', isFav ? '#ef4444' : 'currentColor');
+                }
+            }
+
+            // Sync with Lightbox items
+            const found = lightboxItems.find(it => it.id == id);
+            if (found) {
+                found.is_favorite = isFav;
+                if (lightboxItems[lightboxIndex] && lightboxItems[lightboxIndex].id == id) {
+                    const favBtn = document.getElementById('lightbox-favorite-btn');
+                    const favIcon = document.getElementById('lightbox-favorite-icon');
+                    if (favBtn && favIcon) {
+                        favBtn.classList.toggle('is-active', isFav);
+                        favIcon.setAttribute('fill', isFav ? '#ef4444' : 'none');
+                        favIcon.setAttribute('stroke', isFav ? '#ef4444' : 'currentColor');
+                    }
+                }
+            }
+
+            showNotification(data.message, 'success');
+        } else {
+            showNotification(data.error || 'Gagal memperbarui status favorit', 'error');
+        }
+    })
+    .catch(() => showNotification('Terjadi kesalahan jaringan', 'error'));
+}
+
+function toggleCurrentLightboxFavorite() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+
+    const url = item.favoriteUrl || `/media/${item.id}/favorite`;
+    const btn = document.getElementById('lightbox-favorite-btn');
+
+    toggleItemFavorite(item.id, url, btn);
+
+    // Also update the card badge on the wall
+    const cardBadge = document.querySelector(`#media-item-${item.id} .card-favorite-badge`);
+    if (cardBadge) {
+        cardBadge.classList.toggle('is-active', !item.is_favorite);
+        const svg = cardBadge.querySelector('svg');
+        if (svg) {
+            svg.setAttribute('fill', !item.is_favorite ? '#ef4444' : 'none');
+            svg.setAttribute('stroke', !item.is_favorite ? '#ef4444' : 'currentColor');
+        }
+    }
+}
+
+// ============================================================
+// SHARE & COPY LINK (🔗)
+// ============================================================
+function copyMediaLink(url) {
+    const fullUrl = new URL(url, window.location.origin).href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullUrl)
+            .then(() => showNotification('Tautan media disalin ke clipboard! 📋', 'success'))
+            .catch(() => fallbackCopyText(fullUrl));
+    } else {
+        fallbackCopyText(fullUrl);
+    }
+}
+
+function fallbackCopyText(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        showNotification('Tautan disalin ke clipboard! 📋', 'success');
+    } catch {
+        showNotification('Gagal menyalin tautan', 'error');
+    }
+    document.body.removeChild(ta);
+}
+
+function shareCurrentLightboxMedia() {
+    const item = lightboxItems[lightboxIndex];
+    if (!item) return;
+    copyMediaLink(item.streamUrl || item.downloadUrl);
+}
+
+// ============================================================
+// BATCH DELETE FROM SELECTION
+// ============================================================
+function batchDeleteSelected() {
+    const ids = Array.from(selectedMediaIds);
+    if (ids.length === 0) {
+        showNotification('Pilih media yang ingin dihapus', 'error');
+        return;
+    }
+
+    if (!confirm(`Yakin ingin menghapus ${ids.length} media terpilih?\n\nBerkas akan dihapus permanen dari Google Drive dan database.`)) {
+        return;
+    }
+
+    fetch('/admin/media/batch-delete', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: ids }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message || `${ids.length} media berhasil dihapus!`, 'success');
+            ids.forEach(id => {
+                const card = document.getElementById(`media-item-${id}`);
+                if (card) card.remove();
+            });
+            exitSelectionMode();
+            const remaining = document.querySelectorAll('.media-card');
+            if (remaining.length === 0) {
+                location.reload();
+            }
+        } else {
+            showNotification(data.error || 'Gagal menghapus media terpilih', 'error');
+        }
+    })
+    .catch(() => showNotification('Terjadi kesalahan jaringan', 'error'));
 }
 
 // ============================================================

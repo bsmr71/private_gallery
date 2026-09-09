@@ -416,6 +416,192 @@ class MediaController extends Controller
     }
 
     /**
+     * Move media (single or batch) to an album.
+     */
+    public function moveAlbum(Request $request)
+    {
+        $request->validate([
+            'media_id' => 'nullable|integer|exists:media,id',
+            'media_ids' => 'nullable|array',
+            'media_ids.*' => 'integer|exists:media,id',
+            'album_id' => 'nullable',
+            'new_album_name' => 'nullable|string|max:255',
+        ]);
+
+        $ids = $request->filled('media_ids') ? (array)$request->media_ids : ($request->filled('media_id') ? [$request->media_id] : []);
+        if (empty($ids)) {
+            return response()->json(['error' => 'Tidak ada media yang dipilih.'], 422);
+        }
+
+        $albumId = $request->album_id;
+        $targetAlbumName = 'Tanpa Album';
+
+        if ($request->filled('new_album_name')) {
+            $newAlbum = Album::create([
+                'name' => trim($request->new_album_name),
+                'slug' => Str::slug(trim($request->new_album_name)) . '-' . Str::random(5),
+            ]);
+            $albumId = $newAlbum->id;
+            $targetAlbumName = $newAlbum->name;
+        } elseif ($albumId && $albumId !== 'none' && $albumId != '0') {
+            $album = Album::find($albumId);
+            if ($album) {
+                $albumId = $album->id;
+                $targetAlbumName = $album->name;
+            } else {
+                $albumId = null;
+            }
+        } else {
+            $albumId = null;
+        }
+
+        Media::whereIn('id', $ids)->update(['album_id' => $albumId]);
+
+        $count = count($ids);
+        $msg = "{$count} media berhasil dipindahkan ke \"{$targetAlbumName}\".";
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $msg,
+                'album_id' => $albumId,
+                'album_name' => $targetAlbumName,
+                'count' => $count,
+            ]);
+        }
+
+        return redirect()->back()->with('success', $msg);
+    }
+
+    /**
+     * Copy / duplicate media (single or batch) to an album.
+     */
+    public function copyAlbum(Request $request)
+    {
+        $request->validate([
+            'media_id' => 'nullable|integer|exists:media,id',
+            'media_ids' => 'nullable|array',
+            'media_ids.*' => 'integer|exists:media,id',
+            'album_id' => 'nullable',
+            'new_album_name' => 'nullable|string|max:255',
+        ]);
+
+        $ids = $request->filled('media_ids') ? (array)$request->media_ids : ($request->filled('media_id') ? [$request->media_id] : []);
+        if (empty($ids)) {
+            return response()->json(['error' => 'Tidak ada media yang dipilih.'], 422);
+        }
+
+        $albumId = $request->album_id;
+        $targetAlbumName = 'Tanpa Album';
+
+        if ($request->filled('new_album_name')) {
+            $newAlbum = Album::create([
+                'name' => trim($request->new_album_name),
+                'slug' => Str::slug(trim($request->new_album_name)) . '-' . Str::random(5),
+            ]);
+            $albumId = $newAlbum->id;
+            $targetAlbumName = $newAlbum->name;
+        } elseif ($albumId && $albumId !== 'none' && $albumId != '0') {
+            $album = Album::find($albumId);
+            if ($album) {
+                $albumId = $album->id;
+                $targetAlbumName = $album->name;
+            } else {
+                $albumId = null;
+            }
+        } else {
+            $albumId = null;
+        }
+
+        $items = Media::whereIn('id', $ids)->get();
+        $cloned = 0;
+
+        foreach ($items as $item) {
+            $newItem = $item->replicate();
+            $newItem->album_id = $albumId;
+            $newItem->cache_key = Str::random(40);
+            if ($item->album_id == $albumId) {
+                $newItem->title = $item->title . ' (Salinan)';
+            }
+            $newItem->save();
+            $cloned++;
+        }
+
+        $msg = "{$cloned} media berhasil disalin ke \"{$targetAlbumName}\".";
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $msg,
+                'album_id' => $albumId,
+                'album_name' => $targetAlbumName,
+                'count' => $cloned,
+            ]);
+        }
+
+        return redirect()->back()->with('success', $msg);
+    }
+
+    /**
+     * Toggle favorite status on a media item.
+     */
+    public function toggleFavorite(Media $media)
+    {
+        $media->is_favorite = !$media->is_favorite;
+        $media->save();
+
+        $msg = $media->is_favorite ? 'Ditambahkan ke Favorit ❤️' : 'Dihapus dari Favorit';
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_favorite' => (bool)$media->is_favorite,
+                'message' => $msg,
+            ]);
+        }
+
+        return redirect()->back()->with('success', $msg);
+    }
+
+    /**
+     * Quick rename title and description of a media item.
+     */
+    public function quickRename(Request $request, Media $media)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+        ]);
+
+        $media->update($validated);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'media' => [
+                    'id' => $media->id,
+                    'title' => $media->title,
+                    'description' => $media->description,
+                ],
+                'message' => 'Judul media berhasil diperbarui.',
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Judul media berhasil diperbarui.');
+    }
+
+    /**
+     * Return list of all albums for modal selectors.
+     */
+    public function albumsList()
+    {
+        $albums = Album::select('id', 'name', 'slug')->withCount('media')->orderBy('name')->get();
+        return response()->json([
+            'albums' => $albums,
+        ]);
+    }
+
+    /**
      * Serve file with HTTP Range headers for smooth video streaming.
      * This is what makes video playback smooth like YouTube.
      */

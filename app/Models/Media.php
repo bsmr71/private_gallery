@@ -19,11 +19,13 @@ class Media extends Model
         'thumb_drive_id',
         'cache_key',
         'album_id',
+        'is_favorite',
         'sort_order',
     ];
 
     protected $casts = [
         'size' => 'integer',
+        'is_favorite' => 'boolean',
         'sort_order' => 'integer',
     ];
 
@@ -87,14 +89,22 @@ class Media extends Model
         return [
             'id' => $this->id,
             'title' => $this->title,
+            'description' => $this->description,
             'type' => $this->type,
             'mimeType' => $this->mime_type,
+            'original_filename' => $this->original_filename,
             'size' => $this->formattedSize(),
+            'size_bytes' => $this->size,
+            'is_favorite' => (bool)$this->is_favorite,
+            'album_id' => $this->album_id,
+            'album' => $this->album ? $this->album->name : null,
             'streamUrl' => $this->streamUrl(),
             'downloadUrl' => $this->downloadUrl(),
             'deleteUrl' => route('admin.media.destroy', $this),
-            'album' => $this->album ? $this->album->name : null,
-            'created_at' => $this->created_at ? $this->created_at->format('d M Y') : null,
+            'favoriteUrl' => route('media.favorite', $this),
+            'renameUrl' => route('media.quick-rename', $this),
+            'created_at' => $this->created_at ? $this->created_at->format('d M Y, H:i') : null,
+            'created_date' => $this->created_at ? $this->created_at->format('d M Y') : null,
         ];
     }
 

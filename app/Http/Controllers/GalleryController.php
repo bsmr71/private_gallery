@@ -25,6 +25,10 @@ class GalleryController extends Controller
             $query->where('type', $request->type);
         }
 
+        if ($request->boolean('favorite') || $request->get('favorite') === '1') {
+            $query->where('is_favorite', true);
+        }
+
         if ($request->filled('search')) {
             $query->where('title', 'like', '%' . $request->search . '%');
         }
@@ -36,6 +40,7 @@ class GalleryController extends Controller
             'total' => Media::count(),
             'images' => Media::where('type', 'image')->count(),
             'videos' => Media::where('type', 'video')->count(),
+            'favorites' => Media::where('is_favorite', true)->count(),
             'albums' => $albums->count(),
             'size' => Media::formatBytes(Media::sum('size')),
         ];
