@@ -17,6 +17,9 @@ import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
+import VaultSyncModal from '../components/VaultSyncModal';
+import { SyncService } from '../services/syncService';
+import { StorageService } from '../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -41,6 +44,10 @@ export default function LibraryScreen() {
     const [uploading, setUploading] = useState(false);
     const [filterTab, setFilterTab] = useState('all');
 
+    // Vault Sync state
+    const [syncModalVisible, setSyncModalVisible] = useState(false);
+    const [pendingVaultCount, setPendingVaultCount] = useState(0);
+
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
@@ -64,13 +71,32 @@ export default function LibraryScreen() {
         }
     }, []);
 
+    const checkPendingVault = useCallback(async () => {
+        try {
+            const autoSync = await StorageService.getAutoSyncOnOpen();
+            const { assets } = await SyncService.getPendingVaultAssets();
+            setPendingVaultCount(assets.length);
+
+            if (autoSync && assets.length > 0) {
+                SyncService.syncAssets(assets).then((res) => {
+                    if (res.successCount > 0) {
+                        fetchMedia(1, true);
+                        checkPendingVault();
+                    }
+                });
+            }
+        } catch (e) {}
+    }, [fetchMedia]);
+
     useEffect(() => {
         fetchMedia(1);
-    }, [fetchMedia]);
+        checkPendingVault();
+    }, [fetchMedia, checkPendingVault]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchMedia(1, true);
+        checkPendingVault();
     };
 
     const loadMore = () => {
@@ -184,6 +210,22 @@ export default function LibraryScreen() {
                                 </Text>
                             </TouchableOpacity>
                         )}
+
+                        {/* Vault Sync Button */}
+                        <TouchableOpacity
+                            style={styles.syncHeaderBtn}
+                            onPress={() => setSyncModalVisible(true)}
+                            activeOpacity={0.7}
+                        >
+                            <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
+                            {pendingVaultCount > 0 && (
+                                <View style={styles.syncBadge}>
+                                    <Text style={styles.syncBadgeText}>
+                                        {pendingVaultCount > 99 ? '99+' : pendingVaultCount}
+                                    </Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
 
                         <TouchableOpacity
                             style={styles.uploadPlusBtn}
@@ -318,6 +360,19 @@ export default function LibraryScreen() {
                     setMediaItems((prev) => prev.filter((m) => m.id !== deletedId));
                 }}
             />
+
+            {/* Isolated Vault Sync Modal */}
+            <VaultSyncModal
+                visible={syncModalVisible}
+                onClose={() => {
+                    setSyncModalVisible(false);
+                    checkPendingVault();
+                }}
+                onSyncCompleted={() => {
+                    fetchMedia(1, true);
+                    checkPendingVault();
+                }}
+            />
         </View>
     );
 }
@@ -375,6 +430,34 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    syncHeaderBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: 'rgba(10, 132, 255, 0.14)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+    },
+    syncBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        backgroundColor: '#30D158',
+        borderRadius: 9,
+        minWidth: 18,
+        height: 18,
+        paddingHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: '#000000',
+    },
+    syncBadgeText: {
+        color: '#ffffff',
+        fontSize: 10,
+        fontWeight: '700',
     },
     segmentedFilterContainer: {
         flexDirection: 'row',

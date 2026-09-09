@@ -77,4 +77,67 @@ export const StorageService = {
             MediaUrlHelper.setToken(null);
         } catch (e) {}
     },
+
+    // Vault Sync Settings
+    async getVaultFolderName() {
+        try {
+            const name = await AsyncStorage.getItem('@vault_folder_name');
+            return name || 'PrivateVault';
+        } catch (e) {
+            return 'PrivateVault';
+        }
+    },
+
+    async setVaultFolderName(name) {
+        try {
+            await AsyncStorage.setItem('@vault_folder_name', name || 'PrivateVault');
+        } catch (e) {}
+    },
+
+    async getAutoDeleteLocal() {
+        try {
+            const val = await AsyncStorage.getItem('@vault_auto_delete_local');
+            return val !== null ? val === 'true' : true; // Default true (zero footprint)
+        } catch (e) {
+            return true;
+        }
+    },
+
+    async setAutoDeleteLocal(boolVal) {
+        try {
+            await AsyncStorage.setItem('@vault_auto_delete_local', boolVal ? 'true' : 'false');
+        } catch (e) {}
+    },
+
+    async getAutoSyncOnOpen() {
+        try {
+            const val = await AsyncStorage.getItem('@vault_auto_sync_on_open');
+            return val === 'true'; // Default false
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async setAutoSyncOnOpen(boolVal) {
+        try {
+            await AsyncStorage.setItem('@vault_auto_sync_on_open', boolVal ? 'true' : 'false');
+        } catch (e) {}
+    },
+
+    async getSyncedAssetIds() {
+        try {
+            const raw = await AsyncStorage.getItem('@vault_synced_asset_ids');
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    async addSyncedAssetIds(newIds) {
+        try {
+            const current = await this.getSyncedAssetIds();
+            const set = new Set([...current, ...newIds]);
+            await AsyncStorage.setItem('@vault_synced_asset_ids', JSON.stringify(Array.from(set)));
+        } catch (e) {}
+    },
 };

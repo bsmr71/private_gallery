@@ -301,6 +301,33 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
             );
         }
 
+        // --- 17. SYNC & CLOUD ---
+        case 'arrow.clockwise':
+        case 'sync': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M20 11A8 8 0 0 0 4.5 8.5M4 4.5V8.5H8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M4 13A8 8 0 0 0 19.5 15.5M20 19.5V15.5H16" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'cloud.arrow.up': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M17.5 19H6.5C4.01 19 2 16.99 2 14.5C2 12.19 3.73 10.28 6.01 10.03C6.5 6.64 9.4 4 12.9 4C16.5 4 19.46 6.78 19.88 10.3C21.66 10.84 23 12.51 23 14.5C23 16.99 20.99 19 18.5 19" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M12 11V16M12 11L9.5 13.5M12 11L14.5 13.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'cloud.checkmark': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M17.5 19H6.5C4.01 19 2 16.99 2 14.5C2 12.19 3.73 10.28 6.01 10.03C6.5 6.64 9.4 4 12.9 4C16.5 4 19.46 6.78 19.88 10.3C21.66 10.84 23 12.51 23 14.5C23 16.99 20.99 19 18.5 19" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M9 13.5L11.5 16L15.5 11.5" stroke={color} strokeWidth={strokeWidth * 1.1} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+
         default:
             return null;
     }
