@@ -67,6 +67,23 @@ export default function PhotoViewerModal({
     // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
     const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
+    // Stable references to prevent stale closures inside PanResponder
+    const currentIndexRef = useRef(currentIndex);
+    const itemsRef = useRef(items);
+    const onCloseRef = useRef(onClose);
+
+    useEffect(() => {
+        currentIndexRef.current = currentIndex;
+    }, [currentIndex]);
+
+    useEffect(() => {
+        itemsRef.current = items;
+    }, [items]);
+
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
     useEffect(() => {
         if (visible) {
             setCurrentIndex(initialIndex || 0);
@@ -93,15 +110,15 @@ export default function PhotoViewerModal({
             onStartShouldSetPanResponderCapture: () => false,
             onMoveShouldSetPanResponder: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
-                const isHorizontal = Math.abs(dx) > 18 && Math.abs(dx) > Math.abs(dy) * 1.1;
-                const isVertical = Math.abs(dy) > 18 && Math.abs(dy) > Math.abs(dx) * 1.1;
+                const isHorizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 0.8;
+                const isVertical = Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 0.8;
                 return isHorizontal || isVertical;
             },
             onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
                 // Capture gestures over child components (like native VideoView textureView)
-                const isHorizontal = Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.15;
-                const isVertical = Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx) * 1.15;
+                const isHorizontal = Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 0.8;
+                const isVertical = Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 0.8;
                 return isHorizontal || isVertical;
             },
             onPanResponderGrant: () => {
@@ -113,22 +130,24 @@ export default function PhotoViewerModal({
             },
             onPanResponderMove: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
-                // If moving predominantly vertically (swipe up or down)
-                if (Math.abs(dy) > Math.abs(dx) * 1.1) {
+                // If moving predominantly vertically (swipe up or down to exit)
+                if (Math.abs(dy) > Math.abs(dx) * 0.9) {
                     pan.setValue({ x: 0, y: dy });
                 } else {
-                    // Moving predominantly horizontally (swipe left or right)
-                    pan.setValue({ x: dx * 0.75, y: 0 });
+                    // Moving predominantly horizontally (swipe left or right to browse)
+                    pan.setValue({ x: dx * 0.8, y: 0 });
                 }
             },
             onPanResponderRelease: (evt, gestureState) => {
                 pan.flattenOffset();
                 const { dx, dy, vx, vy } = gestureState;
+                const curIdx = currentIndexRef.current;
+                const allItems = itemsRef.current || [];
 
                 // 1. Vertical Swipe: Slide UP or DOWN to dismiss
                 const isVerticalSwipe =
-                    (Math.abs(dy) > 55 || Math.abs(vy) > 0.45) &&
-                    Math.abs(dy) > Math.abs(dx) * 1.1;
+                    (Math.abs(dy) > 50 || Math.abs(vy) > 0.35) &&
+                    Math.abs(dy) > Math.abs(dx) * 0.9;
 
                 if (isVerticalSwipe) {
                     Animated.timing(pan, {
@@ -137,26 +156,26 @@ export default function PhotoViewerModal({
                         useNativeDriver: true,
                     }).start(() => {
                         pan.setValue({ x: 0, y: 0 });
-                        onClose();
+                        onCloseRef.current && onCloseRef.current();
                     });
                     return;
                 }
 
                 // 2. Horizontal Swipe: Slide LEFT (Next) or RIGHT (Prev)
                 const isHorizontalSwipe =
-                    (Math.abs(dx) > 35 || Math.abs(vx) > 0.35) &&
-                    Math.abs(dx) > Math.abs(dy) * 1.1;
+                    (Math.abs(dx) > 30 || Math.abs(vx) > 0.3) &&
+                    Math.abs(dx) > Math.abs(dy) * 0.9;
 
                 if (isHorizontalSwipe) {
-                    if (dx < 0 && currentIndex < items.length - 1) {
+                    if (dx < 0 && curIdx < allItems.length - 1) {
                         // Slide Left -> NEXT
                         Animated.timing(pan, {
-                            toValue: { x: -SCREEN_WIDTH * 0.35, y: 0 },
+                            toValue: { x: -SCREEN_WIDTH * 0.4, y: 0 },
                             duration: 100,
                             useNativeDriver: true,
                         }).start(() => {
-                            setCurrentIndex((prev) => prev + 1);
-                            pan.setValue({ x: SCREEN_WIDTH * 0.35, y: 0 });
+                            setCurrentIndex(curIdx + 1);
+                            pan.setValue({ x: SCREEN_WIDTH * 0.4, y: 0 });
                             Animated.spring(pan, {
                                 toValue: { x: 0, y: 0 },
                                 friction: 8,
@@ -165,15 +184,15 @@ export default function PhotoViewerModal({
                             }).start();
                         });
                         return;
-                    } else if (dx > 0 && currentIndex > 0) {
+                    } else if (dx > 0 && curIdx > 0) {
                         // Slide Right -> PREV
                         Animated.timing(pan, {
-                            toValue: { x: SCREEN_WIDTH * 0.35, y: 0 },
+                            toValue: { x: SCREEN_WIDTH * 0.4, y: 0 },
                             duration: 100,
                             useNativeDriver: true,
                         }).start(() => {
-                            setCurrentIndex((prev) => prev - 1);
-                            pan.setValue({ x: -SCREEN_WIDTH * 0.35, y: 0 });
+                            setCurrentIndex(curIdx - 1);
+                            pan.setValue({ x: -SCREEN_WIDTH * 0.4, y: 0 });
                             Animated.spring(pan, {
                                 toValue: { x: 0, y: 0 },
                                 friction: 8,
@@ -546,6 +565,7 @@ const styles = StyleSheet.create({
     },
     viewport: {
         flex: 1,
+        width: SCREEN_WIDTH,
         alignItems: 'center',
         justifyContent: 'center',
     },
