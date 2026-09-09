@@ -167,36 +167,8 @@ export const ApiService = {
 
             const url = `${baseUrl.replace(/\/$/, '')}/media/upload`;
 
-            let res = null;
-            let resError = null;
-
-            // Strategy 1: Standard fetch with FormData on file:// URI
-            try {
-                const formData = new FormData();
-                formData.append('file', {
-                    uri: fileUri,
-                    name: filename,
-                    type: type,
-                });
-
-                if (albumId) formData.append('album_id', String(albumId));
-                if (title) formData.append('title', String(title));
-
-                res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
-                    body: formData,
-                });
-            } catch (fetchErr) {
-                resError = fetchErr;
-                console.warn('[ApiService] fetch upload failed, trying native FileSystemLegacy.uploadAsync fallback:', fetchErr);
-            }
-
-            // Strategy 2: Native FileSystemLegacy.uploadAsync fallback
-            if (!res && FileSystemLegacy?.uploadAsync) {
+            // Strategy 1 (Primary): Native FileSystemLegacy.uploadAsync (Fast, reliable, zero warnings)
+            if (FileSystemLegacy?.uploadAsync) {
                 const uploadRes = await FileSystemLegacy.uploadAsync(url, fileUri, {
                     httpMethod: 'POST',
                     uploadType: FileSystemLegacy.FileSystemUploadType?.MULTIPART || 0,
@@ -224,9 +196,25 @@ export const ApiService = {
                 throw new Error(parsed?.message || `Upload gagal dengan status ${uploadRes.status}`);
             }
 
-            if (!res) {
-                throw resError || new Error('Gagal mengunggah berkas ke server');
-            }
+            // Strategy 2 (Fallback): Standard fetch with FormData
+            const formData = new FormData();
+            formData.append('file', {
+                uri: fileUri,
+                name: filename,
+                type: type,
+            });
+
+            if (albumId) formData.append('album_id', String(albumId));
+            if (title) formData.append('title', String(title));
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: formData,
+            });
 
             const data = await res.json().catch(() => null);
 
