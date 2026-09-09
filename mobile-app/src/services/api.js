@@ -1,4 +1,5 @@
 import { StorageService } from './storage';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 
 export const ApiService = {
     async request(endpoint, options = {}) {
@@ -142,36 +143,106 @@ export const ApiService = {
         const baseUrl = await StorageService.getApiUrl();
         const token = await StorageService.getToken();
 
-        const formData = new FormData();
-        const filename = fileAsset.fileName || fileAsset.uri.split('/').pop() || 'upload.jpg';
-        const type = fileAsset.mimeType || (filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+        let tempCacheUri = null;
+        let fileUri = fileAsset.uri;
 
-        formData.append('file', {
-            uri: fileAsset.uri,
-            name: filename,
-            type: type,
-        });
+        try {
+            const rawFilename = fileAsset.fileName || fileAsset.filename || fileAsset.uri.split('/').pop() || 'upload.jpg';
+            const filename = decodeURIComponent(rawFilename).split('/').pop() || 'upload.jpg';
+            const ext = filename.split('.').pop().toLowerCase();
+            const type = fileAsset.mimeType || (ext === 'mp4' || ext === 'mov' ? 'video/mp4' : 'image/jpeg');
 
-        if (albumId) formData.append('album_id', albumId);
-        if (title) formData.append('title', title);
+            // If it's an Android content:// URI (SAF tree or content URI), copy to cache first
+            // to obtain a genuine file:// path that React Native FormData supports without
+            // "Unsupported FormDataPart implementation" error
+            if (fileUri && fileUri.startsWith('content://')) {
+                const safeName = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                tempCacheUri = `${FileSystemLegacy.cacheDirectory}upload_${Date.now()}_${safeName}`;
+                await FileSystemLegacy.copyAsync({
+                    from: fileUri,
+                    to: tempCacheUri,
+                });
+                fileUri = tempCacheUri;
+            }
 
-        const url = `${baseUrl.replace(/\/$/, '')}/media/upload`;
+            const url = `${baseUrl.replace(/\/$/, '')}/media/upload`;
 
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`,
-            },
-            body: formData,
-        });
+            let res = null;
+            let resError = null;
 
-        const data = await res.json().catch(() => null);
+            // Strategy 1: Standard fetch with FormData on file:// URI
+            try {
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: fileUri,
+                    name: filename,
+                    type: type,
+                });
 
-        if (!res.ok) {
-            throw new Error(data?.message || 'Gagal mengunggah media');
+                if (albumId) formData.append('album_id', String(albumId));
+                if (title) formData.append('title', String(title));
+
+                res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    body: formData,
+                });
+            } catch (fetchErr) {
+                resError = fetchErr;
+                console.warn('[ApiService] fetch upload failed, trying native FileSystemLegacy.uploadAsync fallback:', fetchErr);
+            }
+
+            // Strategy 2: Native FileSystemLegacy.uploadAsync fallback
+            if (!res && FileSystemLegacy?.uploadAsync) {
+                const uploadRes = await FileSystemLegacy.uploadAsync(url, fileUri, {
+                    httpMethod: 'POST',
+                    uploadType: FileSystemLegacy.FileSystemUploadType?.MULTIPART || 0,
+                    fieldName: 'file',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    parameters: {
+                        ...(albumId ? { album_id: String(albumId) } : {}),
+                        ...(title ? { title: String(title) } : {}),
+                    },
+                });
+
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(uploadRes.body);
+                } catch (e) {
+                    parsed = null;
+                }
+
+                if (uploadRes.status >= 200 && uploadRes.status < 300) {
+                    return parsed;
+                }
+                throw new Error(parsed?.message || `Upload gagal dengan status ${uploadRes.status}`);
+            }
+
+            if (!res) {
+                throw resError || new Error('Gagal mengunggah berkas ke server');
+            }
+
+            const data = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(data?.message || `HTTP Error ${res.status}`);
+            }
+
+            return data;
+        } finally {
+            if (tempCacheUri) {
+                try {
+                    await FileSystemLegacy.deleteAsync(tempCacheUri, { idempotent: true });
+                } catch (e) {
+                    // ignore cleanup error
+                }
+            }
         }
-
-        return data;
     },
 };

@@ -112,13 +112,23 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                 onProgress: (p) => setProgress(p),
             });
 
-            Alert.alert(
-                'Sinkronisasi Selesai',
-                `${res.successCount} berkas berhasil dienkripsi AES-256 dan disimpan di Google Drive.${
-                    res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari folder HP.` : ''
-                }`,
-                [{ text: 'OK' }]
-            );
+            if (res.failCount > 0 && res.successCount === 0) {
+                Alert.alert(
+                    'Sinkronisasi Belum Berhasil',
+                    `Gagal mengunggah ${res.failCount} berkas ke server. Pastikan koneksi internet stabil.`,
+                    [{ text: 'OK' }]
+                );
+            } else {
+                Alert.alert(
+                    'Sinkronisasi Selesai',
+                    `${res.successCount} berkas berhasil dienkripsi AES-256 dan disimpan di Google Drive.${
+                        res.failCount > 0 ? `\n⚠️ ${res.failCount} berkas gagal diunggah.` : ''
+                    }${
+                        res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari folder HP (Zero Footprint).` : ''
+                    }`,
+                    [{ text: 'OK' }]
+                );
+            }
 
             // Rescan folder
             loadAndScan();
