@@ -14,7 +14,7 @@ import {
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
-import { SecurityService } from '../services/securityService';
+import { SecurityService, useDecoyMode } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -24,6 +24,7 @@ const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * 2) / 3;
 
 export default function SearchScreen({ onLogout }) {
+    const isDecoy = useDecoyMode();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
@@ -39,6 +40,13 @@ export default function SearchScreen({ onLogout }) {
         loadData();
     }, []);
 
+    useEffect(() => {
+        if (isDecoy) {
+            setResults([]);
+            setViewerVisible(false);
+        }
+    }, [isDecoy]);
+
     const loadData = async () => {
         const u = await StorageService.getUser();
         setUser(u);
@@ -49,7 +57,7 @@ export default function SearchScreen({ onLogout }) {
 
     const handleSearch = async (text) => {
         setQuery(text);
-        if (!text || text.trim().length === 0 || SecurityService.isDecoyMode()) {
+        if (!text || text.trim().length === 0 || isDecoy) {
             setResults([]);
             return;
         }
@@ -173,51 +181,53 @@ export default function SearchScreen({ onLogout }) {
                         <View style={styles.userRow}>
                             <View style={styles.userAvatar}>
                                 <Text style={styles.userInitial}>
-                                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                                    {isDecoy ? 'P' : (user?.name ? user.name.charAt(0).toUpperCase() : 'U')}
                                 </Text>
                             </View>
                             <View style={styles.userInfo}>
-                                <Text style={styles.userName}>{user?.name || 'Administrator'}</Text>
-                                <Text style={styles.userEmail}>{user?.email || 'admin@gallery.com'}</Text>
+                                <Text style={styles.userName}>{isDecoy ? 'Pengguna' : (user?.name || 'Administrator')}</Text>
+                                <Text style={styles.userEmail}>{isDecoy ? 'Tamu / Offline' : (user?.email || 'admin@gallery.com')}</Text>
                             </View>
                         </View>
                     </View>
 
                     {/* Server Connection Card */}
-                    <View style={styles.card}>
-                        <Text style={styles.cardHeading}>Koneksi Server</Text>
-                        {editingUrl ? (
-                            <View style={{ marginTop: 8 }}>
-                                <TextInput
-                                    style={styles.urlInput}
-                                    value={urlInput}
-                                    onChangeText={setUrlInput}
-                                    autoCapitalize="none"
-                                />
-                                <View style={styles.urlButtons}>
-                                    <TouchableOpacity style={styles.urlBtnCancel} onPress={() => setEditingUrl(false)}>
-                                        <Text style={styles.urlBtnText}>Batal</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.urlBtnSave} onPress={handleSaveUrl}>
-                                        <Text style={[styles.urlBtnText, { color: '#0A84FF' }]}>Simpan</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ) : (
-                            <View style={styles.serverRow}>
-                                <View style={{ flex: 1 }}>
-                                    <View style={styles.statusRow}>
-                                        <View style={styles.statusDot} />
-                                        <Text style={styles.serverStatusText}>Terhubung ke Backend</Text>
+                    {!isDecoy && (
+                        <View style={styles.card}>
+                            <Text style={styles.cardHeading}>Koneksi Server</Text>
+                            {editingUrl ? (
+                                <View style={{ marginTop: 8 }}>
+                                    <TextInput
+                                        style={styles.urlInput}
+                                        value={urlInput}
+                                        onChangeText={setUrlInput}
+                                        autoCapitalize="none"
+                                    />
+                                    <View style={styles.urlButtons}>
+                                        <TouchableOpacity style={styles.urlBtnCancel} onPress={() => setEditingUrl(false)}>
+                                            <Text style={styles.urlBtnText}>Batal</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.urlBtnSave} onPress={handleSaveUrl}>
+                                            <Text style={[styles.urlBtnText, { color: '#0A84FF' }]}>Simpan</Text>
+                                        </TouchableOpacity>
                                     </View>
-                                    <Text style={styles.serverUrlText} numberOfLines={1}>{apiUrl}</Text>
                                 </View>
-                                <TouchableOpacity onPress={() => setEditingUrl(true)}>
-                                    <Text style={styles.editBtnText}>Ubah</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                    </View>
+                            ) : (
+                                <View style={styles.serverRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={styles.statusRow}>
+                                            <View style={styles.statusDot} />
+                                            <Text style={styles.serverStatusText}>Terhubung ke Backend</Text>
+                                        </View>
+                                        <Text style={styles.serverUrlText} numberOfLines={1}>{apiUrl}</Text>
+                                    </View>
+                                    <TouchableOpacity onPress={() => setEditingUrl(true)}>
+                                        <Text style={styles.editBtnText}>Ubah</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {/* Cloud Security Card */}
                     <View style={[styles.card, styles.securityCard]}>
@@ -239,7 +249,7 @@ export default function SearchScreen({ onLogout }) {
 
             <PhotoViewerModal
                 visible={viewerVisible}
-                items={results}
+                items={isDecoy ? [] : results}
                 initialIndex={selectedIdx}
                 onClose={() => setViewerVisible(false)}
             />

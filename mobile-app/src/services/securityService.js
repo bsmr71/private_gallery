@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -13,6 +14,21 @@ const SEC_KEYS = {
 let runtimeDecoyMode = false;
 let runtimeIsLocked = false;
 let lastBackgroundTime = 0;
+
+const listeners = new Set();
+
+function notifyListeners() {
+    listeners.forEach((listener) => {
+        try {
+            listener({
+                isDecoy: runtimeDecoyMode,
+                isLocked: runtimeIsLocked,
+            });
+        } catch (e) {
+            console.warn('SecurityService listener error:', e);
+        }
+    });
+}
 
 export const SecurityService = {
     // --- Configuration State ---
@@ -142,6 +158,7 @@ export const SecurityService = {
             if (res.success) {
                 runtimeDecoyMode = false;
                 runtimeIsLocked = false;
+                notifyListeners();
             }
 
             return res;
@@ -159,12 +176,14 @@ export const SecurityService = {
             if (inputPin === masterPin) {
                 runtimeDecoyMode = false;
                 runtimeIsLocked = false;
+                notifyListeners();
                 return { success: true, type: 'master' };
             }
 
             if (decoyPin && inputPin === decoyPin) {
                 runtimeDecoyMode = true; // Activate harmless decoy vault!
                 runtimeIsLocked = false;
+                notifyListeners();
                 return { success: true, type: 'decoy' };
             }
 
@@ -180,7 +199,8 @@ export const SecurityService = {
     },
 
     setDecoyMode(val) {
-        runtimeDecoyMode = val;
+        runtimeDecoyMode = !!val;
+        notifyListeners();
     },
 
     isAppCurrentlyLocked() {
@@ -188,11 +208,17 @@ export const SecurityService = {
     },
 
     setAppLocked(boolVal) {
-        runtimeIsLocked = boolVal;
+        runtimeIsLocked = !!boolVal;
         if (boolVal) {
             // Reset decoy mode on lock
             runtimeDecoyMode = false;
         }
+        notifyListeners();
+    },
+
+    subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
     },
 
     recordBackgroundTime() {
@@ -210,3 +236,18 @@ export const SecurityService = {
         return true;
     },
 };
+
+export function useDecoyMode() {
+    const [isDecoy, setIsDecoy] = useState(SecurityService.isDecoyMode());
+
+    useEffect(() => {
+        setIsDecoy(SecurityService.isDecoyMode());
+
+        const unsubscribe = SecurityService.subscribe(({ isDecoy: nextDecoy }) => {
+            setIsDecoy(nextDecoy);
+        });
+        return unsubscribe;
+    }, []);
+
+    return isDecoy;
+}

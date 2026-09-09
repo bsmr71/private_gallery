@@ -17,12 +17,13 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
-import { SecurityService } from '../services/securityService';
+import { SecurityService, useDecoyMode } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
 
 export default function AlbumsScreen({ navigation }) {
+    const isDecoy = useDecoyMode();
     const [albums, setAlbums] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -52,13 +53,20 @@ export default function AlbumsScreen({ navigation }) {
     }, []);
 
     useEffect(() => {
-        fetchAlbums();
-    }, [fetchAlbums]);
+        if (!isDecoy) {
+            fetchAlbums();
+        } else {
+            setAlbums([]);
+            setModalVisible(false);
+        }
+    }, [isDecoy, fetchAlbums]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchAlbums();
     };
+
+    const displayedAlbums = isDecoy ? [] : albums;
 
     const handleCreateAlbum = async () => {
         if (!newAlbumName.trim()) return;
@@ -81,14 +89,16 @@ export default function AlbumsScreen({ navigation }) {
         <View style={styles.headerArea}>
             <View style={styles.headerTop}>
                 <Text style={styles.screenTitle}>Album</Text>
-                <TouchableOpacity
-                    style={styles.addBtn}
-                    onPress={() => setModalVisible(true)}
-                    activeOpacity={0.7}
-                >
-                    <SFSymbol name="plus" size={17} color="#0A84FF" weight="semibold" />
-                    <Text style={styles.addBtnText}>Album</Text>
-                </TouchableOpacity>
+                {!isDecoy && (
+                    <TouchableOpacity
+                        style={styles.addBtn}
+                        onPress={() => setModalVisible(true)}
+                        activeOpacity={0.7}
+                    >
+                        <SFSymbol name="plus" size={17} color="#0A84FF" weight="semibold" />
+                        <Text style={styles.addBtnText}>Album</Text>
+                    </TouchableOpacity>
+                )}
             </View>
             <Text style={styles.subHeading}>Album Saya</Text>
         </View>
@@ -155,7 +165,7 @@ export default function AlbumsScreen({ navigation }) {
                 </View>
             ) : (
                 <FlatList
-                    data={albums}
+                    data={displayedAlbums}
                     keyExtractor={(item) => String(item.id)}
                     numColumns={2}
                     ListHeaderComponent={renderHeader}

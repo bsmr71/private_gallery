@@ -14,7 +14,7 @@ import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
-import { SecurityService } from '../services/securityService';
+import { SecurityService, useDecoyMode } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -22,6 +22,7 @@ const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function FavoritesScreen() {
+    const isDecoy = useDecoyMode();
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -51,13 +52,20 @@ export default function FavoritesScreen() {
     }, []);
 
     useEffect(() => {
-        fetchFavorites();
-    }, [fetchFavorites]);
+        if (!isDecoy) {
+            fetchFavorites();
+        } else {
+            setMediaItems([]);
+            setViewerVisible(false);
+        }
+    }, [isDecoy, fetchFavorites]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchFavorites();
     };
+
+    const displayedItems = isDecoy ? [] : mediaItems;
 
     return (
         <View style={styles.container}>
@@ -65,8 +73,8 @@ export default function FavoritesScreen() {
             <View style={styles.header}>
                 <Text style={styles.screenTitle}>Favorit</Text>
                 <Text style={styles.subTitle}>
-                    {mediaItems.length > 0
-                        ? `${mediaItems.length} foto & video ditandai`
+                    {displayedItems.length > 0
+                        ? `${displayedItems.length} foto & video ditandai`
                         : 'Belum ada favorit'}
                 </Text>
             </View>
@@ -77,7 +85,7 @@ export default function FavoritesScreen() {
                 </View>
             ) : (
                 <FlatList
-                    data={mediaItems}
+                    data={displayedItems}
                     keyExtractor={(item) => String(item.id)}
                     numColumns={COLUMN_COUNT}
                     contentContainerStyle={styles.listContent}

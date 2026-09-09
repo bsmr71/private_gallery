@@ -18,7 +18,7 @@ import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { SyncService } from '../services/syncService';
-import { SecurityService } from '../services/securityService';
+import { SecurityService, useDecoyMode } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -31,6 +31,7 @@ const ITEM_MARGIN = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function LibraryScreen() {
+    const isDecoy = useDecoyMode();
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +55,19 @@ export default function LibraryScreen() {
 
     // Security Settings Modal state
     const [securityModalVisible, setSecurityModalVisible] = useState(false);
+
+    // Reactively reset UI when decoy mode status changes
+    useEffect(() => {
+        if (isDecoy) {
+            setIsSelectMode(false);
+            setSelectedIds([]);
+            setViewerVisible(false);
+        } else {
+            if (mediaItems.length === 0) {
+                fetchMedia(1, true);
+            }
+        }
+    }, [isDecoy, fetchMedia, mediaItems.length]);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
@@ -223,8 +237,6 @@ export default function LibraryScreen() {
             ]
         );
     };
-
-    const isDecoy = SecurityService.isDecoyMode();
 
     const displayedItems = isDecoy
         ? []
