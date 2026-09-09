@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
@@ -12,6 +12,19 @@ import SearchScreen from './src/screens/SearchScreen';
 import LoginScreen from './src/screens/LoginScreen';
 
 const Tab = createBottomTabNavigator();
+
+const appTheme = {
+    ...DarkTheme,
+    colors: {
+        ...DarkTheme.colors,
+        primary: THEME.colors.accent,
+        background: '#000000',
+        card: '#121214',
+        text: '#ffffff',
+        border: 'rgba(255, 255, 255, 0.08)',
+        notification: THEME.colors.favorite,
+    },
+};
 
 export default function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -51,19 +64,7 @@ export default function App() {
     }
 
     return (
-        <NavigationContainer
-            theme={{
-                dark: true,
-                colors: {
-                    primary: THEME.colors.accent,
-                    background: '#000000',
-                    card: '#121214',
-                    text: '#ffffff',
-                    border: 'rgba(255, 255, 255, 0.08)',
-                    notification: THEME.colors.favorite,
-                },
-            }}
-        >
+        <NavigationContainer theme={appTheme}>
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
             <Tab.Navigator
                 screenOptions={({ route }) => ({
