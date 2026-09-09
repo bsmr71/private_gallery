@@ -28,6 +28,25 @@ import { MediaUrlHelper } from '../services/mediaUrl';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+class VideoErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+    componentDidCatch(err) {
+        console.warn('VideoPlayer error caught:', err);
+    }
+    render() {
+        if (this.state.hasError) {
+            return this.props.fallback || null;
+        }
+        return this.props.children;
+    }
+}
+
 export default function PhotoViewerModal({
     visible,
     items,
@@ -49,6 +68,8 @@ export default function PhotoViewerModal({
             setDownloading(false);
         }
     }, [visible, initialIndex]);
+
+    const activeItem = items && items[currentIndex];
 
     const isCurrentVideo = Boolean(
         activeItem?.type === 'video' ||
@@ -252,12 +273,22 @@ export default function PhotoViewerModal({
                 {/* Center Image / Video Viewport */}
                 <View style={styles.viewport} {...panResponder.panHandlers}>
                     {isCurrentVideo ? (
-                        <VideoPlayerView
-                            key={activeItem.id}
-                            item={activeItem}
-                            isVisible={visible}
-                            onToggleControls={() => setChromeVisible((prev) => !prev)}
-                        />
+                        <VideoErrorBoundary
+                            fallback={
+                                <SecureImage
+                                    source={activeItem.thumbnail_url || activeItem.stream_url}
+                                    style={styles.mainImage}
+                                    resizeMode="contain"
+                                />
+                            }
+                        >
+                            <VideoPlayerView
+                                key={activeItem.id}
+                                item={activeItem}
+                                isVisible={visible}
+                                onToggleControls={() => setChromeVisible((prev) => !prev)}
+                            />
+                        </VideoErrorBoundary>
                     ) : (
                         <SecureImage
                             source={activeItem.stream_url}

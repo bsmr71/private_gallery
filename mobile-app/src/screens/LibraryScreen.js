@@ -57,19 +57,6 @@ export default function LibraryScreen() {
     // Security Settings Modal state
     const [securityModalVisible, setSecurityModalVisible] = useState(false);
 
-    // Reactively reset UI when decoy mode status changes
-    useEffect(() => {
-        if (isDecoy) {
-            setIsSelectMode(false);
-            setSelectedIds([]);
-            setViewerVisible(false);
-        } else {
-            if (mediaItems.length === 0) {
-                fetchMedia(1, true);
-            }
-        }
-    }, [isDecoy, fetchMedia, mediaItems.length]);
-
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
@@ -132,6 +119,19 @@ export default function LibraryScreen() {
             setAutoSyncStatus(null);
         }
     }, [fetchMedia]);
+
+    // Reactively reset UI when decoy mode status changes
+    useEffect(() => {
+        if (isDecoy) {
+            setIsSelectMode(false);
+            setSelectedIds([]);
+            setViewerVisible(false);
+        } else {
+            if (mediaItems.length === 0) {
+                fetchMedia(1, true);
+            }
+        }
+    }, [isDecoy, fetchMedia, mediaItems.length]);
 
     useEffect(() => {
         fetchMedia(1);

@@ -36,6 +36,14 @@ export default function SearchScreen({ onLogout }) {
     const [viewerVisible, setViewerVisible] = useState(false);
     const [selectedIdx, setSelectedIdx] = useState(0);
 
+    const loadData = async () => {
+        const u = await StorageService.getUser();
+        setUser(u);
+        const url = await StorageService.getApiUrl();
+        setApiUrl(url);
+        setUrlInput(url);
+    };
+
     useEffect(() => {
         loadData();
     }, []);
@@ -46,14 +54,6 @@ export default function SearchScreen({ onLogout }) {
             setViewerVisible(false);
         }
     }, [isDecoy]);
-
-    const loadData = async () => {
-        const u = await StorageService.getUser();
-        setUser(u);
-        const url = await StorageService.getApiUrl();
-        setApiUrl(url);
-        setUrlInput(url);
-    };
 
     const handleSearch = async (text) => {
         setQuery(text);

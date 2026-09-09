@@ -62,13 +62,13 @@ function MainTabs({ onLogout }) {
                     paddingTop: 6,
                     elevation: 0,
                 },
-                tabBarBackground: () => (
+                tabBarBackground: Platform.OS === 'ios' ? () => (
                     <BlurView
                         tint="dark"
                         intensity={90}
                         style={StyleSheet.absoluteFill}
                     />
-                ),
+                ) : undefined,
                 tabBarLabelStyle: {
                     fontSize: 10,
                     fontWeight: '500',
@@ -283,39 +283,39 @@ export default function App() {
         );
     }
 
-    if (!isAuthenticated) {
-        return (
-            <SafeAreaProvider>
-                <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <LoginScreen onLoginSuccess={handleLoginSuccess} />
-            </SafeAreaProvider>
-        );
-    }
-
     return (
         <SafeAreaProvider>
-            {/* Gallery Navigation Tree - Opaque 0 when locked to completely prevent any frame bleed */}
-            <View style={[StyleSheet.absoluteFill, { opacity: isLocked ? 0 : 1 }]}>
-                <NavigationContainer theme={appTheme}>
-                    <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                    <MainTabs onLogout={handleLogout} />
-                </NavigationContainer>
-            </View>
-
-            {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
-            {privacyShield && (
-                <View style={[StyleSheet.absoluteFill, styles.privacyShield]}>
-                    <BlurView tint="dark" intensity={95} style={StyleSheet.absoluteFill} />
-                    <View style={styles.privacyShieldContent}>
-                        <SFSymbol name="lock.fill" size={48} color="#0A84FF" />
-                        <Text style={styles.privacyShieldTitle}>Perpustakaan Pribadi</Text>
-                        <Text style={styles.privacyShieldSubtitle}>Dilindungi oleh Apple Vault</Text>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            {!isAuthenticated ? (
+                <LoginScreen onLoginSuccess={handleLoginSuccess} />
+            ) : (
+                <>
+                    {/* Gallery Navigation Tree - Opaque 0 when locked to completely prevent any frame bleed */}
+                    <View style={[StyleSheet.absoluteFill, { opacity: isLocked ? 0 : 1 }]}>
+                        <NavigationContainer theme={appTheme}>
+                            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+                            <MainTabs onLogout={handleLogout} />
+                        </NavigationContainer>
                     </View>
-                </View>
-            )}
 
-            {/* Layer 1, 2, 4: Passcode & Biometric Lock Overlay */}
-            <AppLockOverlay visible={isLocked} onUnlock={handleUnlock} />
+                    {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
+                    {privacyShield && (
+                        <View style={[StyleSheet.absoluteFill, styles.privacyShield]}>
+                            {Platform.OS === 'ios' && (
+                                <BlurView tint="dark" intensity={95} style={StyleSheet.absoluteFill} />
+                            )}
+                            <View style={styles.privacyShieldContent}>
+                                <SFSymbol name="lock.fill" size={48} color="#0A84FF" />
+                                <Text style={styles.privacyShieldTitle}>Perpustakaan Pribadi</Text>
+                                <Text style={styles.privacyShieldSubtitle}>Dilindungi oleh Apple Vault</Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Layer 1, 2, 4: Passcode & Biometric Lock Overlay */}
+                    <AppLockOverlay visible={isLocked} onUnlock={handleUnlock} />
+                </>
+            )}
         </SafeAreaProvider>
     );
 }
