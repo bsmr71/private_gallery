@@ -10,6 +10,7 @@ import {
     ActivityIndicator,
     Alert,
     RefreshControl,
+    Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { THEME } from '../constants/theme';
