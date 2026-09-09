@@ -148,7 +148,16 @@ export const ApiService = {
 
         try {
             const rawFilename = fileAsset.fileName || fileAsset.filename || fileAsset.uri.split('/').pop() || 'upload.jpg';
-            const filename = decodeURIComponent(rawFilename).split('/').pop() || 'upload.jpg';
+            let filename = 'upload.jpg';
+            try {
+                filename = decodeURIComponent(rawFilename).split('/').pop() || 'upload.jpg';
+            } catch (uriErr) {
+                try {
+                    filename = decodeURI(rawFilename).split('/').pop() || 'upload.jpg';
+                } catch (e) {
+                    filename = rawFilename.split('/').pop() || 'upload.jpg';
+                }
+            }
             const ext = filename.split('.').pop().toLowerCase();
             const type = fileAsset.mimeType || (ext === 'mp4' || ext === 'mov' ? 'video/mp4' : 'image/jpeg');
 

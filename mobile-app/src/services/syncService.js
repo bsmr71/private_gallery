@@ -9,6 +9,19 @@ const StorageAccessFramework =
     FileSystemLegacy?.StorageAccessFramework ||
     FileSystemLegacy?.default?.StorageAccessFramework;
 
+function safeDecodeURI(str) {
+    if (!str) return '';
+    try {
+        return decodeURIComponent(str);
+    } catch (e) {
+        try {
+            return decodeURI(str);
+        } catch (e2) {
+            return str;
+        }
+    }
+}
+
 export const SyncService = {
     /**
      * Request user to pick a designated sync folder on device.
@@ -28,7 +41,7 @@ export const SyncService = {
                 if (permissions && permissions.granted && permissions.directoryUri) {
                     let friendlyName = 'Vault';
                     try {
-                        const decoded = decodeURIComponent(permissions.directoryUri);
+                        const decoded = safeDecodeURI(permissions.directoryUri);
                         const parts = decoded.split(':');
                         if (parts.length > 1) {
                             friendlyName = parts[parts.length - 1].replace(/\/$/, '') || 'Vault';
@@ -106,7 +119,7 @@ export const SyncService = {
 
                 for (let i = 0; i < fileUris.length; i++) {
                     const uri = fileUris[i];
-                    const decodedUri = decodeURIComponent(uri);
+                    const decodedUri = safeDecodeURI(uri);
                     const filename = decodedUri.split('/').pop() || `file_${i}.jpg`;
                     const ext = filename.split('.').pop().toLowerCase();
 
