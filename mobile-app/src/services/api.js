@@ -143,7 +143,7 @@ export const ApiService = {
     },
 
     // Upload
-    async uploadMedia(fileAsset, albumId = null, title = null) {
+    async uploadMedia(fileAsset, albumId = null, title = null, onProgress = null) {
         const baseUrl = await StorageService.getApiUrl();
         const token = await StorageService.getToken();
 
@@ -151,24 +151,41 @@ export const ApiService = {
         let fileUri = fileAsset.uri;
 
         try {
-            const rawFilename = fileAsset.fileName || fileAsset.filename || fileAsset.uri.split('/').pop() || 'upload.jpg';
-            let filename = 'upload.jpg';
+            // Determine whether asset is video or image
+            const isVideo = Boolean(
+                fileAsset.type === 'video' ||
+                (fileAsset.mimeType && fileAsset.mimeType.startsWith('video/')) ||
+                (fileAsset.mediaType === 'video') ||
+                (fileAsset.uri && (fileAsset.uri.endsWith('.mp4') || fileAsset.uri.endsWith('.mov') || fileAsset.uri.endsWith('.m4v')))
+            );
+
+            const rawFilename = fileAsset.fileName || fileAsset.filename || fileAsset.uri.split('/').pop() || (isVideo ? 'video.mp4' : 'upload.jpg');
+            let filename = isVideo ? 'video.mp4' : 'upload.jpg';
             try {
-                filename = decodeURIComponent(rawFilename).split('/').pop() || 'upload.jpg';
+                filename = decodeURIComponent(rawFilename).split('/').pop() || filename;
             } catch (uriErr) {
                 try {
-                    filename = decodeURI(rawFilename).split('/').pop() || 'upload.jpg';
+                    filename = decodeURI(rawFilename).split('/').pop() || filename;
                 } catch (e) {
-                    filename = rawFilename.split('/').pop() || 'upload.jpg';
+                    filename = rawFilename.split('/').pop() || filename;
                 }
             }
-            const ext = filename.split('.').pop().toLowerCase();
-            const type = fileAsset.mimeType || (ext === 'mp4' || ext === 'mov' ? 'video/mp4' : 'image/jpeg');
 
-            // If it's an Android content:// URI (SAF tree or content URI), copy to cache first
-            // to obtain a genuine file:// path that React Native FormData supports without
-            // "Unsupported FormDataPart implementation" error
-            if (fileUri && fileUri.startsWith('content://')) {
+            // Ensure proper extension if missing
+            let ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+            if (isVideo && (!ext || !['mp4', 'mov', 'm4v', '3gp', 'webm'].includes(ext))) {
+                ext = 'mp4';
+                filename = `${filename.replace(/\.[^/.]+$/, '')}.mp4`;
+            } else if (!isVideo && (!ext || !['jpg', 'jpeg', 'png', 'webp', 'heic'].includes(ext))) {
+                ext = 'jpg';
+                filename = `${filename.replace(/\.[^/.]+$/, '')}.jpg`;
+            }
+
+            const type = fileAsset.mimeType || (isVideo ? (ext === 'mov' ? 'video/quicktime' : 'video/mp4') : (ext === 'png' ? 'image/png' : 'image/jpeg'));
+
+            // Ensure Android file access:
+            // For content:// URIs or files without extensions in cache, copy to app cache with explicit safe filename
+            if (fileUri && (fileUri.startsWith('content://') || fileUri.endsWith('.tmp') || !fileUri.includes('.'))) {
                 const safeName = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
                 tempCacheUri = `${FileSystemLegacy.cacheDirectory}upload_${Date.now()}_${safeName}`;
                 await FileSystemLegacy.copyAsync({
@@ -180,62 +197,68 @@ export const ApiService = {
 
             const url = `${baseUrl.replace(/\/$/, '')}/media/upload`;
 
-            // Strategy 1 (Primary): Native FileSystemLegacy.uploadAsync (Fast, reliable, zero warnings)
-            if (FileSystemLegacy?.uploadAsync) {
-                const uploadRes = await FileSystemLegacy.uploadAsync(url, fileUri, {
-                    httpMethod: 'POST',
-                    uploadType: FileSystemLegacy.FileSystemUploadType?.MULTIPART || 0,
-                    fieldName: 'file',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
-                    parameters: {
-                        ...(albumId ? { album_id: String(albumId) } : {}),
-                        ...(title ? { title: String(title) } : {}),
-                    },
+            // Use XMLHttpRequest with FormData:
+            // 1. Supports 10-minute timeout (so large videos don't fail at 60s)
+            // 2. Supports real-time upload progress tracking
+            // 3. Streams large files directly on native Android
+            return await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', url);
+                xhr.timeout = 600000; // 10 minutes timeout
+
+                xhr.setRequestHeader('Accept', 'application/json');
+                if (token) {
+                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                }
+
+                if (xhr.upload && onProgress) {
+                    xhr.upload.onprogress = (event) => {
+                        if (event.lengthComputable && event.total > 0) {
+                            const percent = Math.round((event.loaded / event.total) * 100);
+                            onProgress(percent);
+                        }
+                    };
+                }
+
+                xhr.onload = () => {
+                    let parsed = null;
+                    try {
+                        parsed = JSON.parse(xhr.responseText);
+                    } catch (e) {
+                        parsed = null;
+                    }
+
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(parsed);
+                    } else if (xhr.status === 413) {
+                        reject(new Error(parsed?.message || 'Ukuran video melebihi batas upload server.'));
+                    } else if (xhr.status === 422) {
+                        reject(new Error(parsed?.message || 'Validasi unggahan gagal pada server.'));
+                    } else {
+                        reject(new Error(parsed?.message || `Gagal mengunggah (HTTP ${xhr.status})`));
+                    }
+                };
+
+                xhr.onerror = () => {
+                    reject(new Error('Koneksi jaringan terputus saat mengunggah berkas.'));
+                };
+
+                xhr.ontimeout = () => {
+                    reject(new Error('Waktu unggah habis (timeout). Periksa koneksi internet Anda.'));
+                };
+
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: fileUri,
+                    name: filename,
+                    type: type,
                 });
 
-                let parsed = null;
-                try {
-                    parsed = JSON.parse(uploadRes.body);
-                } catch (e) {
-                    parsed = null;
-                }
+                if (albumId) formData.append('album_id', String(albumId));
+                if (title) formData.append('title', String(title));
 
-                if (uploadRes.status >= 200 && uploadRes.status < 300) {
-                    return parsed;
-                }
-                throw new Error(parsed?.message || `Upload gagal dengan status ${uploadRes.status}`);
-            }
-
-            // Strategy 2 (Fallback): Standard fetch with FormData
-            const formData = new FormData();
-            formData.append('file', {
-                uri: fileUri,
-                name: filename,
-                type: type,
+                xhr.send(formData);
             });
-
-            if (albumId) formData.append('album_id', String(albumId));
-            if (title) formData.append('title', String(title));
-
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: formData,
-            });
-
-            const data = await res.json().catch(() => null);
-
-            if (!res.ok) {
-                throw new Error(data?.message || `HTTP Error ${res.status}`);
-            }
-
-            return data;
         } finally {
             if (tempCacheUri) {
                 try {

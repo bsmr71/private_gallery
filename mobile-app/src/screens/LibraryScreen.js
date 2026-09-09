@@ -24,6 +24,7 @@ import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
 import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
+import { NativeSyncService } from '../services/nativeSyncService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -200,15 +201,28 @@ export default function LibraryScreen() {
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
             setUploading(true);
+            const total = result.assets.length;
+            await NativeSyncService.startForegroundSync(
+                'Lumina: Mengunggah Berkas',
+                `Mengunggah ${total} berkas ke Cloud...`
+            );
+
             try {
-                for (const asset of result.assets) {
+                for (let i = 0; i < total; i++) {
+                    const asset = result.assets[i];
+                    await NativeSyncService.updateProgress(
+                        i + 1,
+                        total,
+                        `Mengunggah berkas ${i + 1}/${total}...`
+                    );
                     await ApiService.uploadMedia(asset);
                 }
-                Alert.alert('Berhasil', `${result.assets.length} berkas berhasil dienkripsi dan diunggah ke Google Drive.`);
+                Alert.alert('Berhasil', `${total} berkas berhasil dienkripsi dan diunggah ke Google Drive.`);
                 fetchMedia(1, true);
             } catch (err) {
                 Alert.alert('Gagal Unggah', err.message || 'Terjadi kendala saat mengunggah');
             } finally {
+                await NativeSyncService.stopForegroundSync();
                 setUploading(false);
             }
         }

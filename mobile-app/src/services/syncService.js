@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 import { ApiService } from './api';
 import { StorageService } from './storage';
+import { NativeSyncService } from './nativeSyncService';
 
 const StorageAccessFramework =
     FileSystemLegacy?.StorageAccessFramework ||
@@ -227,77 +228,106 @@ export const SyncService = {
         const uploadedAssetIds = [];
         const total = assets.length;
 
-        for (let i = 0; i < total; i++) {
-            const asset = assets[i];
-            try {
-                const ext = asset.filename ? asset.filename.split('.').pop().toLowerCase() : 'jpg';
-                const isVideo = asset.mediaType === 'video' || ext === 'mp4' || ext === 'mov';
-                const mimeType = isVideo
-                    ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
-                    : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
+        // Keep Android process alive even when app is minimized
+        await NativeSyncService.startForegroundSync(
+            'Lumina: Sinkronisasi Brankas',
+            `Menyinkronkan ${total} berkas ke Cloud...`
+        );
 
-                const filePayload = {
-                    uri: asset.uri,
-                    fileName: asset.filename || `vault_${Date.now()}.${ext}`,
-                    mimeType: mimeType,
-                };
+        try {
+            for (let i = 0; i < total; i++) {
+                const asset = assets[i];
+                try {
+                    const ext = asset.filename ? asset.filename.split('.').pop().toLowerCase() : 'jpg';
+                    const isVideo = asset.mediaType === 'video' || ext === 'mp4' || ext === 'mov';
+                    const mimeType = isVideo
+                        ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
+                        : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
 
-                // Upload to cloud (AES-256 encrypted storage)
-                await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename);
+                    const filePayload = {
+                        uri: asset.uri,
+                        fileName: asset.filename || `vault_${Date.now()}.${ext}`,
+                        mimeType: mimeType,
+                        type: isVideo ? 'video' : 'image',
+                    };
 
-                successCount++;
-                uploadedAssetIds.push(asset.id);
+                    await NativeSyncService.updateProgress(
+                        i + 1,
+                        total,
+                        `Mengunggah ${asset.filename || 'berkas'} (${i + 1}/${total})...`
+                    );
 
-                // If it's a SAF / designated folder file and autoDelete is enabled, delete local original!
-                if (autoDelete && asset.isSafFile) {
-                    let deleted = false;
-                    // Try SAF delete for Android content:// URIs
-                    if (asset.uri.startsWith('content://') && StorageAccessFramework?.deleteAsync) {
-                        try {
-                            await StorageAccessFramework.deleteAsync(asset.uri);
-                            deleted = true;
-                        } catch (delErr) {
-                            console.warn('[SyncService] SAF delete error:', delErr);
+                    // Upload to cloud (AES-256 encrypted storage) with progress
+                    await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
+                        if (onProgress) {
+                            onProgress({
+                                current: i + 1,
+                                total,
+                                percentage: Math.round(((i + (percent / 100)) / total) * 100),
+                                asset,
+                                itemPercent: percent,
+                                success: true,
+                            });
+                        }
+                    });
+
+                    successCount++;
+                    uploadedAssetIds.push(asset.id);
+
+                    // If it's a SAF / designated folder file and autoDelete is enabled, delete local original!
+                    if (autoDelete && asset.isSafFile) {
+                        let deleted = false;
+                        // Try SAF delete for Android content:// URIs
+                        if (asset.uri.startsWith('content://') && StorageAccessFramework?.deleteAsync) {
+                            try {
+                                await StorageAccessFramework.deleteAsync(asset.uri);
+                                deleted = true;
+                            } catch (delErr) {
+                                console.warn('[SyncService] SAF delete error:', delErr);
+                            }
+                        }
+                        // Try File.delete fallback
+                        if (!deleted && File) {
+                            try {
+                                const f = new File(asset.uri);
+                                f.delete();
+                                deleted = true;
+                            } catch (fErr) {
+                                console.warn('[SyncService] File.delete error:', fErr);
+                            }
+                        }
+                        if (deleted) {
+                            deletedCount++;
                         }
                     }
-                    // Try File.delete fallback
-                    if (!deleted && File) {
-                        try {
-                            const f = new File(asset.uri);
-                            f.delete();
-                            deleted = true;
-                        } catch (fErr) {
-                            console.warn('[SyncService] File.delete error:', fErr);
-                        }
-                    }
-                    if (deleted) {
-                        deletedCount++;
-                    }
-                }
 
-                if (onProgress) {
-                    onProgress({
-                        current: i + 1,
-                        total,
-                        percentage: Math.round(((i + 1) / total) * 100),
-                        asset,
-                        success: true,
-                    });
-                }
-            } catch (err) {
-                console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
-                failCount++;
-                if (onProgress) {
-                    onProgress({
-                        current: i + 1,
-                        total,
-                        percentage: Math.round(((i + 1) / total) * 100),
-                        asset,
-                        success: false,
-                        error: err.message,
-                    });
+                    if (onProgress) {
+                        onProgress({
+                            current: i + 1,
+                            total,
+                            percentage: Math.round(((i + 1) / total) * 100),
+                            asset,
+                            success: true,
+                        });
+                    }
+                } catch (err) {
+                    console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
+                    failCount++;
+                    if (onProgress) {
+                        onProgress({
+                            current: i + 1,
+                            total,
+                            percentage: Math.round(((i + 1) / total) * 100),
+                            asset,
+                            success: false,
+                            error: err.message,
+                        });
+                    }
                 }
             }
+        } finally {
+            // Dismiss foreground notification and release wakelock
+            await NativeSyncService.stopForegroundSync();
         }
 
         // Record synced asset IDs

@@ -267,6 +267,27 @@ class MediaApiController extends Controller
      */
     public function upload(Request $request): JsonResponse
     {
+        @set_time_limit(600);
+        @ini_set('memory_limit', '512M');
+
+        // Check if entire POST payload was dropped by PHP due to post_max_size
+        if (empty($_FILES) && empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 0) {
+            $postMaxSize = ini_get('post_max_size');
+            return response()->json([
+                'success' => false,
+                'message' => "Ukuran berkas melebihi batas post_max_size server ({$postMaxSize}).",
+            ], 413);
+        }
+
+        // Check for specific upload errors
+        if (isset($_FILES['file']['error']) && $_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE) {
+            $uploadMax = ini_get('upload_max_filesize');
+            return response()->json([
+                'success' => false,
+                'message' => "Ukuran video melebihi batas upload_max_filesize server ({$uploadMax}).",
+            ], 413);
+        }
+
         $request->validate([
             'file' => 'required_without:files|file|max:512000', // 500MB
             'files.*' => 'file|max:512000',
@@ -285,8 +306,13 @@ class MediaApiController extends Controller
             $originalName = $file->getClientOriginalName();
 
             try {
+                $ext = strtolower($file->getClientOriginalExtension() ?: pathinfo($originalName, PATHINFO_EXTENSION) ?: 'tmp');
                 $mimeType = $file->getMimeType() ?: 'application/octet-stream';
-                $type = str_starts_with($mimeType, 'image/') ? 'image' : 'video';
+                $isVideoExt = in_array($ext, ['mp4', 'mov', 'm4v', 'webm', '3gp', 'mkv', 'avi']);
+                $type = (str_starts_with($mimeType, 'video/') || $isVideoExt) ? 'video' : (str_starts_with($mimeType, 'image/') ? 'image' : ($isVideoExt ? 'video' : 'image'));
+                if ($type === 'video' && !str_starts_with($mimeType, 'video/')) {
+                    $mimeType = $ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+                }
                 $title = $request->title ?: pathinfo($originalName, PATHINFO_FILENAME);
                 $size = $file->getSize();
 
