@@ -94,6 +94,24 @@ export const StorageService = {
         } catch (e) {}
     },
 
+    async getVaultDirectoryUri() {
+        try {
+            return await AsyncStorage.getItem('@vault_directory_uri');
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setVaultDirectoryUri(uri) {
+        try {
+            if (uri) {
+                await AsyncStorage.setItem('@vault_directory_uri', uri);
+            } else {
+                await AsyncStorage.removeItem('@vault_directory_uri');
+            }
+        } catch (e) {}
+    },
+
     async getAutoDeleteLocal() {
         try {
             const val = await AsyncStorage.getItem('@vault_auto_delete_local');

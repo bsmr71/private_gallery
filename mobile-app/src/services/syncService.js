@@ -1,23 +1,93 @@
+import { StorageAccessFramework } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 import { ApiService } from './api';
 import { StorageService } from './storage';
 
 export const SyncService = {
     /**
-     * Request device media library permissions via expo-image-picker (fully supported in Expo Go).
+     * Request user to pick a designated sync folder on device (Android Storage Access Framework).
+     * Grants persistent read & delete permissions for this specific folder.
      */
-    async requestPermissions() {
+    async selectVaultFolder() {
+        if (Platform.OS !== 'android' || !StorageAccessFramework) {
+            return null;
+        }
+
         try {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            return status === 'granted';
+            const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+            if (permissions.granted && permissions.directoryUri) {
+                // Decode URI to friendly folder name
+                let friendlyName = 'Vault';
+                try {
+                    const decoded = decodeURIComponent(permissions.directoryUri);
+                    const parts = decoded.split(':');
+                    if (parts.length > 1) {
+                        friendlyName = parts[parts.length - 1].replace(/\/$/, '') || 'Vault';
+                    }
+                } catch (e) {}
+
+                await StorageService.setVaultFolderName(friendlyName);
+                await StorageService.setVaultDirectoryUri(permissions.directoryUri);
+
+                return {
+                    uri: permissions.directoryUri,
+                    name: friendlyName,
+                };
+            }
+            return null;
         } catch (e) {
-            console.warn('Permission request error:', e);
-            return false;
+            console.warn('Error requesting directory permissions:', e);
+            return null;
         }
     },
 
     /**
-     * Open system photo picker to select multiple photos/videos from any folder.
+     * Automatically scan designated folder and return pending unencrypted local files.
+     */
+    async scanVaultFolder() {
+        const folderUri = await StorageService.getVaultDirectoryUri();
+        if (!folderUri || Platform.OS !== 'android' || !StorageAccessFramework) {
+            return [];
+        }
+
+        try {
+            const fileUris = await StorageAccessFramework.readDirectoryAsync(folderUri);
+            const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.heic'];
+
+            const syncedIds = await StorageService.getSyncedAssetIds();
+            const syncedSet = new Set(syncedIds);
+
+            const pending = [];
+            for (let i = 0; i < fileUris.length; i++) {
+                const uri = fileUris[i];
+                const decodedUri = decodeURIComponent(uri);
+                const filename = decodedUri.split('/').pop() || `file_${i}.jpg`;
+                const ext = filename.split('.').pop().toLowerCase();
+
+                if (validExtensions.includes(`.${ext}`)) {
+                    const isVideo = ext === 'mp4' || ext === 'mov';
+                    if (!syncedSet.has(uri)) {
+                        pending.push({
+                            id: uri,
+                            uri: uri,
+                            filename: filename,
+                            mediaType: isVideo ? 'video' : 'photo',
+                            isSafFile: true,
+                        });
+                    }
+                }
+            }
+
+            return pending;
+        } catch (e) {
+            console.warn('Error scanning vault folder:', e);
+            return [];
+        }
+    },
+
+    /**
+     * Manual photo selection from gallery (any folder).
      */
     async pickMediaFromDevice(options = {}) {
         try {
@@ -42,6 +112,7 @@ export const SyncService = {
                     width: a.width,
                     height: a.height,
                     fileSize: a.fileSize,
+                    isSafFile: false,
                 };
             });
         } catch (e) {
@@ -51,8 +122,8 @@ export const SyncService = {
     },
 
     /**
-     * Sync a list of staged assets to the cloud vault.
-     * Encrypts each item in Google Drive via backend API.
+     * Sync staged assets to Google Drive encrypted cloud.
+     * Deletes the local original from the designated folder once securely backed up.
      */
     async syncAssets(assets, options = {}) {
         const { onProgress, cloudAlbumId = null } = options;
@@ -60,6 +131,7 @@ export const SyncService = {
 
         let successCount = 0;
         let failCount = 0;
+        let deletedCount = 0;
         const uploadedAssetIds = [];
         const total = assets.length;
 
@@ -83,6 +155,16 @@ export const SyncService = {
 
                 successCount++;
                 uploadedAssetIds.push(asset.id);
+
+                // If it's a SAF folder file and autoDelete is enabled, delete local original!
+                if (autoDelete && asset.isSafFile && StorageAccessFramework) {
+                    try {
+                        await StorageAccessFramework.deleteAsync(asset.uri);
+                        deletedCount++;
+                    } catch (delErr) {
+                        console.warn('SAF delete error:', delErr);
+                    }
+                }
 
                 if (onProgress) {
                     onProgress({
@@ -117,8 +199,8 @@ export const SyncService = {
         return {
             successCount,
             failCount,
+            deletedCount,
             autoDeleteRequested: autoDelete,
         };
     },
 };
-
