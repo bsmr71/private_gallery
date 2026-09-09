@@ -14,13 +14,15 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
+// Media streaming, thumbnail and download routes (handled by MediaController with dual Web/Token auth)
+Route::get('/media/{media}/stream', [MediaController::class, 'stream'])->name('media.stream');
+Route::get('/media/{media}/thumbnail', [MediaController::class, 'thumbnail'])->name('media.thumbnail');
+Route::get('/media/{media}/download', [MediaController::class, 'download'])->name('media.download');
+
 Route::middleware('auth')->group(function () {
     Route::get('/', [GalleryController::class, 'index'])->name('gallery.index');
     Route::get('/albums', [GalleryController::class, 'albums'])->name('gallery.albums');
     Route::get('/album/{album:slug}', [GalleryController::class, 'album'])->name('gallery.album');
-    Route::get('/media/{media}/stream', [MediaController::class, 'stream'])->name('media.stream');
-    Route::get('/media/{media}/thumbnail', [MediaController::class, 'thumbnail'])->name('media.thumbnail');
-    Route::get('/media/{media}/download', [MediaController::class, 'download'])->name('media.download');
     Route::post('/media/move-album', [MediaController::class, 'moveAlbum'])->name('media.move');
     Route::post('/media/copy-album', [MediaController::class, 'copyAlbum'])->name('media.copy');
     Route::post('/media/{media}/favorite', [MediaController::class, 'toggleFavorite'])->name('media.favorite');

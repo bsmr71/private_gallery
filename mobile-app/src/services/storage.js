@@ -19,12 +19,16 @@ export const StorageService = {
     async setToken(token) {
         try {
             await AsyncStorage.setItem(KEYS.TOKEN, token);
+            const { MediaUrlHelper } = require('./mediaUrl');
+            MediaUrlHelper.setToken(token);
         } catch (e) {}
     },
 
     async removeToken() {
         try {
             await AsyncStorage.removeItem(KEYS.TOKEN);
+            const { MediaUrlHelper } = require('./mediaUrl');
+            MediaUrlHelper.setToken(null);
         } catch (e) {}
     },
 
@@ -61,12 +65,16 @@ export const StorageService = {
     async setApiUrl(url) {
         try {
             await AsyncStorage.setItem(KEYS.API_URL, url);
+            const { MediaUrlHelper } = require('./mediaUrl');
+            MediaUrlHelper.setApiUrl(url);
         } catch (e) {}
     },
 
     async clearAll() {
         try {
             await AsyncStorage.multiRemove([KEYS.TOKEN, KEYS.USER]);
+            const { MediaUrlHelper } = require('./mediaUrl');
+            MediaUrlHelper.setToken(null);
         } catch (e) {}
     },
 };

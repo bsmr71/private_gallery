@@ -50,24 +50,8 @@ class MediaApiController extends Controller
         $perPage = min((int)$request->input('per_page', 30), 100);
         $paginated = $query->paginate($perPage);
 
-        $items = collect($paginated->items())->map(function ($m) {
-            return [
-                'id' => $m->id,
-                'title' => $m->title,
-                'description' => $m->description,
-                'type' => $m->type,
-                'mime_type' => $m->mime_type,
-                'size' => $m->size,
-                'formatted_size' => $m->formattedSize(),
-                'is_favorite' => (bool)$m->is_favorite,
-                'album_id' => $m->album_id,
-                'album_name' => $m->album ? $m->album->name : null,
-                'stream_url' => $m->streamUrl(),
-                'thumbnail_url' => $m->thumbnailUrl(),
-                'download_url' => $m->downloadUrl(),
-                'created_at' => $m->created_at ? $m->created_at->toIso8601String() : null,
-                'formatted_date' => $m->created_at ? $m->created_at->format('d M Y') : null,
-            ];
+        $items = collect($paginated->items())->map(function ($m) use ($request) {
+            return $this->formatMediaItem($m, $request);
         });
 
         $stats = [
@@ -95,28 +79,13 @@ class MediaApiController extends Controller
     /**
      * Get single media details.
      */
-    public function show(Media $media): JsonResponse
+    public function show(Request $request, Media $media): JsonResponse
     {
         $media->load('album');
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'id' => $media->id,
-                'title' => $media->title,
-                'description' => $media->description,
-                'type' => $media->type,
-                'mime_type' => $media->mime_type,
-                'size' => $media->size,
-                'formatted_size' => $media->formattedSize(),
-                'is_favorite' => (bool)$media->is_favorite,
-                'album_id' => $media->album_id,
-                'album_name' => $media->album ? $media->album->name : null,
-                'stream_url' => $media->streamUrl(),
-                'thumbnail_url' => $media->thumbnailUrl(),
-                'download_url' => $media->downloadUrl(),
-                'created_at' => $media->created_at ? $media->created_at->toIso8601String() : null,
-            ],
+            'data' => $this->formatMediaItem($media, $request),
         ]);
     }
 
@@ -369,14 +338,7 @@ class MediaApiController extends Controller
                     'album_id' => $request->album_id,
                 ]);
 
-                $uploaded[] = [
-                    'id' => $media->id,
-                    'title' => $media->title,
-                    'type' => $media->type,
-                    'size' => $media->formattedSize(),
-                    'stream_url' => $media->streamUrl(),
-                    'thumbnail_url' => $media->thumbnailUrl(),
-                ];
+                $uploaded[] = $this->formatMediaItem($media, $request);
             } catch (\Throwable $e) {
                 if ($tempPath && file_exists($tempPath)) {
                     @unlink($tempPath);
@@ -395,5 +357,57 @@ class MediaApiController extends Controller
             'uploaded' => $uploaded,
             'errors' => $errors,
         ], count($uploaded) > 0 ? 201 : 400);
+    }
+
+    /**
+     * Stream media file via API (supports range requests and token authentication).
+     */
+    public function stream(Media $media, \App\Http\Controllers\MediaController $mediaController)
+    {
+        return $mediaController->stream($media);
+    }
+
+    /**
+     * Serve thumbnail image via API (supports token authentication).
+     */
+    public function thumbnail(Media $media, \App\Http\Controllers\MediaController $mediaController)
+    {
+        return $mediaController->thumbnail($media);
+    }
+
+    /**
+     * Download decrypted media via API (supports token authentication).
+     */
+    public function download(Media $media, \App\Http\Controllers\MediaController $mediaController)
+    {
+        return $mediaController->download($media);
+    }
+
+    /**
+     * Build API media item payload with proper authenticated URLs based on current request host.
+     */
+    private function formatMediaItem(Media $m, Request $request): array
+    {
+        $token = $request->attributes->get('plain_api_token') ?: $request->bearerToken() ?: $request->query('token');
+        $tokenParam = $token ? '?token=' . urlencode($token) : '';
+        $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
+
+        return [
+            'id' => $m->id,
+            'title' => $m->title,
+            'description' => $m->description,
+            'type' => $m->type,
+            'mime_type' => $m->mime_type,
+            'size' => $m->size,
+            'formatted_size' => $m->formattedSize(),
+            'is_favorite' => (bool)$m->is_favorite,
+            'album_id' => $m->album_id,
+            'album_name' => $m->album ? $m->album->name : null,
+            'stream_url' => "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}",
+            'thumbnail_url' => "{$baseApiUrl}/media/{$m->id}/thumbnail{$tokenParam}",
+            'download_url' => "{$baseApiUrl}/media/{$m->id}/download{$tokenParam}",
+            'created_at' => $m->created_at ? $m->created_at->toIso8601String() : null,
+            'formatted_date' => $m->created_at ? $m->created_at->format('d M Y') : null,
+        ];
     }
 }

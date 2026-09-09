@@ -165,6 +165,8 @@ class MediaController extends Controller
      */
     public function stream(Media $media)
     {
+        $this->authorizeMediaAccess();
+
         // Check if file is cached
         $cachedPath = $this->cacheService->getCachedPath($media);
 
@@ -198,6 +200,8 @@ class MediaController extends Controller
      */
     public function download(Media $media)
     {
+        $this->authorizeMediaAccess();
+
         $cachedPath = $this->cacheService->getCachedPath($media);
 
         if (!$cachedPath) {
@@ -231,6 +235,8 @@ class MediaController extends Controller
      */
     public function thumbnail(Media $media)
     {
+        $this->authorizeMediaAccess();
+
         // Check thumb cache
         $thumbPath = $this->cacheService->getThumbPath($media);
 
@@ -818,5 +824,34 @@ SVG;
             'Content-Type' => 'image/svg+xml',
             'Cache-Control' => 'public, max-age=3600',
         ]);
+    }
+
+    /**
+     * Ensure request is authorized via Web session or API Personal Access Token.
+     */
+    private function authorizeMediaAccess(): void
+    {
+        if (\Illuminate\Support\Facades\Auth::check()) {
+            return;
+        }
+
+        $token = request()->bearerToken() ?: request()->query('token') ?: request()->query('api_token');
+        if ($token) {
+            $tokenRecord = \App\Models\PersonalAccessToken::findToken($token);
+            if ($tokenRecord && (!$tokenRecord->expires_at || $tokenRecord->expires_at->isFuture())) {
+                $user = $tokenRecord->tokenable;
+                if ($user) {
+                    \Illuminate\Support\Facades\Auth::setUser($user);
+                    return;
+                }
+            }
+            abort(401, 'Unauthenticated.');
+        }
+
+        if (request()->wantsJson() || request()->is('api/*')) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->guest(route('login')));
     }
 }

@@ -17,6 +17,7 @@ import Filmstrip from './Filmstrip';
 import AppleDock from './AppleDock';
 import InfoSheet from './InfoSheet';
 import { ApiService } from '../services/api';
+import SecureImage from './SecureImage';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -187,8 +188,8 @@ export default function PhotoViewerModal({
 
                 {/* Center Image Viewport */}
                 <View style={styles.viewport} {...panResponder.panHandlers}>
-                    <Image
-                        source={{ uri: activeItem.stream_url }}
+                    <SecureImage
+                        source={activeItem.stream_url}
                         style={styles.mainImage}
                         resizeMode="contain"
                     />

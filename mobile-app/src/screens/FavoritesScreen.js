@@ -13,6 +13,7 @@ import {
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import SecureImage from '../components/SecureImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -79,8 +80,8 @@ export default function FavoritesScreen() {
                                 setViewerVisible(true);
                             }}
                         >
-                            <Image
-                                source={{ uri: item.thumbnail_url || item.stream_url }}
+                            <SecureImage
+                                source={item.thumbnail_url || item.stream_url}
                                 style={styles.itemImage}
                                 resizeMode="cover"
                             />

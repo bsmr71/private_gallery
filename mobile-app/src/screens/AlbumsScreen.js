@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
+import SecureImage from '../components/SecureImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
@@ -160,7 +161,7 @@ export default function AlbumsScreen({ navigation }) {
                         >
                             <View style={styles.coverWrapper}>
                                 {item.cover_url ? (
-                                    <Image source={{ uri: item.cover_url }} style={styles.coverImage} resizeMode="cover" />
+                                    <SecureImage source={item.cover_url} style={styles.coverImage} resizeMode="cover" />
                                 ) : (
                                     <View style={styles.emptyCover}>
                                         <Text style={styles.emptyFolderEmoji}>📁</Text>

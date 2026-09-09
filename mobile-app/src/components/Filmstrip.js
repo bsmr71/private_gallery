@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, FlatList, TouchableOpacity, Image, StyleSheet, Text } from 'react-native';
 import { THEME } from '../constants/theme';
+import SecureImage from './SecureImage';
 
 export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
     const listRef = useRef(null);
@@ -47,8 +48,8 @@ export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
                                 isActive && styles.thumbWrapActive,
                             ]}
                         >
-                            <Image
-                                source={{ uri: item.thumbnail_url || item.stream_url }}
+                            <SecureImage
+                                source={item.thumbnail_url || item.stream_url}
                                 style={styles.thumbImage}
                                 resizeMode="cover"
                             />

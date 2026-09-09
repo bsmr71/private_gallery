@@ -27,6 +27,9 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     // Media Resource Endpoints
     Route::get('/media', [MediaApiController::class, 'index']);
     Route::get('/media/{media}', [MediaApiController::class, 'show']);
+    Route::get('/media/{media}/stream', [MediaApiController::class, 'stream'])->name('api.media.stream');
+    Route::get('/media/{media}/thumbnail', [MediaApiController::class, 'thumbnail'])->name('api.media.thumbnail');
+    Route::get('/media/{media}/download', [MediaApiController::class, 'download'])->name('api.media.download');
     Route::post('/media/upload', [MediaApiController::class, 'upload']);
     Route::post('/media/{media}/favorite', [MediaApiController::class, 'toggleFavorite']);
     Route::post('/media/{media}/rename', [MediaApiController::class, 'rename']);

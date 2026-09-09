@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import SecureImage from '../components/SecureImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -206,8 +207,8 @@ export default function LibraryScreen() {
                                 activeOpacity={0.8}
                                 onPress={() => handleItemPress(item, index)}
                             >
-                                <Image
-                                    source={{ uri: item.thumbnail_url || item.stream_url }}
+                                <SecureImage
+                                    source={item.thumbnail_url || item.stream_url}
                                     style={styles.itemImage}
                                     resizeMode="cover"
                                 />

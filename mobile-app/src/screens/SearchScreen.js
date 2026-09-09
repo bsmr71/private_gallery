@@ -16,6 +16,7 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import SecureImage from '../components/SecureImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ITEM_SIZE = (SCREEN_WIDTH - 36) / 3;
@@ -131,8 +132,8 @@ export default function SearchScreen({ onLogout }) {
                                         setViewerVisible(true);
                                     }}
                                 >
-                                    <Image
-                                        source={{ uri: item.thumbnail_url || item.stream_url }}
+                                    <SecureImage
+                                        source={item.thumbnail_url || item.stream_url}
                                         style={styles.resultImage}
                                         resizeMode="cover"
                                     />

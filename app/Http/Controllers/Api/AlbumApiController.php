@@ -13,19 +13,26 @@ class AlbumApiController extends Controller
     /**
      * Get list of albums with cover photo and item counts.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $token = $request->attributes->get('plain_api_token') ?: $request->bearerToken() ?: $request->query('token');
+        $tokenParam = $token ? '?token=' . urlencode($token) : '';
+        $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
+
         $albums = Album::withCount('media')
             ->orderBy('name')
             ->get()
-            ->map(function ($album) {
+            ->map(function ($album) use ($baseApiUrl, $tokenParam) {
+                $coverId = $album->cover_media_id ?: $album->media()->latest()->value('id');
+                $coverUrl = $coverId ? "{$baseApiUrl}/media/{$coverId}/thumbnail{$tokenParam}" : null;
+
                 return [
                     'id' => $album->id,
                     'name' => $album->name,
                     'slug' => $album->slug,
                     'description' => $album->description,
                     'media_count' => $album->media_count,
-                    'cover_url' => $album->getCoverThumbnailUrl(),
+                    'cover_url' => $coverUrl,
                     'created_at' => $album->created_at ? $album->created_at->toIso8601String() : null,
                 ];
             });

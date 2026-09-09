@@ -187,6 +187,28 @@ class ApiEndpointsTest extends TestCase
         $this->assertEquals(1, count($response->json('data')));
         $this->assertEquals('Photo Test 1', $response->json('data.0.title'));
         $this->assertTrue($response->json('data.0.is_favorite'));
+        $this->assertStringContainsString('/api/media/', $response->json('data.0.thumbnail_url'));
+        $this->assertStringContainsString('token=' . urlencode($token), $response->json('data.0.thumbnail_url'));
+    }
+
+    public function test_media_thumbnail_accessible_with_token_query_parameter(): void
+    {
+        $token = $this->user->createToken('test')->plainTextToken;
+
+        $media = Media::create([
+            'title' => 'Thumb Test',
+            'type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'original_filename' => 'thumb.jpg',
+            'size' => 1024,
+            'drive_file_id' => 'drive_thumb',
+            'is_favorite' => false,
+        ]);
+
+        // Access via API route with query token
+        $response = $this->get("/api/media/{$media->id}/thumbnail?token={$token}");
+        // Returns placeholder SVG (200) since drive file is mocked/dummy
+        $response->assertStatus(200);
     }
 
     public function test_authenticated_user_can_toggle_favorite_via_api(): void

@@ -14,7 +14,7 @@ class AuthenticateApiToken
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $bearer = $request->bearerToken();
+        $bearer = $request->bearerToken() ?: $request->query('token') ?: $request->query('api_token');
 
         if (!$bearer) {
             return response()->json([
@@ -32,6 +32,7 @@ class AuthenticateApiToken
 
         $tokenRecord->update(['last_used_at' => now()]);
         $request->attributes->set('current_api_token', $tokenRecord);
+        $request->attributes->set('plain_api_token', $bearer);
 
         // Bind user to request
         $user = $tokenRecord->tokenable;
