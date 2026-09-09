@@ -646,6 +646,57 @@ if (window.matchMedia) {
 }
 
 // ============================================================
+// MOBILE TOUCH GESTURES (SWIPE NAVIGATION IN LIGHTBOX)
+// ============================================================
+function initLightboxTouchGestures() {
+    const lightbox = document.getElementById('lightbox');
+    if (!lightbox) return;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+    let touchStartTime = 0;
+
+    lightbox.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+        }
+    }, { passive: true });
+
+    lightbox.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length === 1) {
+            touchEndX = e.changedTouches[0].clientX;
+            touchEndY = e.changedTouches[0].clientY;
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+            const timeElapsed = Date.now() - touchStartTime;
+
+            // Don't trigger if interacting with video controls or buttons
+            if (e.target.closest('video') || e.target.closest('.lightbox-topbar') || e.target.closest('button') || e.target.closest('a')) {
+                return;
+            }
+
+            // Horizontal Swipe (Next / Prev)
+            if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.4 && timeElapsed < 500) {
+                if (diffX < 0) {
+                    navigateLightbox(1); // Swipe left -> Next
+                } else {
+                    navigateLightbox(-1); // Swipe right -> Prev
+                }
+            }
+
+            // Vertical Swipe Down (Dismiss Lightbox like iOS)
+            if (diffY > 80 && Math.abs(diffY) > Math.abs(diffX) * 1.5 && timeElapsed < 450) {
+                closeLightbox();
+            }
+        }
+    }, { passive: true });
+}
+
+// ============================================================
 // INITIALIZE
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -655,4 +706,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initFilters();
     initCardAnimations();
     initAlerts();
+    initLightboxTouchGestures();
 });
