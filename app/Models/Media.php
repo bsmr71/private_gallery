@@ -99,6 +99,7 @@ class Media extends Model
             'album_id' => $this->album_id,
             'album' => $this->album ? $this->album->name : null,
             'streamUrl' => $this->streamUrl(),
+            'thumbnailUrl' => $this->thumbnailUrl(),
             'downloadUrl' => $this->downloadUrl(),
             'deleteUrl' => route('admin.media.destroy', $this),
             'favoriteUrl' => route('media.favorite', $this),

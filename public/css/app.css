@@ -1038,9 +1038,10 @@ img, video {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    background: #000000;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .lightbox.active {
@@ -1051,30 +1052,69 @@ img, video {
 .lightbox-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.94);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: #000000;
 }
 
+/* Floating Top Bar (Apple Photos Header) */
 .lightbox-topbar {
     position: relative;
-    z-index: 10;
+    z-index: 30;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
+    padding: 10px 20px;
+    background: rgba(18, 18, 22, 0.78);
+    backdrop-filter: blur(28px) saturate(190%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
 }
 
-.lightbox-header-info {
+.lightbox.chrome-hidden .lightbox-topbar {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.lightbox-nav-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: none;
+    color: #38bdf8;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+    font-family: var(--font);
+}
+.lightbox-nav-back:hover {
+    background: rgba(56, 189, 248, 0.12);
+    color: #7dd3fc;
+}
+
+.lightbox-header-center {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    max-width: 60%;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+    max-width: 50%;
+    overflow: hidden;
+}
+
+.lightbox-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
 }
 
 .lightbox-title {
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     color: #ffffff;
     white-space: nowrap;
@@ -1082,9 +1122,27 @@ img, video {
     text-overflow: ellipsis;
 }
 
+.lightbox-inline-rename-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #94a3b8;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.lightbox-inline-rename-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
 .lightbox-meta-row {
-    font-size: 12px;
-    color: #888a96;
+    font-size: 11.5px;
+    color: #94a3b8;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1100,7 +1158,7 @@ img, video {
     padding: 4px 10px;
     border-radius: var(--radius-full);
     background: rgba(255, 255, 255, 0.08);
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     color: #cbd5e1;
 }
@@ -1108,52 +1166,27 @@ img, video {
 .lightbox-action-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     border-radius: var(--radius-full);
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    font-size: 12.5px;
-    font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
-    text-decoration: none;
-    font-family: var(--font);
 }
 .lightbox-action-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: #ffffff;
+    background: rgba(255, 255, 255, 0.22);
+    transform: scale(1.05);
 }
 
-.lightbox-action-btn.download-btn {
-    background: #ffffff;
-    color: #000000;
-    border-color: #ffffff;
-}
-.lightbox-action-btn.download-btn:hover {
-    background: #e4e4e7;
-    color: #000000;
-}
-
-.lightbox-action-btn.delete-btn {
-    background: rgba(239, 68, 68, 0.2);
+.lightbox-action-btn.close-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
     color: #fca5a5;
-    border-color: rgba(239, 68, 68, 0.35);
-}
-.lightbox-action-btn.delete-btn:hover {
-    background: #dc2626;
-    color: #ffffff;
-    border-color: #dc2626;
 }
 
-.lightbox-action-btn.icon-only {
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    justify-content: center;
-}
-
+/* Stage Viewport */
 .lightbox-stage {
     position: relative;
     z-index: 10;
@@ -1162,7 +1195,9 @@ img, video {
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    max-height: calc(100vh - 120px);
+    max-height: calc(100vh - 170px);
+    overflow: hidden;
+    user-select: none;
 }
 
 .lightbox-media-viewport {
@@ -1179,30 +1214,31 @@ img, video {
     display: flex;
     align-items: center;
     justify-content: center;
-    max-width: 90vw;
-    max-height: 82vh;
+    max-width: 92vw;
+    max-height: 75vh;
 }
 
 .lightbox-image-element {
     max-width: 100%;
-    max-height: 82vh;
+    max-height: 75vh;
     object-fit: contain;
     border-radius: 4px;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.85);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .lightbox-video-element {
     max-width: 100%;
-    max-height: 82vh;
+    max-height: 75vh;
     border-radius: 4px;
     outline: none;
     background: #000000;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.85);
 }
 
 .lightbox-nav-btn {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1211,20 +1247,166 @@ img, video {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
     z-index: 20;
+    backdrop-filter: blur(16px);
 }
 .lightbox-nav-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.06);
+    background: rgba(255, 255, 255, 0.22);
+    transform: scale(1.08);
+}
+.lightbox.chrome-hidden .lightbox-nav-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Apple Photos Bottom Section (Filmstrip + Floating Dock) */
+.lightbox-bottom-section {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px max(14px, env(safe-area-inset-bottom));
+    width: 100%;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+.lightbox.chrome-hidden .lightbox-bottom-section {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Filmstrip Mini-Scroller */
+.lightbox-filmstrip-bar {
+    max-width: min(92vw, 760px);
+    width: 100%;
+    height: 56px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: rgba(22, 22, 26, 0.72);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.lightbox-filmstrip-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.lightbox-filmstrip-track {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: auto;
+}
+
+.filmstrip-item {
+    position: relative;
+    flex-shrink: 0;
+    width: 38px;
+    height: 46px;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    opacity: 0.45;
+    transform: scale(0.96);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    border: 1.5px solid transparent;
+}
+.filmstrip-item:hover {
+    opacity: 0.85;
+    transform: scale(1.05);
+}
+.filmstrip-item.active {
+    opacity: 1;
+    transform: scale(1.16);
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.45);
+    z-index: 5;
+}
+.filmstrip-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.filmstrip-video-indicator {
+    position: absolute;
+    bottom: 2px;
+    right: 3px;
+    font-size: 8px;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Apple Photos Floating Action Dock */
+.lightbox-apple-dock {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    background: rgba(28, 28, 32, 0.85);
+    backdrop-filter: blur(28px) saturate(190%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.dock-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 5px 12px;
+    border-radius: 9999px;
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    font-size: 10px;
+    font-weight: 500;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    min-width: 46px;
+}
+.dock-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+.dock-btn:active {
+    transform: scale(0.95);
+}
+
+.dock-btn.is-active,
+.dock-btn.is-active svg {
+    color: #ef4444;
+}
+
+.dock-btn.dock-btn-danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
 }
 
 .lightbox-bottom-hint {
     position: relative;
     z-index: 10;
     text-align: center;
-    padding: 12px;
-    font-size: 11px;
+    padding: 4px 12px;
+    font-size: 10.5px;
     color: #64748b;
     display: flex;
     align-items: center;
@@ -1233,6 +1415,25 @@ img, video {
 }
 .hint-dot {
     color: #475569;
+}
+
+@media (max-width: 640px) {
+    .lightbox-nav-btn {
+        display: none !important;
+    }
+    .lightbox-bottom-hint {
+        display: none !important;
+    }
+    .lightbox-header-center {
+        max-width: 55%;
+    }
+    .dock-btn {
+        padding: 5px 8px;
+        min-width: 40px;
+    }
+    .dock-btn span {
+        font-size: 9px;
+    }
 }
 
 /* ============================================================
@@ -2984,5 +3185,104 @@ body.selection-active .card-select-checkbox {
         gap: 10px;
     }
 }
+
+/* ============================================================
+   APPLE PHOTOS iOS 18 "JENIS MEDIA" INSET GROUPED LIST
+   ============================================================ */
+.ios-media-types-section {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.ios-section-heading {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+    letter-spacing: -0.02em;
+}
+
+.ios-media-types-list {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.ios-media-type-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    text-decoration: none;
+    transition: background 0.15s ease;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.ios-media-type-row:last-child {
+    border-bottom: none;
+}
+.ios-media-type-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.type-row-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.type-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.type-icon-photo {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+}
+
+.type-icon-video {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.type-icon-fav {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.type-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.type-row-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+}
+
+.type-count {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.chevron-arrow {
+    opacity: 0.5;
+    transition: transform 0.15s ease;
+}
+.ios-media-type-row:hover .chevron-arrow {
+    transform: translateX(2px);
+    opacity: 0.9;
+}
+
 
 

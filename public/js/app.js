@@ -20,6 +20,8 @@ function openLightbox(index) {
     if (!lightbox) return;
     lightbox.style.display = 'flex';
     document.body.style.overflow = 'hidden';
+    lightbox.classList.remove('chrome-hidden');
+    buildLightboxFilmstrip();
     updateLightboxContent();
     requestAnimationFrame(() => lightbox.classList.add('active'));
 }
@@ -30,6 +32,7 @@ function closeLightbox() {
     const lightbox = document.getElementById('lightbox');
     if (!lightbox) return;
     lightbox.classList.remove('active');
+    lightbox.classList.remove('chrome-hidden');
     lightbox.style.display = 'none';
     document.body.style.overflow = '';
     // Stop any playing video
@@ -48,6 +51,76 @@ function navigateLightbox(direction) {
     if (isSlideshowActive) {
         resetSlideshowTimer();
     }
+}
+
+function jumpToLightbox(index) {
+    if (index < 0 || index >= lightboxItems.length) return;
+    lightboxIndex = index;
+    updateLightboxContent();
+
+    if (isSlideshowActive) {
+        resetSlideshowTimer();
+    }
+}
+
+function buildLightboxFilmstrip() {
+    const track = document.getElementById('lightbox-filmstrip-track');
+    const bar = document.getElementById('lightbox-filmstrip-bar');
+    if (!track || !bar) return;
+
+    if (lightboxItems.length <= 1) {
+        bar.style.display = 'none';
+        return;
+    }
+    bar.style.display = 'flex';
+
+    track.innerHTML = '';
+    lightboxItems.forEach((item, idx) => {
+        const thumb = document.createElement('div');
+        thumb.className = `filmstrip-item ${idx === lightboxIndex ? 'active' : ''}`;
+        thumb.dataset.index = idx;
+        thumb.title = item.title || `Item ${idx + 1}`;
+
+        if (item.type === 'video') {
+            const videoBadge = document.createElement('span');
+            videoBadge.className = 'filmstrip-video-indicator';
+            videoBadge.innerHTML = '▶';
+            thumb.appendChild(videoBadge);
+        }
+
+        const img = document.createElement('img');
+        img.src = item.thumbnailUrl || item.streamUrl;
+        img.alt = item.title || '';
+        img.loading = 'lazy';
+        thumb.appendChild(img);
+
+        thumb.addEventListener('click', (e) => {
+            e.stopPropagation();
+            jumpToLightbox(idx);
+        });
+
+        track.appendChild(thumb);
+    });
+}
+
+function updateLightboxFilmstrip() {
+    const track = document.getElementById('lightbox-filmstrip-track');
+    if (!track) return;
+
+    // Sync active class
+    const items = track.querySelectorAll('.filmstrip-item');
+    items.forEach((item, idx) => {
+        if (idx === lightboxIndex) {
+            item.classList.add('active');
+            item.scrollIntoView({
+                behavior: 'smooth',
+                inline: 'center',
+                block: 'nearest'
+            });
+        } else {
+            item.classList.remove('active');
+        }
+    });
 }
 
 function updateLightboxContent() {
@@ -126,6 +199,9 @@ function updateLightboxContent() {
             });
         }
     }
+
+    // Update filmstrip highlight & center scroll
+    updateLightboxFilmstrip();
 
     // Update info drawer if currently open
     updateLightboxInfoDrawer(item);
@@ -1334,6 +1410,38 @@ function initLightboxTouchGestures() {
 }
 
 // ============================================================
+// LIGHTBOX CINEMA MODE & FILMSTRIP SCROLLING
+// ============================================================
+function initLightboxStageInteractions() {
+    const stage = document.querySelector('.lightbox-stage');
+    if (stage) {
+        stage.addEventListener('click', (e) => {
+            if (e.target.closest('button') ||
+                e.target.closest('a') ||
+                e.target.closest('video') ||
+                e.target.closest('.lightbox-info-drawer') ||
+                e.target.closest('.lightbox-nav-btn')) {
+                return;
+            }
+            const lightbox = document.getElementById('lightbox');
+            if (lightbox) {
+                lightbox.classList.toggle('chrome-hidden');
+            }
+        });
+    }
+
+    const filmstripBar = document.getElementById('lightbox-filmstrip-bar');
+    if (filmstripBar) {
+        filmstripBar.addEventListener('wheel', (e) => {
+            if (e.deltaY !== 0) {
+                e.preventDefault();
+                filmstripBar.scrollLeft += e.deltaY;
+            }
+        }, { passive: false });
+    }
+}
+
+// ============================================================
 // INITIALIZE
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -1344,4 +1452,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initCardAnimations();
     initAlerts();
     initLightboxTouchGestures();
+    initLightboxStageInteractions();
 });

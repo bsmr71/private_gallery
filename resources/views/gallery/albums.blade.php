@@ -144,6 +144,51 @@
 
         </div>
 
+        <!-- iOS 18 "Jenis Media" (Media Types) Section -->
+        <section class="ios-media-types-section" aria-label="Jenis Media">
+            <h2 class="ios-section-heading">Jenis Media</h2>
+            <div class="ios-media-types-list">
+                <a href="{{ route('gallery.index', ['type' => 'image']) }}" class="ios-media-type-row">
+                    <div class="type-row-left">
+                        <span class="type-icon type-icon-photo">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        </span>
+                        <span class="type-label">Foto</span>
+                    </div>
+                    <div class="type-row-right">
+                        <span class="type-count">{{ $stats['images'] ?? 0 }}</span>
+                        <svg class="chevron-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </div>
+                </a>
+
+                <a href="{{ route('gallery.index', ['type' => 'video']) }}" class="ios-media-type-row">
+                    <div class="type-row-left">
+                        <span class="type-icon type-icon-video">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                        </span>
+                        <span class="type-label">Video</span>
+                    </div>
+                    <div class="type-row-right">
+                        <span class="type-count">{{ $stats['videos'] ?? 0 }}</span>
+                        <svg class="chevron-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </div>
+                </a>
+
+                <a href="{{ route('gallery.index', ['favorite' => '1']) }}" class="ios-media-type-row">
+                    <div class="type-row-left">
+                        <span class="type-icon type-icon-fav">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                        </span>
+                        <span class="type-label">Favorit</span>
+                    </div>
+                    <div class="type-row-right">
+                        <span class="type-count">{{ $stats['favorites'] ?? 0 }}</span>
+                        <svg class="chevron-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </div>
+                </a>
+            </div>
+        </section>
+
         @if($albums->count() === 0)
         <!-- Empty State -->
         <div class="gallery-empty-state" style="margin-top: 40px;">
