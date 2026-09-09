@@ -1,14 +1,14 @@
-import * as MediaLibrary from 'expo-media-library';
+import * as ImagePicker from 'expo-image-picker';
 import { ApiService } from './api';
 import { StorageService } from './storage';
 
 export const SyncService = {
     /**
-     * Request device media library permissions.
+     * Request device media library permissions via expo-image-picker (fully supported in Expo Go).
      */
     async requestPermissions() {
         try {
-            const { status } = await MediaLibrary.requestPermissionsAsync();
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
             return status === 'granted';
         } catch (e) {
             console.warn('Permission request error:', e);
@@ -17,89 +17,42 @@ export const SyncService = {
     },
 
     /**
-     * Check current permission status.
+     * Open system photo picker to select multiple photos/videos from any folder.
      */
-    async hasPermissions() {
+    async pickMediaFromDevice(options = {}) {
         try {
-            const { status } = await MediaLibrary.getPermissionsAsync();
-            return status === 'granted';
-        } catch (e) {
-            return false;
-        }
-    },
+            const res = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images', 'videos'],
+                allowsMultipleSelection: true,
+                selectionLimit: options.limit || 50,
+                quality: 1,
+            });
 
-    /**
-     * Fetch list of albums on the device for the user to choose from.
-     */
-    async getDeviceAlbums() {
-        try {
-            const permitted = await this.hasPermissions();
-            if (!permitted) return [];
+            if (res.canceled || !res.assets) {
+                return [];
+            }
 
-            const albums = await MediaLibrary.getAlbumsAsync();
-            return albums.sort((a, b) => b.assetCount - a.assetCount);
+            return res.assets.map((a, idx) => {
+                const ext = a.fileName ? a.fileName.split('.').pop().toLowerCase() : (a.type === 'video' ? 'mp4' : 'jpg');
+                return {
+                    id: a.assetId || `vault_${Date.now()}_${idx}`,
+                    uri: a.uri,
+                    filename: a.fileName || `vault_${Date.now()}_${idx}.${ext}`,
+                    mediaType: a.type === 'video' ? 'video' : 'photo',
+                    width: a.width,
+                    height: a.height,
+                    fileSize: a.fileSize,
+                };
+            });
         } catch (e) {
-            console.warn('Failed to load device albums:', e);
+            console.warn('Error picking media:', e);
             return [];
         }
     },
 
     /**
-     * Find album by name.
-     */
-    async findAlbumByName(albumName) {
-        try {
-            const albums = await MediaLibrary.getAlbumsAsync();
-            return albums.find(
-                (a) => a.title.toLowerCase() === albumName.trim().toLowerCase()
-            ) || null;
-        } catch (e) {
-            return null;
-        }
-    },
-
-    /**
-     * Read pending (unsynced) media assets from the designated vault folder.
-     */
-    async getPendingVaultAssets(folderName = null) {
-        try {
-            const permitted = await this.hasPermissions();
-            if (!permitted) return { album: null, assets: [] };
-
-            const targetName = folderName || (await StorageService.getVaultFolderName());
-            const album = await this.findAlbumByName(targetName);
-
-            if (!album) {
-                return { album: null, assets: [] };
-            }
-
-            // Fetch up to 100 recent assets from this folder
-            const res = await MediaLibrary.getAssetsAsync({
-                album: album.id,
-                first: 100,
-                sortBy: [MediaLibrary.SortBy.creationTime],
-                mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
-            });
-
-            const syncedIds = await StorageService.getSyncedAssetIds();
-            const syncedSet = new Set(syncedIds);
-
-            // Pending assets = items not yet recorded as synced
-            const pending = (res.assets || []).filter((a) => !syncedSet.has(a.id));
-
-            return {
-                album,
-                assets: pending,
-            };
-        } catch (e) {
-            console.warn('Error reading vault assets:', e);
-            return { album: null, assets: [] };
-        }
-    },
-
-    /**
-     * Sync a list of assets to the cloud vault.
-     * Encrypts each item in Google Drive via backend API and optionally deletes the local copy.
+     * Sync a list of staged assets to the cloud vault.
+     * Encrypts each item in Google Drive via backend API.
      */
     async syncAssets(assets, options = {}) {
         const { onProgress, cloudAlbumId = null } = options;
@@ -113,16 +66,14 @@ export const SyncService = {
         for (let i = 0; i < total; i++) {
             const asset = assets[i];
             try {
-                // Get detailed asset info to obtain file URI
-                const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id);
-                const fileUri = assetInfo.localUri || asset.uri;
-
                 const ext = asset.filename ? asset.filename.split('.').pop().toLowerCase() : 'jpg';
                 const isVideo = asset.mediaType === 'video' || ext === 'mp4' || ext === 'mov';
-                const mimeType = isVideo ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}` : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
+                const mimeType = isVideo
+                    ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
+                    : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
 
                 const filePayload = {
-                    uri: fileUri,
+                    uri: asset.uri,
                     fileName: asset.filename || `vault_${Date.now()}.${ext}`,
                     mimeType: mimeType,
                 };
@@ -163,23 +114,11 @@ export const SyncService = {
             await StorageService.addSyncedAssetIds(uploadedAssetIds);
         }
 
-        // Secure Zero Footprint: Delete local original files from device gallery
-        let deletedCount = 0;
-        if (autoDelete && uploadedAssetIds.length > 0) {
-            try {
-                const deleted = await MediaLibrary.deleteAssetsAsync(uploadedAssetIds);
-                if (deleted) {
-                    deletedCount = uploadedAssetIds.length;
-                }
-            } catch (e) {
-                console.warn('Failed to delete local originals:', e);
-            }
-        }
-
         return {
             successCount,
             failCount,
-            deletedCount,
+            autoDeleteRequested: autoDelete,
         };
     },
 };
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -13,105 +13,40 @@ import {
     Dimensions,
     ScrollView,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import * as ImagePicker from 'expo-image-picker';
 import SFSymbol from './SFSymbol';
 import { SyncService } from '../services/syncService';
 import { StorageService } from '../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const THUMB_SIZE = (SCREEN_WIDTH - 64) / 4;
+const THUMB_SIZE = (SCREEN_WIDTH - 72) / 4;
 
 export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
-    const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [progress, setProgress] = useState({ current: 0, total: 0, percentage: 0 });
-
-    const [vaultFolder, setVaultFolder] = useState('PrivateVault');
     const [pendingAssets, setPendingAssets] = useState([]);
-    const [deviceAlbums, setDeviceAlbums] = useState([]);
-    const [showAlbumPicker, setShowAlbumPicker] = useState(false);
-
-    // Settings
     const [autoDelete, setAutoDelete] = useState(true);
-    const [autoSyncOnOpen, setAutoSyncOnOpen] = useState(false);
 
-    const loadSyncData = useCallback(async () => {
+    const handlePickMedia = async () => {
         try {
-            setLoading(true);
-            const folder = await StorageService.getVaultFolderName();
-            const del = await StorageService.getAutoDeleteLocal();
-            const autoSync = await StorageService.getAutoSyncOnOpen();
-
-            setVaultFolder(folder);
-            setAutoDelete(del);
-            setAutoSyncOnOpen(autoSync);
-
-            // Request permission & read pending assets
-            const hasPerm = await SyncService.requestPermissions();
-            if (hasPerm) {
-                const { assets } = await SyncService.getPendingVaultAssets(folder);
-                setPendingAssets(assets);
-
-                const albums = await SyncService.getDeviceAlbums();
-                setDeviceAlbums(albums);
+            const picked = await SyncService.pickMediaFromDevice({ limit: 50 });
+            if (picked.length > 0) {
+                setPendingAssets((prev) => {
+                    const existingUris = new Set(prev.map((p) => p.uri));
+                    const newItems = picked.filter((p) => !existingUris.has(p.uri));
+                    return [...prev, ...newItems];
+                });
             }
         } catch (e) {
-            console.warn('Error loading sync data:', e);
-        } finally {
-            setLoading(false);
+            Alert.alert('Gagal', 'Tidak dapat membuka galeri perangkat.');
         }
-    }, []);
-
-    useEffect(() => {
-        if (visible) {
-            loadSyncData();
-        }
-    }, [visible, loadSyncData]);
-
-    const handleToggleAutoDelete = async (val) => {
-        setAutoDelete(val);
-        await StorageService.setAutoDeleteLocal(val);
     };
 
-    const handleToggleAutoSync = async (val) => {
-        setAutoSyncOnOpen(val);
-        await StorageService.setAutoSyncOnOpen(val);
+    const handleRemoveItem = (index) => {
+        setPendingAssets((prev) => prev.filter((_, i) => i !== index));
     };
 
-    const handleSelectAlbum = async (albumTitle) => {
-        setVaultFolder(albumTitle);
-        await StorageService.setVaultFolderName(albumTitle);
-        setShowAlbumPicker(false);
-        setLoading(true);
-        const { assets } = await SyncService.getPendingVaultAssets(albumTitle);
-        setPendingAssets(assets);
-        setLoading(false);
-    };
-
-    const handlePickManualImages = async () => {
-        try {
-            const res = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images', 'videos'],
-                allowsMultipleSelection: true,
-                selectionLimit: 20,
-                quality: 1,
-            });
-
-            if (!res.canceled && res.assets && res.assets.length > 0) {
-                const picked = res.assets.map((a, idx) => ({
-                    id: `manual_${Date.now()}_${idx}`,
-                    uri: a.uri,
-                    filename: a.fileName || `manual_${Date.now()}_${idx}.${a.type === 'video' ? 'mp4' : 'jpg'}`,
-                    mediaType: a.type === 'video' ? 'video' : 'photo',
-                }));
-
-                // Append to current pending queue
-                setPendingAssets((prev) => [...picked, ...prev]);
-            }
-        } catch (e) {
-            Alert.alert('Gagal', 'Tidak dapat membuka galeri untuk memilih foto.');
-        }
+    const handleClearQueue = () => {
+        setPendingAssets([]);
     };
 
     const handleStartSync = async () => {
@@ -127,17 +62,14 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
 
             Alert.alert(
                 'Sinkronisasi Selesai',
-                `${res.successCount} berkas berhasil dienkripsi dan diamankan di Google Drive.${
-                    res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari HP.` : ''
-                }`,
+                `${res.successCount} berkas berhasil dienkripsi dengan AES-256 dan diamankan di Google Drive.`,
                 [{ text: 'OK' }]
             );
 
-            // Reload pending and notify parent
-            loadSyncData();
+            setPendingAssets([]);
             onSyncCompleted && onSyncCompleted();
         } catch (err) {
-            Alert.alert('Error', err.message || 'Terjadi kesalahan saat sinkronisasi');
+            Alert.alert('Error', err.message || 'Terjadi kendala saat sinkronisasi');
         } finally {
             setSyncing(false);
         }
@@ -154,8 +86,10 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
         >
             <View style={styles.backdrop}>
                 <View style={styles.sheet}>
-                    {/* Header */}
+                    {/* Grab Handle */}
                     <View style={styles.handle} />
+
+                    {/* Header */}
                     <View style={styles.header}>
                         <View style={styles.headerTitleRow}>
                             <SFSymbol name="lock.fill" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
@@ -172,92 +106,65 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                     </View>
 
                     <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                        {/* Vault Folder Selector Card */}
-                        <View style={styles.card}>
-                            <View style={styles.folderRow}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.cardLabel}>FOLDER PENAMPUNG DI HP</Text>
-                                    <Text style={styles.folderName} numberOfLines={1}>
-                                        📁 {vaultFolder}
-                                    </Text>
-                                    <Text style={styles.folderSubtitle}>
-                                        Hanya foto di dalam folder ini yang akan dipantau &amp; diamankan.
-                                    </Text>
-                                </View>
-                                <TouchableOpacity
-                                    style={styles.changeFolderBtn}
-                                    onPress={() => setShowAlbumPicker((prev) => !prev)}
-                                    disabled={syncing}
-                                >
-                                    <Text style={styles.changeFolderText}>
-                                        {showAlbumPicker ? 'Tutup' : 'Ganti'}
-                                    </Text>
-                                </TouchableOpacity>
+                        {/* Info Banner */}
+                        <View style={styles.bannerCard}>
+                            <SFSymbol name="cloud.arrow.up" size={26} color="#0A84FF" style={{ marginRight: 12 }} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.bannerTitle}>Sinkronisasi Privat &amp; Terisolasi</Text>
+                                <Text style={styles.bannerDesc}>
+                                    Pilih foto atau video rahasia dari perangkat Anda untuk langsung dienkripsi AES-256 ke Google Drive tanpa tercecer di galeri publik.
+                                </Text>
                             </View>
-
-                            {/* Album Dropdown Selector */}
-                            {showAlbumPicker && (
-                                <View style={styles.albumPickerContainer}>
-                                    <Text style={styles.pickerTitle}>Pilih Folder di Ponsel Anda:</Text>
-                                    {deviceAlbums.length === 0 ? (
-                                        <Text style={styles.pickerEmpty}>Tidak ada album terdeteksi.</Text>
-                                    ) : (
-                                        deviceAlbums.slice(0, 8).map((album) => (
-                                            <TouchableOpacity
-                                                key={album.id}
-                                                style={[
-                                                    styles.albumOption,
-                                                    vaultFolder.toLowerCase() === album.title.toLowerCase() && styles.albumOptionActive,
-                                                ]}
-                                                onPress={() => handleSelectAlbum(album.title)}
-                                            >
-                                                <Text style={styles.albumOptionText}>
-                                                    {album.title} ({album.assetCount})
-                                                </Text>
-                                                {vaultFolder.toLowerCase() === album.title.toLowerCase() && (
-                                                    <SFSymbol name="checkmark" size={14} color="#0A84FF" />
-                                                )}
-                                            </TouchableOpacity>
-                                        ))
-                                    )}
-                                </View>
-                            )}
                         </View>
 
-                        {/* Pending Items Preview */}
+                        {/* Staged Queue Preview Card */}
                         <View style={styles.card}>
                             <View style={styles.sectionHeaderRow}>
                                 <Text style={styles.cardLabel}>
-                                    FOTO MENGANTRE ({pendingAssets.length})
+                                    ANTREAN DIAMANKAN ({pendingAssets.length})
                                 </Text>
-                                <TouchableOpacity
-                                    onPress={handlePickManualImages}
-                                    disabled={syncing}
-                                    style={styles.addMoreBtn}
-                                >
-                                    <SFSymbol name="plus" size={13} color="#0A84FF" style={{ marginRight: 4 }} />
-                                    <Text style={styles.addMoreText}>Pilih Foto</Text>
-                                </TouchableOpacity>
+                                <View style={styles.actionLinks}>
+                                    {pendingAssets.length > 0 && (
+                                        <TouchableOpacity
+                                            onPress={handleClearQueue}
+                                            disabled={syncing}
+                                            style={styles.clearBtn}
+                                        >
+                                            <Text style={styles.clearText}>Kosongkan</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    <TouchableOpacity
+                                        onPress={handlePickMedia}
+                                        disabled={syncing}
+                                        style={styles.addMoreBtn}
+                                    >
+                                        <SFSymbol name="plus" size={13} color="#0A84FF" style={{ marginRight: 4 }} />
+                                        <Text style={styles.addMoreText}>Pilih Foto</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
 
-                            {loading ? (
-                                <ActivityIndicator size="small" color="#0A84FF" style={{ marginVertical: 20 }} />
-                            ) : pendingAssets.length === 0 ? (
-                                <View style={styles.emptyPending}>
-                                    <SFSymbol name="cloud.checkmark" size={32} color="#30D158" />
-                                    <Text style={styles.emptyPendingTitle}>Semua Foto Sudah Aman</Text>
-                                    <Text style={styles.emptyPendingDesc}>
-                                        Tidak ada foto yang mengantre di folder {vaultFolder}.
+                            {pendingAssets.length === 0 ? (
+                                <TouchableOpacity
+                                    style={styles.pickDashedBox}
+                                    onPress={handlePickMedia}
+                                    activeOpacity={0.7}
+                                    disabled={syncing}
+                                >
+                                    <SFSymbol name="photo.on.rectangle" size={32} color="#0A84FF" />
+                                    <Text style={styles.pickDashedTitle}>Ketuk untuk Memilih Foto / Video</Text>
+                                    <Text style={styles.pickDashedDesc}>
+                                        Buka folder foto di ponsel untuk diamankan ke Vault.
                                     </Text>
-                                </View>
+                                </TouchableOpacity>
                             ) : (
                                 <FlatList
                                     data={pendingAssets}
-                                    keyExtractor={(item) => String(item.id)}
+                                    keyExtractor={(item, idx) => `${item.id}_${idx}`}
                                     horizontal
                                     showsHorizontalScrollIndicator={false}
                                     contentContainerStyle={styles.thumbList}
-                                    renderItem={({ item }) => (
+                                    renderItem={({ item, index }) => (
                                         <View style={styles.thumbWrap}>
                                             <Image source={{ uri: item.uri }} style={styles.thumbImage} resizeMode="cover" />
                                             {item.mediaType === 'video' && (
@@ -265,50 +172,31 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                                     <SFSymbol name="play.fill" size={7} color="#ffffff" />
                                                 </View>
                                             )}
+                                            <TouchableOpacity
+                                                style={styles.removeThumbBtn}
+                                                onPress={() => handleRemoveItem(index)}
+                                                disabled={syncing}
+                                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                            >
+                                                <SFSymbol name="xmark.circle.fill" size={16} color="#ffffff" />
+                                            </TouchableOpacity>
                                         </View>
                                     )}
                                 />
                             )}
                         </View>
 
-                        {/* Security Toggles (Apple Inset Grouped) */}
+                        {/* Security Info Card */}
                         <View style={styles.card}>
-                            <Text style={styles.cardLabel}>PENGATURAN PRIVASI &amp; KEAMANAN</Text>
-
-                            {/* Auto Delete Toggle */}
-                            <View style={styles.toggleRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Hapus dari HP Setelah Backup</Text>
-                                    <Text style={styles.toggleDesc}>
-                                        Menghapus berkas asli dari galeri HP setelah terenkripsi di cloud agar tidak ada jejak (Zero Footprint).
+                            <Text style={styles.cardLabel}>STATUS ENKRIPSI &amp; PRIVASI</Text>
+                            <View style={styles.securityRow}>
+                                <SFSymbol name="lock.fill" size={16} color="#30D158" style={{ marginRight: 10 }} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.securityRowTitle}>Enkripsi Militer AES-256</Text>
+                                    <Text style={styles.securityRowDesc}>
+                                        Setiap berkas dienkripsi secara privat sebelum disimpan di Google Drive Cloud Storage.
                                     </Text>
                                 </View>
-                                <Switch
-                                    value={autoDelete}
-                                    onValueChange={handleToggleAutoDelete}
-                                    trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                                    thumbColor="#ffffff"
-                                    disabled={syncing}
-                                />
-                            </View>
-
-                            <View style={styles.divider} />
-
-                            {/* Auto Sync Toggle */}
-                            <View style={styles.toggleRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Auto-Sync Saat Buka Aplikasi</Text>
-                                    <Text style={styles.toggleDesc}>
-                                        Otomatis amankan foto baru dari folder saat Private Gallery dibuka.
-                                    </Text>
-                                </View>
-                                <Switch
-                                    value={autoSyncOnOpen}
-                                    onValueChange={handleToggleAutoSync}
-                                    trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
-                                    thumbColor="#ffffff"
-                                    disabled={syncing}
-                                />
                             </View>
                         </View>
 
@@ -340,7 +228,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                 <Text style={styles.syncBtnText}>
                                     {pendingAssets.length > 0
                                         ? `Amankan ${pendingAssets.length} Foto ke Cloud`
-                                        : 'Tidak Ada Foto untuk Di-Sync'}
+                                        : 'Pilih Foto Terlebih Dahulu'}
                                 </Text>
                             </TouchableOpacity>
                         )}
@@ -354,7 +242,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
 const styles = StyleSheet.create({
     backdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
         justifyContent: 'flex-end',
     },
     sheet: {
@@ -404,6 +292,27 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 16,
     },
+    bannerCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(10, 132, 255, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(10, 132, 255, 0.22)',
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 14,
+    },
+    bannerTitle: {
+        color: '#0A84FF',
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    bannerDesc: {
+        color: '#cbd5e1',
+        fontSize: 12,
+        lineHeight: 16,
+    },
     card: {
         backgroundColor: '#2c2c2e',
         borderRadius: 16,
@@ -415,73 +324,25 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#8E8E93',
         letterSpacing: 0.5,
-        marginBottom: 6,
-    },
-    folderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    folderName: {
-        color: '#ffffff',
-        fontSize: 17,
-        fontWeight: '700',
-        marginTop: 2,
-    },
-    folderSubtitle: {
-        color: '#8E8E93',
-        fontSize: 12,
-        marginTop: 4,
-        lineHeight: 16,
-    },
-    changeFolderBtn: {
-        backgroundColor: 'rgba(10, 132, 255, 0.15)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 14,
-    },
-    changeFolderText: {
-        color: '#0A84FF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    albumPickerContainer: {
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    pickerTitle: {
-        color: '#cbd5e1',
-        fontSize: 12,
-        fontWeight: '600',
-        marginBottom: 8,
-    },
-    pickerEmpty: {
-        color: '#8E8E93',
-        fontSize: 12,
-        fontStyle: 'italic',
-    },
-    albumOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 9,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-    },
-    albumOptionActive: {
-        backgroundColor: 'rgba(10, 132, 255, 0.15)',
-    },
-    albumOptionText: {
-        color: '#ffffff',
-        fontSize: 14,
     },
     sectionHeaderRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 10,
+        marginBottom: 12,
+    },
+    actionLinks: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    clearBtn: {
+        paddingVertical: 2,
+        paddingHorizontal: 4,
+    },
+    clearText: {
+        color: '#8E8E93',
+        fontSize: 12,
     },
     addMoreBtn: {
         flexDirection: 'row',
@@ -494,17 +355,24 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
     },
-    emptyPending: {
+    pickDashedBox: {
+        borderWidth: 1.5,
+        borderColor: 'rgba(10, 132, 255, 0.35)',
+        borderStyle: 'dashed',
+        borderRadius: 14,
+        paddingVertical: 24,
+        paddingHorizontal: 16,
         alignItems: 'center',
-        paddingVertical: 18,
+        justifyContent: 'center',
+        backgroundColor: 'rgba(10, 132, 255, 0.04)',
     },
-    emptyPendingTitle: {
-        color: '#30D158',
-        fontSize: 15,
+    pickDashedTitle: {
+        color: '#ffffff',
+        fontSize: 14,
         fontWeight: '600',
-        marginTop: 8,
+        marginTop: 10,
     },
-    emptyPendingDesc: {
+    pickDashedDesc: {
         color: '#8E8E93',
         fontSize: 12,
         textAlign: 'center',
@@ -537,27 +405,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    toggleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 8,
+    removeThumbBtn: {
+        position: 'absolute',
+        top: 2,
+        right: 2,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        borderRadius: 8,
     },
-    toggleTitle: {
+    securityRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginTop: 8,
+    },
+    securityRowTitle: {
         color: '#ffffff',
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
     },
-    toggleDesc: {
+    securityRowDesc: {
         color: '#8E8E93',
         fontSize: 12,
         lineHeight: 16,
         marginTop: 2,
-    },
-    divider: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        marginVertical: 4,
     },
     syncingCard: {
         backgroundColor: 'rgba(10, 132, 255, 0.1)',

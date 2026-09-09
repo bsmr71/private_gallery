@@ -18,8 +18,6 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
 import VaultSyncModal from '../components/VaultSyncModal';
-import { SyncService } from '../services/syncService';
-import { StorageService } from '../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -46,7 +44,6 @@ export default function LibraryScreen() {
 
     // Vault Sync state
     const [syncModalVisible, setSyncModalVisible] = useState(false);
-    const [pendingVaultCount, setPendingVaultCount] = useState(0);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
@@ -71,32 +68,13 @@ export default function LibraryScreen() {
         }
     }, []);
 
-    const checkPendingVault = useCallback(async () => {
-        try {
-            const autoSync = await StorageService.getAutoSyncOnOpen();
-            const { assets } = await SyncService.getPendingVaultAssets();
-            setPendingVaultCount(assets.length);
-
-            if (autoSync && assets.length > 0) {
-                SyncService.syncAssets(assets).then((res) => {
-                    if (res.successCount > 0) {
-                        fetchMedia(1, true);
-                        checkPendingVault();
-                    }
-                });
-            }
-        } catch (e) {}
-    }, [fetchMedia]);
-
     useEffect(() => {
         fetchMedia(1);
-        checkPendingVault();
-    }, [fetchMedia, checkPendingVault]);
+    }, [fetchMedia]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchMedia(1, true);
-        checkPendingVault();
     };
 
     const loadMore = () => {
@@ -218,13 +196,6 @@ export default function LibraryScreen() {
                             activeOpacity={0.7}
                         >
                             <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
-                            {pendingVaultCount > 0 && (
-                                <View style={styles.syncBadge}>
-                                    <Text style={styles.syncBadgeText}>
-                                        {pendingVaultCount > 99 ? '99+' : pendingVaultCount}
-                                    </Text>
-                                </View>
-                            )}
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -364,14 +335,8 @@ export default function LibraryScreen() {
             {/* Isolated Vault Sync Modal */}
             <VaultSyncModal
                 visible={syncModalVisible}
-                onClose={() => {
-                    setSyncModalVisible(false);
-                    checkPendingVault();
-                }}
-                onSyncCompleted={() => {
-                    fetchMedia(1, true);
-                    checkPendingVault();
-                }}
+                onClose={() => setSyncModalVisible(false)}
+                onSyncCompleted={() => fetchMedia(1, true)}
             />
         </View>
     );
