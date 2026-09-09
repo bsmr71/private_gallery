@@ -1,59 +1,184 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+<div align="center">
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+# 📷 Private Media Gallery
 
-## About Laravel
+**Galeri Foto & Video Pribadi Mandiri (*Self-Hosted*) dengan Enkripsi AES-256, Google Drive 2TB, & Autentikasi 2FA**
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+[![Laravel](https://img.shields.io/badge/Laravel-11.x-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://php.net)
+[![Security](https://img.shields.io/badge/Encryption-AES--256--CBC-10b981?style=for-the-badge&logo=lock&logoColor=white)](#keamanan--privasi)
+[![Theme](https://img.shields.io/badge/Theme-Dark%20%7C%20Light-3b82f6?style=for-the-badge)](#antarmuka-modern)
+[![Tests](https://img.shields.io/badge/Tests-19%20Passed-success?style=for-the-badge)](tests)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+</div>
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🌟 Tentang Aplikasi
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+**Private Media Gallery** adalah aplikasi galeri foto dan video pribadi yang dirancang untuk pengguna yang menginginkan kendali penuh atas privasi data visual mereka. Media dienkripsi secara otomatis menggunakan algoritma **AES-256-CBC** sebelum disimpan ke Google Drive (mendukung kuota 2TB Google One) sehingga pihak penyedia hosting maupun pihak ketiga tidak dapat melihat isi foto, video, maupun kredensial rahasia Anda.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Antarmuka dirancang bersih, intuitif, dan responsif dengan inspirasi dari antarmuka modern **Apple Photos** dan **Google Photos**, lengkap dengan dukungan **Mode Gelap (Dark Mode)** dan **Mode Terang (Light Mode)**.
 
-## Laravel Sponsors
+---
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## ✨ Fitur Unggulan
 
-### Premium Partners
+### 🔒 1. Keamanan & Enkripsi Berlapis
+- **Enkripsi Berkas Media (AES-256-CBC)**: Setiap foto dan video dienkripsi di server sebelum diunggah ke Google Drive.
+- **Enkripsi Kredensial Database**: Seluruh data sensitif (Client Secret OAuth, Refresh Token, TOTP Secret 2FA, dan Recovery Codes) dienkripsi secara otomatis saat disimpan di database untuk mencegah kebocoran data dari pihak pengelola hosting.
+- **Proteksi Brute-Force**: Pembatasan percobaan login (*Rate Limiting*) otomatis mengunci akun selama 15 menit setelah 5 kali kesalahan input password berturut-turut.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### ☁️ 2. Penyimpanan Cloud Google Drive (Google One 2TB)
+- **Integrasi OAuth 2.0**: Menghubungkan penyimpanan langsung ke akun Google One pribadi Anda tanpa bergantung pada kuota shared hosting.
+- **Streaming Video Halus**: Didukung oleh HTTP Range Requests (`206 Partial Content`) sehingga video dapat diputar langsung dan dipercepat (*seek*) tanpa harus menunggu unduhan penuh.
+- **Unduh Berkas Asli**: Tombol unduh instan pada kartu thumbnail maupun di layar Lightbox, yang mendekripsi berkas secara otomatis saat diunduh.
 
-## Contributing
+### 🛡️ 3. Autentikasi 2-Langkah (2FA)
+- **Google Authenticator (TOTP)**: Dukungan autentikasi dua faktor standar industri RFC 6238 menggunakan QR Code.
+- **Kode Pemulihan Darurat (*Recovery Codes*)**: Disediakan 8 kode darurat sekali pakai yang dapat disalin atau diunduh sebagai berkas `.txt` jika ponsel hilang.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 🎨 4. Antarmuka Pengguna Modern (Apple & Google Photos Style)
+- **Photo Wall Grid**: Tata letak grid rapat berasio 1:1 (*square mosaic*) yang seragam dan bersih tanpa elemen promosi/marketing yang mengganggu.
+- **Beralih Tema Instan (Dark / Light Mode)**: Dilengkapi tombol pengalih tema di bilah navigasi atas dengan deteksi otomatis preferensi sistem operasi dan penyimpanan ke `localStorage` (bebas kedipan layar).
+- **Lightbox Viewer Imersif**: Modal penampil foto/video layar penuh dengan kontrol pintasan keyboard:
+  - `D` : Unduh berkas media asli
+  - `F` : Layar Penuh (*Fullscreen*)
+  - `←` / `→` : Navigasi ke foto/video sebelumnya / berikutnya
+  - `Esc` : Tutup Lightbox
+- **Ekstraksi Thumbnail Video via FFmpeg**: Ekstraksi frame video asli otomatis sehingga thumbnail video tampil jernih, bukan sekadar ikon generik.
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## 📋 Persyaratan Sistem
 
-## Security Vulnerabilities
+- **PHP**: Versi `8.2` atau lebih tinggi
+- **Ekstensi PHP**:
+  - `OpenSSL` (untuk enkripsi AES-256)
+  - `PDO_SQLite` (atau PDO MySQL / PostgreSQL)
+  - `GD` (untuk pengolahan thumbnail gambar)
+  - `FileInfo` (untuk verifikasi MIME type berkas)
+  - `cURL` (untuk komunikasi dengan Google API)
+  - `Mbstring`
+- **Composer**: Versi `2.x`
+- **FFmpeg**: Disarankan terpasang di sistem agar ekstraksi thumbnail video otomatis aktif.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
-## License
+## 🚀 Panduan Instalasi Cepat
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 1. Clone Repository
+```bash
+git clone https://github.com/bsmr71/private_gallery.git
+cd private_gallery
+```
+
+### 2. Pasang Dependensi
+```bash
+composer install
+npm install && npm run build # opsional jika ingin memproses ulang aset
+```
+
+### 3. Konfigurasi Lingkungan (`.env`)
+Salin contoh konfigurasi lingkungan dan buat kunci aplikasi:
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Pastikan konfigurasi database di file `.env` sudah sesuai (secara default menggunakan SQLite):
+```env
+DB_CONNECTION=sqlite
+```
+*(Jika file database SQLite belum ada, sistem akan otomatis membuatnya saat migrasi).*
+
+### 4. Jalankan Migrasi & Database Seeder
+```bash
+php artisan migrate --seed
+```
+
+Perintah di atas akan membuat akun administrator bawaan:
+- **Email:** `admin@gallery.local`
+- **Password:** `admin123`
+
+> ⚠️ **PENTING:** Segera ganti password dan aktifkan autentikasi 2-langkah (2FA) di menu pengaturan setelah login pertama kali!
+
+### 5. Jalankan Server Lokal
+```bash
+php artisan serve
+```
+Akses aplikasi melalui peramban di: **`http://localhost:8000`**
+
+---
+
+## ⚙️ Menghubungkan Google Drive (2TB)
+
+1. Masuk ke [Google Cloud Console](https://console.cloud.google.com/).
+2. Buat proyek baru dan aktifkan **Google Drive API**.
+3. Di menu **OAuth consent screen**:
+   - Pilih jenis pengguna **External**.
+   - Masukkan nama aplikasi dan email Anda.
+   - Tambahkan scope: `.../auth/drive.file`.
+   - Di bagian *Test Users*, tambahkan email Google Anda.
+4. Di menu **Credentials**:
+   - Buat **OAuth client ID** bertipe **Web application**.
+   - Pada bagian **Authorized redirect URIs**, masukkan:
+     ```
+     http://localhost:8000/admin/google/callback
+     ```
+     *(Atau sesuaikan dengan domain yang ditampilkan di halaman Admin Settings).*
+5. Salin **Client ID** dan **Client Secret** yang Anda dapatkan, lalu masukkan ke menu **Settings** (`/admin/settings`) di aplikasi Anda, lalu klik **Simpan & Hubungkan Akun Google**.
+
+---
+
+## 🧪 Menjalankan Pengujian Otomatis (*Tests*)
+
+Seluruh fitur inti, sistem keamanan enkripsi, proses unduh, dan autentikasi telah dilengkapi dengan pengujian otomatis:
+
+```bash
+php artisan test
+```
+
+Hasil pengujian mencakup:
+```text
+PASS  Tests\Unit\ExampleTest
+PASS  Tests\Feature\ExampleTest
+PASS  Tests\Feature\MediaDownloadTest
+PASS  Tests\Feature\SecurityAndTwoFactorTest
+
+Tests:    19 passed (63 assertions)
+```
+
+---
+
+## 📁 Struktur Direktori Penting
+
+```text
+private_gallery/
+├── app/
+│   ├── Http/Controllers/
+│   │   ├── GalleryController.php       # Controller galeri utama & filter
+│   │   ├── MediaController.php         # Streaming, download, upload, & thumbnail FFmpeg
+│   │   ├── GoogleAuthController.php    # OAuth 2.0 & manajemen setting Google Drive
+│   │   └── AuthController.php          # Login, rate limiting, & verifikasi 2FA
+│   ├── Services/
+│   │   ├── FileEncryptionService.php   # Layanan enkripsi/dekripsi AES-256-CBC
+│   │   ├── GoogleDriveService.php      # Komunikasi Google Drive API v3
+│   │   ├── MediaCacheService.php       # Manajemen cache dekripsi berkas lokal
+│   │   └── TotpService.php             # Pembuat kode QR & verifikator TOTP 2FA
+├── resources/views/
+│   ├── gallery/                        # Tampilan foto/video grid & segmented tabs
+│   ├── admin/                          # Dashboard metrik, upload, & pengaturan sistem
+│   └── layouts/app.blade.php           # Template dasar, navbar, lightbox, & theme switcher
+├── public/
+│   ├── css/app.css                     # Sistem desain Mode Gelap & Terang
+│   └── js/app.js                       # Logika lightbox, tema, lazy load, & upload AJAX
+└── tests/                              # 19 Unit & Feature tests
+```
+
+---
+
+## 📄 Lisensi
+
+Aplikasi ini dilisensikan di bawah lisensi terbuka [MIT License](LICENSE). Bebas digunakan dan dimodifikasi untuk kebutuhan pribadi maupun komersial.
