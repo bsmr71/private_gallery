@@ -24,7 +24,14 @@ class MediaApiController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Media::with('album')->where('is_locked', false)->latest();
+        $hasLockedMedia = \Illuminate\Support\Facades\Schema::hasColumn('media', 'is_locked');
+        $hasLockedAlbums = \Illuminate\Support\Facades\Schema::hasColumn('albums', 'is_locked');
+
+        $query = Media::with('album')->latest();
+
+        if ($hasLockedMedia) {
+            $query->where('is_locked', false);
+        }
 
         if ($request->filled('type') && in_array($request->type, ['image', 'video'])) {
             $query->where('type', $request->type);
@@ -55,11 +62,11 @@ class MediaApiController extends Controller
         });
 
         $stats = [
-            'total' => Media::where('is_locked', false)->count(),
-            'images' => Media::where('is_locked', false)->where('type', 'image')->count(),
-            'videos' => Media::where('is_locked', false)->where('type', 'video')->count(),
-            'favorites' => Media::where('is_locked', false)->where('is_favorite', true)->count(),
-            'albums' => Album::where('is_locked', false)->count(),
+            'total' => $hasLockedMedia ? Media::where('is_locked', false)->count() : Media::count(),
+            'images' => $hasLockedMedia ? Media::where('is_locked', false)->where('type', 'image')->count() : Media::where('type', 'image')->count(),
+            'videos' => $hasLockedMedia ? Media::where('is_locked', false)->where('type', 'video')->count() : Media::where('type', 'video')->count(),
+            'favorites' => $hasLockedMedia ? Media::where('is_locked', false)->where('is_favorite', true)->count() : Media::where('is_favorite', true)->count(),
+            'albums' => $hasLockedAlbums ? Album::where('is_locked', false)->count() : Album::count(),
         ];
 
         return response()->json([

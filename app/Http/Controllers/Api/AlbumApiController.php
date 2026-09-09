@@ -16,12 +16,21 @@ class AlbumApiController extends Controller
     public function index(Request $request): JsonResponse
     {
         $token = $request->attributes->get('plain_api_token') ?: $request->bearerToken() ?: $request->query('token');
-        $tokenParam = $token ? '?token=' . urlencode($token) : '';
+        $tokenParam = $request->bearerToken() ? '?token=' . urlencode($request->bearerToken()) : '';
         $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
 
-        $albums = Album::where('is_locked', false)
-            ->withCount(['media' => function ($q) {
-                $q->where('is_locked', false);
+        $hasLockedMedia = \Illuminate\Support\Facades\Schema::hasColumn('media', 'is_locked');
+        $hasLockedAlbums = \Illuminate\Support\Facades\Schema::hasColumn('albums', 'is_locked');
+
+        $albumsQuery = Album::query();
+        if ($hasLockedAlbums) {
+            $albumsQuery->where('is_locked', false);
+        }
+
+        $albums = $albumsQuery->withCount(['media' => function ($q) use ($hasLockedMedia) {
+                if ($hasLockedMedia) {
+                    $q->where('is_locked', false);
+                }
             }])
             ->orderBy('name')
             ->get()
