@@ -94,7 +94,16 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $token = $request->attributes->get('current_api_token');
+        if ($token) {
+            $token->delete();
+        } else {
+            $bearer = $request->bearerToken();
+            if ($bearer) {
+                $record = \App\Models\PersonalAccessToken::findToken($bearer);
+                if ($record) $record->delete();
+            }
+        }
 
         return response()->json([
             'success' => true,

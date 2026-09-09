@@ -16,8 +16,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-// Protected Endpoints (Bearer Token / Laravel Sanctum)
-Route::middleware('auth:sanctum')->group(function () {
+// Protected Endpoints (Bearer Token Authentication)
+Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(function () {
     // Current User Profile & Logout
     Route::prefix('auth')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);

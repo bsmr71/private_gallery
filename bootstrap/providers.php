@@ -2,7 +2,12 @@
 
 use App\Providers\AppServiceProvider;
 
-return [
+$providers = [
     AppServiceProvider::class,
-    Laravel\Sanctum\SanctumServiceProvider::class,
 ];
+
+if (class_exists(\Laravel\Sanctum\SanctumServiceProvider::class)) {
+    $providers[] = \Laravel\Sanctum\SanctumServiceProvider::class;
+}
+
+return $providers;
