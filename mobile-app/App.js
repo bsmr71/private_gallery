@@ -7,6 +7,7 @@ import { BlurView } from 'expo-blur';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
 import { SecurityService } from './src/services/securityService';
+import * as ScreenCapture from 'expo-screen-capture';
 import AppLockOverlay from './src/components/AppLockOverlay';
 import SFSymbol from './src/components/SFSymbol';
 
@@ -125,6 +126,8 @@ export default function App() {
     const [privacyShield, setPrivacyShield] = useState(false);
 
     useEffect(() => {
+        // Enforce OS-level FLAG_SECURE: prevents Android task switcher snapshots and screen recording
+        ScreenCapture.preventScreenCaptureAsync().catch(() => {});
         checkAuth();
     }, []);
 
@@ -226,10 +229,13 @@ export default function App() {
 
     return (
         <SafeAreaProvider>
-            <NavigationContainer theme={appTheme}>
-                <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <MainTabs onLogout={() => setIsAuthenticated(false)} />
-            </NavigationContainer>
+            {/* Gallery Navigation Tree - Opaque 0 when locked to completely prevent any frame bleed */}
+            <View style={[StyleSheet.absoluteFill, { opacity: isLocked ? 0 : 1 }]}>
+                <NavigationContainer theme={appTheme}>
+                    <StatusBar barStyle="light-content" backgroundColor="#000000" />
+                    <MainTabs onLogout={() => setIsAuthenticated(false)} />
+                </NavigationContainer>
+            </View>
 
             {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
             {privacyShield && (

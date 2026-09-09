@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Modal,
     Animated,
     Dimensions,
     Platform,
@@ -123,13 +122,7 @@ export default function AppLockOverlay({ visible, onUnlock }) {
     if (!visible) return null;
 
     return (
-        <Modal
-            visible={visible}
-            animationType="none"
-            transparent
-            statusBarTranslucent
-            onRequestClose={() => {}}
-        >
+        <View style={[StyleSheet.absoluteFill, styles.overlayRoot]}>
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
             <View style={styles.container}>
                 <BlurView tint="dark" intensity={100} style={StyleSheet.absoluteFill} />
@@ -204,13 +197,18 @@ export default function AppLockOverlay({ visible, onUnlock }) {
                     })}
                 </View>
             </View>
-        </Modal>
+        </View>
     );
 }
 
 const BTN_SIZE = Math.min(SCREEN_WIDTH * 0.2, 76);
 
 const styles = StyleSheet.create({
+    overlayRoot: {
+        zIndex: 9999999,
+        elevation: 9999999,
+        backgroundColor: '#000000',
+    },
     container: {
         flex: 1,
         backgroundColor: '#000000',
