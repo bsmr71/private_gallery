@@ -56,7 +56,7 @@ Antarmuka dirancang bersih, intuitif, dan responsif dengan inspirasi dari antarm
 - **PHP**: Versi `8.2` atau lebih tinggi
 - **Ekstensi PHP**:
   - `OpenSSL` (untuk enkripsi AES-256)
-  - `PDO_SQLite` (atau PDO MySQL / PostgreSQL)
+  - `PDO_MySQL` (atau MariaDB / SQLite)
   - `GD` (untuk pengolahan thumbnail gambar)
   - `FileInfo` (untuk verifikasi MIME type berkas)
   - `cURL` (untuk komunikasi dengan Google API)
@@ -87,11 +87,15 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Pastikan konfigurasi database di file `.env` sudah sesuai (secara default menggunakan SQLite):
+Pastikan konfigurasi database di file `.env` sudah sesuai dengan database MySQL Anda (misalnya di cPanel atau server lokal):
 ```env
-DB_CONNECTION=sqlite
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=gallery_db
+DB_USERNAME=root
+DB_PASSWORD=
 ```
-*(Jika file database SQLite belum ada, sistem akan otomatis membuatnya saat migrasi).*
 
 ### 4. Jalankan Migrasi & Database Seeder
 ```bash
