@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Private Gallery",
+    "name": "Lumina",
     "slug": "private-gallery",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,10 +13,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bsmrlab.privategallery"
+      "bundleIdentifier": "com.bsmrlab.lumina"
     },
     "android": {
-      "package": "com.bsmrlab.privategallery",
+      "package": "com.bsmrlab.lumina",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
