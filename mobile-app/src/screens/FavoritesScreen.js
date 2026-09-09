@@ -14,6 +14,7 @@ import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
+import { SecurityService } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -28,6 +29,13 @@ export default function FavoritesScreen() {
     const [selectedIdx, setSelectedIdx] = useState(0);
 
     const fetchFavorites = useCallback(async () => {
+        if (SecurityService.isDecoyMode()) {
+            setMediaItems([]);
+            setLoading(false);
+            setRefreshing(false);
+            return;
+        }
+
         try {
             setLoading(true);
             const res = await ApiService.getMedia({ favorite: 1, per_page: 50 });

@@ -255,6 +255,45 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
                 </Svg>
             );
         }
+        case 'lock.open':
+        case 'lock.open.fill': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Rect x="4" y="10" width="16" height="11" rx="3" stroke={color} strokeWidth={strokeWidth} fill={focused ? color : 'none'} />
+                    <Path d="M7.5 7C7.5 4.51 9.51 2.5 12 2.5C14.49 2.5 16.5 4.51 16.5 7V5.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                    <Circle cx="12" cy="15.5" r="1.4" fill={color} />
+                </Svg>
+            );
+        }
+        case 'touchid':
+        case 'fingerprint': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M12 2C8.69 2 6 4.69 6 8C6 11.23 8.35 15.65 12 21C15.65 15.65 18 11.23 18 8C18 4.69 15.31 2 12 2Z" stroke={color} strokeWidth={strokeWidth * 0.9} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M12 6C10.9 6 10 6.9 10 8C10 9.5 11 11.5 12 13.5C13 11.5 14 9.5 14 8C14 6.9 13.1 6 12 6Z" stroke={color} strokeWidth={strokeWidth * 0.9} strokeLinecap="round" strokeLinejoin="round" />
+                    <Circle cx="12" cy="8" r="1" fill={color} />
+                </Svg>
+            );
+        }
+        case 'faceid': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M3 8V5C3 3.9 3.9 3 5 3H8M16 3H19C20.1 3 21 3.9 21 5V8M21 16V19C21 20.1 20.1 21 19 21H16M8 21H5C3.9 21 3 20.1 3 19V16" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Circle cx="9" cy="10" r="1.2" fill={color} />
+                    <Circle cx="15" cy="10" r="1.2" fill={color} />
+                    <Path d="M12 11V14.5M9.5 17C10.2 17.6 11.1 18 12 18C12.9 18 13.8 17.6 14.5 17" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                </Svg>
+            );
+        }
+        case 'delete.left':
+        case 'backspace': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M8 5L2 12L8 19H20C21.1 19 22 18.1 22 17V7C22 5.9 21.1 5 20 5H8Z" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M12 9L17 14M17 9L12 14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
 
         // --- 14. PENCIL / EDIT ---
         case 'pencil':

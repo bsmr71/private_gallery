@@ -14,6 +14,7 @@ import {
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
+import { SecurityService } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -48,7 +49,7 @@ export default function SearchScreen({ onLogout }) {
 
     const handleSearch = async (text) => {
         setQuery(text);
-        if (!text || text.trim().length === 0) {
+        if (!text || text.trim().length === 0 || SecurityService.isDecoyMode()) {
             setResults([]);
             return;
         }

@@ -18,10 +18,12 @@ import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { SyncService } from '../services/syncService';
+import { SecurityService } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
 import VaultSyncModal from '../components/VaultSyncModal';
+import SecuritySettingsModal from '../components/SecuritySettingsModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -50,6 +52,9 @@ export default function LibraryScreen() {
     const [syncModalVisible, setSyncModalVisible] = useState(false);
     const [autoSyncStatus, setAutoSyncStatus] = useState(null);
 
+    // Security Settings Modal state
+    const [securityModalVisible, setSecurityModalVisible] = useState(false);
+
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
@@ -75,6 +80,7 @@ export default function LibraryScreen() {
 
     // Automatic background vault synchronization
     const runAutoSync = useCallback(async () => {
+        if (SecurityService.isDecoyMode()) return;
         try {
             await SyncService.triggerAutoSyncIfPending({
                 onStart: ({ total }) => {
@@ -218,12 +224,16 @@ export default function LibraryScreen() {
         );
     };
 
-    const displayedItems = mediaItems.filter((item) => {
-        if (filterTab === 'image') return item.type === 'image';
-        if (filterTab === 'video') return item.type === 'video';
-        if (filterTab === 'favorite') return item.is_favorite;
-        return true;
-    });
+    const isDecoy = SecurityService.isDecoyMode();
+
+    const displayedItems = isDecoy
+        ? []
+        : mediaItems.filter((item) => {
+            if (filterTab === 'image') return item.type === 'image';
+            if (filterTab === 'video') return item.type === 'video';
+            if (filterTab === 'favorite') return item.is_favorite;
+            return true;
+        });
 
     return (
         <View style={styles.container}>
@@ -249,13 +259,15 @@ export default function LibraryScreen() {
                         <Text style={styles.headerTitle}>Perpustakaan</Text>
                         {stats && (
                             <Text style={styles.headerSubtitle}>
-                                {stats.total} Media • {stats.images} Foto, {stats.videos} Video
+                                {isDecoy
+                                    ? '0 Media • 0 Foto, 0 Video'
+                                    : `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`}
                             </Text>
                         )}
                     </View>
 
                     <View style={styles.headerRight}>
-                        {mediaItems.length > 0 && (
+                        {!isDecoy && mediaItems.length > 0 && (
                             <TouchableOpacity
                                 style={styles.selectBtn}
                                 onPress={() => {
@@ -270,14 +282,27 @@ export default function LibraryScreen() {
                             </TouchableOpacity>
                         )}
 
-                        {/* Vault Sync Button */}
-                        <TouchableOpacity
-                            style={styles.syncHeaderBtn}
-                            onPress={() => setSyncModalVisible(true)}
-                            activeOpacity={0.7}
-                        >
-                            <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
-                        </TouchableOpacity>
+                        {!isDecoy && (
+                            <>
+                                {/* Security & Passcode Settings */}
+                                <TouchableOpacity
+                                    style={styles.syncHeaderBtn}
+                                    onPress={() => setSecurityModalVisible(true)}
+                                    activeOpacity={0.7}
+                                >
+                                    <SFSymbol name="lock" size={17} color="#0A84FF" weight="semibold" />
+                                </TouchableOpacity>
+
+                                {/* Vault Sync Button */}
+                                <TouchableOpacity
+                                    style={styles.syncHeaderBtn}
+                                    onPress={() => setSyncModalVisible(true)}
+                                    activeOpacity={0.7}
+                                >
+                                    <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
+                                </TouchableOpacity>
+                            </>
+                        )}
 
                         <TouchableOpacity
                             style={styles.uploadPlusBtn}
@@ -400,7 +425,7 @@ export default function LibraryScreen() {
             {/* Full-Screen Apple Photos Lightbox */}
             <PhotoViewerModal
                 visible={viewerVisible}
-                items={mediaItems}
+                items={displayedItems}
                 initialIndex={selectedIdx}
                 onClose={() => setViewerVisible(false)}
                 onMediaUpdated={(updated) => {
@@ -418,6 +443,12 @@ export default function LibraryScreen() {
                 visible={syncModalVisible}
                 onClose={() => setSyncModalVisible(false)}
                 onSyncCompleted={() => fetchMedia(1, true)}
+            />
+
+            {/* 4-Layer Security & Passcode Settings Modal */}
+            <SecuritySettingsModal
+                visible={securityModalVisible}
+                onClose={() => setSecurityModalVisible(false)}
             />
         </View>
     );

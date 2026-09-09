@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform, LogBox, AppState, Text } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
+import { SecurityService } from './src/services/securityService';
+import AppLockOverlay from './src/components/AppLockOverlay';
 import SFSymbol from './src/components/SFSymbol';
 
 // Suppress harmless development connection warnings so user screen remains clean
@@ -119,6 +121,8 @@ function MainTabs({ onLogout }) {
 export default function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [initializing, setInitializing] = useState(true);
+    const [isLocked, setIsLocked] = useState(false);
+    const [privacyShield, setPrivacyShield] = useState(false);
 
     useEffect(() => {
         checkAuth();
@@ -127,11 +131,66 @@ export default function App() {
     const checkAuth = async () => {
         try {
             const token = await StorageService.getToken();
-            setIsAuthenticated(!!token);
+            const authenticated = !!token;
+            setIsAuthenticated(authenticated);
+            if (authenticated) {
+                const lockEn = await SecurityService.isLockEnabled();
+                if (lockEn) {
+                    setIsLocked(true);
+                    SecurityService.setAppLocked(true);
+                }
+            }
         } catch (e) {
             setIsAuthenticated(false);
         } finally {
             setInitializing(false);
+        }
+    };
+
+    // Auto-Lock & Multitasking Privacy Shield lifecycle
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const handleAppStateChange = async (nextAppState) => {
+            if (nextAppState === 'inactive' || nextAppState === 'background') {
+                // Layer 3: Multitasking privacy shield mask in recent apps carousel
+                setPrivacyShield(true);
+                SecurityService.recordBackgroundTime();
+            } else if (nextAppState === 'active') {
+                const lockEn = await SecurityService.isLockEnabled();
+                if (lockEn) {
+                    const timeout = await SecurityService.getAutoLockTimeout();
+                    if (SecurityService.shouldLockOnForeground(timeout)) {
+                        setIsLocked(true);
+                        SecurityService.setAppLocked(true);
+                    }
+                }
+                setPrivacyShield(false);
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+        return () => {
+            subscription.remove();
+        };
+    }, [isAuthenticated]);
+
+    const handleUnlock = ({ type }) => {
+        setIsLocked(false);
+        SecurityService.setAppLocked(false);
+        if (type === 'decoy') {
+            SecurityService.setDecoyMode(true);
+        } else {
+            SecurityService.setDecoyMode(false);
+        }
+    };
+
+    const handleLoginSuccess = async () => {
+        setIsAuthenticated(true);
+        const lockEn = await SecurityService.isLockEnabled();
+        if (lockEn) {
+            setIsLocked(true);
+            SecurityService.setAppLocked(true);
         }
     };
 
@@ -148,7 +207,7 @@ export default function App() {
         return (
             <SafeAreaProvider>
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />
+                <LoginScreen onLoginSuccess={handleLoginSuccess} />
             </SafeAreaProvider>
         );
     }
@@ -159,6 +218,21 @@ export default function App() {
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
                 <MainTabs onLogout={() => setIsAuthenticated(false)} />
             </NavigationContainer>
+
+            {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
+            {privacyShield && (
+                <View style={[StyleSheet.absoluteFill, styles.privacyShield]}>
+                    <BlurView tint="dark" intensity={95} style={StyleSheet.absoluteFill} />
+                    <View style={styles.privacyShieldContent}>
+                        <SFSymbol name="lock.fill" size={48} color="#0A84FF" />
+                        <Text style={styles.privacyShieldTitle}>Perpustakaan Pribadi</Text>
+                        <Text style={styles.privacyShieldSubtitle}>Dilindungi oleh Apple Vault</Text>
+                    </View>
+                </View>
+            )}
+
+            {/* Layer 1, 2, 4: Passcode & Biometric Lock Overlay */}
+            <AppLockOverlay visible={isLocked} onUnlock={handleUnlock} />
         </SafeAreaProvider>
     );
 }
@@ -169,5 +243,28 @@ const styles = StyleSheet.create({
         backgroundColor: '#000000',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    privacyShield: {
+        zIndex: 999999,
+        backgroundColor: '#000000',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    privacyShieldContent: {
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    privacyShieldTitle: {
+        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: '700',
+        marginTop: 16,
+        letterSpacing: -0.4,
+    },
+    privacyShieldSubtitle: {
+        color: '#8E8E93',
+        fontSize: 13,
+        fontWeight: '500',
+        marginTop: 6,
     },
 });

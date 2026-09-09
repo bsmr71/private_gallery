@@ -17,6 +17,7 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
+import { SecurityService } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
@@ -30,6 +31,13 @@ export default function AlbumsScreen({ navigation }) {
     const [creating, setCreating] = useState(false);
 
     const fetchAlbums = useCallback(async () => {
+        if (SecurityService.isDecoyMode()) {
+            setAlbums([]);
+            setLoading(false);
+            setRefreshing(false);
+            return;
+        }
+
         try {
             const res = await ApiService.getAlbums();
             if (res.success) {
