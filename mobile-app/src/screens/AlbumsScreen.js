@@ -17,13 +17,14 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
-import { SecurityService, useDecoyMode } from '../services/securityService';
+import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
 
 export default function AlbumsScreen({ navigation }) {
     const isDecoy = useDecoyMode();
+    const isLocked = useAppLocked();
     const [albums, setAlbums] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -66,7 +67,7 @@ export default function AlbumsScreen({ navigation }) {
         fetchAlbums();
     };
 
-    const displayedAlbums = isDecoy ? [] : albums;
+    const displayedAlbums = (isDecoy || isLocked) ? [] : albums;
 
     const handleCreateAlbum = async () => {
         if (!newAlbumName.trim()) return;
@@ -156,6 +157,14 @@ export default function AlbumsScreen({ navigation }) {
             </View>
         </View>
     );
+
+    if (isLocked) {
+        return (
+            <View style={styles.container}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>

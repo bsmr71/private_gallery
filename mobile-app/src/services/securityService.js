@@ -15,6 +15,10 @@ let runtimeDecoyMode = false;
 let runtimeIsLocked = false;
 let lastBackgroundTime = 0;
 
+// In-memory synchronous config cache (0ms lookup, zero async latency)
+let cachedLockEnabled = false;
+let cachedTimeout = 'immediately';
+
 const listeners = new Set();
 
 function notifyListeners() {
@@ -31,12 +35,36 @@ function notifyListeners() {
 }
 
 export const SecurityService = {
+    // --- Synchronous In-Memory Cache Init ---
+    async init() {
+        try {
+            const enabled = await AsyncStorage.getItem(SEC_KEYS.ENABLED);
+            const masterPin = await AsyncStorage.getItem(SEC_KEYS.MASTER_PIN);
+            const timeout = await AsyncStorage.getItem(SEC_KEYS.TIMEOUT);
+            cachedLockEnabled = enabled === 'true' && !!masterPin;
+            cachedTimeout = timeout || 'immediately';
+        } catch (e) {
+            cachedLockEnabled = false;
+            cachedTimeout = 'immediately';
+        }
+    },
+
+    isLockEnabledSync() {
+        return cachedLockEnabled;
+    },
+
+    getAutoLockTimeoutSync() {
+        return cachedTimeout;
+    },
+
     // --- Configuration State ---
     async isLockEnabled() {
         try {
             const enabled = await AsyncStorage.getItem(SEC_KEYS.ENABLED);
             const masterPin = await AsyncStorage.getItem(SEC_KEYS.MASTER_PIN);
-            return enabled === 'true' && !!masterPin;
+            const res = enabled === 'true' && !!masterPin;
+            cachedLockEnabled = res;
+            return res;
         } catch (e) {
             return false;
         }
@@ -44,6 +72,7 @@ export const SecurityService = {
 
     async setLockEnabled(boolVal) {
         try {
+            cachedLockEnabled = !!boolVal;
             await AsyncStorage.setItem(SEC_KEYS.ENABLED, boolVal ? 'true' : 'false');
         } catch (e) {}
     },
@@ -60,6 +89,7 @@ export const SecurityService = {
     async setMasterPin(pin) {
         try {
             await AsyncStorage.setItem(SEC_KEYS.MASTER_PIN, String(pin));
+            cachedLockEnabled = true;
             await this.setLockEnabled(true);
         } catch (e) {}
     },
@@ -110,7 +140,8 @@ export const SecurityService = {
     async getAutoLockTimeout() {
         try {
             const val = await AsyncStorage.getItem(SEC_KEYS.TIMEOUT);
-            return val || 'immediately'; // 'immediately' | '1min' | '5min'
+            cachedTimeout = val || 'immediately';
+            return cachedTimeout;
         } catch (e) {
             return 'immediately';
         }
@@ -118,6 +149,7 @@ export const SecurityService = {
 
     async setAutoLockTimeout(timeoutVal) {
         try {
+            cachedTimeout = timeoutVal;
             await AsyncStorage.setItem(SEC_KEYS.TIMEOUT, timeoutVal);
         } catch (e) {}
     },
@@ -250,4 +282,19 @@ export function useDecoyMode() {
     }, []);
 
     return isDecoy;
+}
+
+export function useAppLocked() {
+    const [isLocked, setIsLocked] = useState(SecurityService.isAppCurrentlyLocked());
+
+    useEffect(() => {
+        setIsLocked(SecurityService.isAppCurrentlyLocked());
+
+        const unsubscribe = SecurityService.subscribe(({ isLocked: nextLocked }) => {
+            setIsLocked(nextLocked);
+        });
+        return unsubscribe;
+    }, []);
+
+    return isLocked;
 }

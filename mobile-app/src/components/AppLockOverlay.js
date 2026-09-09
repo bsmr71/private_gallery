@@ -125,7 +125,7 @@ export default function AppLockOverlay({ visible, onUnlock }) {
     return (
         <Modal
             visible={visible}
-            animationType="fade"
+            animationType="none"
             transparent
             statusBarTranslucent
             onRequestClose={() => {}}

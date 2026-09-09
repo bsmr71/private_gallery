@@ -14,7 +14,7 @@ import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
-import { SecurityService, useDecoyMode } from '../services/securityService';
+import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -23,6 +23,7 @@ const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COU
 
 export default function FavoritesScreen() {
     const isDecoy = useDecoyMode();
+    const isLocked = useAppLocked();
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -65,7 +66,15 @@ export default function FavoritesScreen() {
         fetchFavorites();
     };
 
-    const displayedItems = isDecoy ? [] : mediaItems;
+    const displayedItems = (isDecoy || isLocked) ? [] : mediaItems;
+
+    if (isLocked) {
+        return (
+            <View style={styles.container}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>

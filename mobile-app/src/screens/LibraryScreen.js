@@ -18,7 +18,7 @@ import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { SyncService } from '../services/syncService';
-import { SecurityService, useDecoyMode } from '../services/securityService';
+import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -32,6 +32,7 @@ const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COU
 
 export default function LibraryScreen() {
     const isDecoy = useDecoyMode();
+    const isLocked = useAppLocked();
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -238,7 +239,7 @@ export default function LibraryScreen() {
         );
     };
 
-    const displayedItems = isDecoy
+    const displayedItems = (isDecoy || isLocked)
         ? []
         : mediaItems.filter((item) => {
             if (filterTab === 'image') return item.type === 'image';
@@ -246,6 +247,14 @@ export default function LibraryScreen() {
             if (filterTab === 'favorite') return item.is_favorite;
             return true;
         });
+
+    if (isLocked) {
+        return (
+            <View style={styles.container}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>

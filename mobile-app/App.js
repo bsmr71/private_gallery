@@ -130,12 +130,12 @@ export default function App() {
 
     const checkAuth = async () => {
         try {
+            await SecurityService.init();
             const token = await StorageService.getToken();
             const authenticated = !!token;
             setIsAuthenticated(authenticated);
             if (authenticated) {
-                const lockEn = await SecurityService.isLockEnabled();
-                if (lockEn) {
+                if (SecurityService.isLockEnabledSync()) {
                     setIsLocked(true);
                     SecurityService.setAppLocked(true);
                 }
@@ -151,21 +151,32 @@ export default function App() {
     useEffect(() => {
         if (!isAuthenticated) return;
 
-        const handleAppStateChange = async (nextAppState) => {
+        const handleAppStateChange = (nextAppState) => {
             if (nextAppState === 'inactive' || nextAppState === 'background') {
-                // Layer 3: Multitasking privacy shield mask in recent apps carousel
-                setPrivacyShield(true);
                 SecurityService.recordBackgroundTime();
+                setPrivacyShield(true);
+
+                // Lock SYNCHRONOUSLY before app leaves screen so it is ALREADY locked in background!
+                if (SecurityService.isLockEnabledSync()) {
+                    const timeout = SecurityService.getAutoLockTimeoutSync();
+                    if (timeout === 'immediately') {
+                        setIsLocked(true);
+                        SecurityService.setAppLocked(true);
+                    }
+                }
             } else if (nextAppState === 'active') {
-                const lockEn = await SecurityService.isLockEnabled();
-                if (lockEn) {
-                    const timeout = await SecurityService.getAutoLockTimeout();
+                if (SecurityService.isLockEnabledSync()) {
+                    const timeout = SecurityService.getAutoLockTimeoutSync();
                     if (SecurityService.shouldLockOnForeground(timeout)) {
                         setIsLocked(true);
                         SecurityService.setAppLocked(true);
                     }
                 }
-                setPrivacyShield(false);
+
+                // Dismiss privacy shield safely after lock state settles
+                setTimeout(() => {
+                    setPrivacyShield(false);
+                }, 80);
             }
         };
 
@@ -177,6 +188,7 @@ export default function App() {
 
     const handleUnlock = ({ type }) => {
         setIsLocked(false);
+        setPrivacyShield(false);
         SecurityService.setAppLocked(false);
         if (type === 'decoy') {
             SecurityService.setDecoyMode(true);
