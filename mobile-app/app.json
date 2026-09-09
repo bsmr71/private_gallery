@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lumina",
     "slug": "private-gallery",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -54,7 +54,8 @@
         {
           "photosPermission": "Private Gallery memerlukan akses foto untuk mengunggah media ke brankas terenkripsi Anda."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "eas": {

@@ -18,6 +18,7 @@ import AppleDock from './AppleDock';
 import InfoSheet from './InfoSheet';
 import { ApiService } from '../services/api';
 import SecureImage from './SecureImage';
+import VideoPlayerView from './VideoPlayerView';
 
 import SFSymbol from './SFSymbol';
 import { BlurView } from 'expo-blur';
@@ -49,11 +50,25 @@ export default function PhotoViewerModal({
         }
     }, [visible, initialIndex]);
 
-    const activeItem = items && items[currentIndex];
+    const isCurrentVideo = Boolean(
+        activeItem?.type === 'video' ||
+        (activeItem?.mime_type && activeItem.mime_type.includes('video'))
+    );
 
-    // Simple horizontal swipe detection
+    // PanResponder for swiping photos/videos & dismissing viewer
     const panResponder = PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (evt, gestureState) => {
+            const { dx, dy } = gestureState;
+            // For video, only capture deliberate swipe gestures so controls aren't blocked
+            if (isCurrentVideo) {
+                return (
+                    (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) ||
+                    (dy > 80 && Math.abs(dy) > Math.abs(dx) * 2)
+                );
+            }
+            return Math.abs(dx) > 15 || Math.abs(dy) > 15;
+        },
         onPanResponderRelease: (evt, gestureState) => {
             const { dx, dy } = gestureState;
 
@@ -64,7 +79,7 @@ export default function PhotoViewerModal({
                 } else if (dx > 0 && currentIndex > 0) {
                     setCurrentIndex((prev) => prev - 1); // Swipe right -> Prev
                 }
-            } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+            } else if (!isCurrentVideo && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
                 // Tap on photo -> Toggle cinema mode
                 setChromeVisible((prev) => !prev);
             } else if (dy > 100 && Math.abs(dy) > Math.abs(dx) * 2) {
@@ -234,20 +249,21 @@ export default function PhotoViewerModal({
                     </View>
                 )}
 
-                {/* Center Image Viewport */}
+                {/* Center Image / Video Viewport */}
                 <View style={styles.viewport} {...panResponder.panHandlers}>
-                    <SecureImage
-                        source={activeItem.stream_url}
-                        style={styles.mainImage}
-                        resizeMode="contain"
-                    />
-
-                    {activeItem.type === 'video' && (
-                        <View style={styles.videoPlayOverlay}>
-                            <View style={styles.playCircle}>
-                                <SFSymbol name="play.fill" size={26} color="#ffffff" style={{ marginLeft: 3 }} />
-                            </View>
-                        </View>
+                    {isCurrentVideo ? (
+                        <VideoPlayerView
+                            key={activeItem.id}
+                            item={activeItem}
+                            isVisible={visible}
+                            onToggleControls={() => setChromeVisible((prev) => !prev)}
+                        />
+                    ) : (
+                        <SecureImage
+                            source={activeItem.stream_url}
+                            style={styles.mainImage}
+                            resizeMode="contain"
+                        />
                     )}
                 </View>
 
