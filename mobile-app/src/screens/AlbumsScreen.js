@@ -18,6 +18,8 @@ import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
 import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
+import SecureVaultUnlockModal from '../components/SecureVaultUnlockModal';
+import SecureVaultScreen from './SecureVaultScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
@@ -31,6 +33,11 @@ export default function AlbumsScreen({ navigation }) {
     const [modalVisible, setModalVisible] = useState(false);
     const [newAlbumName, setNewAlbumName] = useState('');
     const [creating, setCreating] = useState(false);
+
+    // Secure Vault (Brankas Terkunci)
+    const [vaultModalVisible, setVaultModalVisible] = useState(false);
+    const [vaultScreenVisible, setVaultScreenVisible] = useState(false);
+    const [activeVaultToken, setActiveVaultToken] = useState(null);
 
     const fetchAlbums = useCallback(async () => {
         if (SecurityService.isDecoyMode()) {
@@ -154,6 +161,29 @@ export default function AlbumsScreen({ navigation }) {
                     </View>
                     <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
                 </TouchableOpacity>
+
+                {!isDecoy && (
+                    <>
+                        <View style={styles.divider} />
+
+                        <TouchableOpacity
+                            style={styles.typeRow}
+                            activeOpacity={0.7}
+                            onPress={() => setVaultModalVisible(true)}
+                        >
+                            <View style={styles.typeLeft}>
+                                <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(255, 159, 10, 0.18)' }]}>
+                                    <SFSymbol name="lock.fill" size={16} color="#FF9F0A" />
+                                </View>
+                                <Text style={styles.typeLabel}>Brankas Terkunci</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <SFSymbol name="lock" size={12} color="#8E8E93" style={{ marginRight: 6 }} />
+                                <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
+                            </View>
+                        </TouchableOpacity>
+                    </>
+                )}
             </View>
         </View>
     );
@@ -248,6 +278,28 @@ export default function AlbumsScreen({ navigation }) {
                     </View>
                 </View>
             </Modal>
+
+            {/* Secure Vault Unlock Challenge Modal (Password + OTP) */}
+            <SecureVaultUnlockModal
+                visible={vaultModalVisible}
+                onClose={() => setVaultModalVisible(false)}
+                onUnlocked={(token) => {
+                    setVaultModalVisible(false);
+                    setActiveVaultToken(token);
+                    setVaultScreenVisible(true);
+                }}
+            />
+
+            {/* Secure Vault Fullscreen Gallery */}
+            <SecureVaultScreen
+                visible={vaultScreenVisible}
+                vaultToken={activeVaultToken}
+                onClose={() => {
+                    setVaultScreenVisible(false);
+                    setActiveVaultToken(null);
+                    fetchAlbums();
+                }}
+            />
         </View>
     );
 }

@@ -24,7 +24,7 @@ class MediaApiController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Media::with('album')->latest();
+        $query = Media::with('album')->where('is_locked', false)->latest();
 
         if ($request->filled('type') && in_array($request->type, ['image', 'video'])) {
             $query->where('type', $request->type);
@@ -55,11 +55,11 @@ class MediaApiController extends Controller
         });
 
         $stats = [
-            'total' => Media::count(),
-            'images' => Media::where('type', 'image')->count(),
-            'videos' => Media::where('type', 'video')->count(),
-            'favorites' => Media::where('is_favorite', true)->count(),
-            'albums' => Album::count(),
+            'total' => Media::where('is_locked', false)->count(),
+            'images' => Media::where('is_locked', false)->where('type', 'image')->count(),
+            'videos' => Media::where('is_locked', false)->where('type', 'video')->count(),
+            'favorites' => Media::where('is_locked', false)->where('is_favorite', true)->count(),
+            'albums' => Album::where('is_locked', false)->count(),
         ];
 
         return response()->json([

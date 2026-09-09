@@ -44,4 +44,14 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     Route::post('/albums', [AlbumApiController::class, 'store']);
     Route::put('/albums/{album}', [AlbumApiController::class, 'update']);
     Route::delete('/albums/{album}', [AlbumApiController::class, 'destroy']);
+
+    // Secure Vault (Brankas Terkunci - Password & OTP Protected)
+    Route::prefix('secure-vault')->group(function () {
+        Route::get('/status', [\App\Http\Controllers\Api\SecureVaultController::class, 'status']);
+        Route::post('/request-email-otp', [\App\Http\Controllers\Api\SecureVaultController::class, 'requestEmailOtp']);
+        Route::post('/unlock', [\App\Http\Controllers\Api\SecureVaultController::class, 'unlock']);
+        Route::get('/media', [\App\Http\Controllers\Api\SecureVaultController::class, 'media']);
+        Route::post('/lock-media', [\App\Http\Controllers\Api\SecureVaultController::class, 'lockMedia']);
+        Route::post('/unlock-media', [\App\Http\Controllers\Api\SecureVaultController::class, 'unlockMedia']);
+    });
 });

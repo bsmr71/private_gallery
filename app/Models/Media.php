@@ -20,12 +20,14 @@ class Media extends Model
         'cache_key',
         'album_id',
         'is_favorite',
+        'is_locked',
         'sort_order',
     ];
 
     protected $casts = [
         'size' => 'integer',
         'is_favorite' => 'boolean',
+        'is_locked' => 'boolean',
         'sort_order' => 'integer',
     ];
 

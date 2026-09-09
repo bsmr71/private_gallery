@@ -14,7 +14,13 @@ class Album extends Model
         'description',
         'slug',
         'cover_media_id',
+        'is_locked',
         'sort_order',
+    ];
+
+    protected $casts = [
+        'is_locked' => 'boolean',
+        'sort_order' => 'integer',
     ];
 
     protected static function boot()

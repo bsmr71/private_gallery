@@ -246,4 +246,55 @@ export const ApiService = {
             }
         }
     },
+
+    // Secure Vault (Brankas Terkunci)
+    async getVaultStatus() {
+        return this.request('/secure-vault/status');
+    },
+
+    async requestVaultEmailOtp() {
+        return this.request('/secure-vault/request-email-otp', {
+            method: 'POST',
+        });
+    },
+
+    async unlockVault(password, otpCode, otpType = 'email') {
+        return this.request('/secure-vault/unlock', {
+            method: 'POST',
+            body: JSON.stringify({
+                password,
+                otp_code: otpCode,
+                otp_type: otpType,
+            }),
+        });
+    },
+
+    async getVaultMedia(vaultToken, page = 1) {
+        return this.request(`/secure-vault/media?page=${page}`, {
+            headers: {
+                'X-Vault-Token': vaultToken,
+            },
+        });
+    },
+
+    async lockMediaToVault(mediaIds) {
+        return this.request('/secure-vault/lock-media', {
+            method: 'POST',
+            body: JSON.stringify({
+                media_ids: mediaIds,
+            }),
+        });
+    },
+
+    async unlockMediaFromVault(vaultToken, mediaIds) {
+        return this.request('/secure-vault/unlock-media', {
+            method: 'POST',
+            headers: {
+                'X-Vault-Token': vaultToken,
+            },
+            body: JSON.stringify({
+                media_ids: mediaIds,
+            }),
+        });
+    },
 };

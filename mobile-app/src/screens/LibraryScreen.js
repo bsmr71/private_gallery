@@ -239,6 +239,33 @@ export default function LibraryScreen() {
         );
     };
 
+    const handleLockSelectedToVault = () => {
+        if (selectedIds.length === 0) return;
+        Alert.alert(
+            'Kunci ke Brankas?',
+            `Pindahkan ${selectedIds.length} foto/video ke Brankas Terkunci? Media ini akan disembunyikan dari galeri utama dan hanya bisa dibuka dengan Password & OTP.`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Kunci Sekarang',
+                    onPress: async () => {
+                        try {
+                            const res = await ApiService.lockMediaToVault(selectedIds);
+                            if (res.success) {
+                                Alert.alert('Berhasil Dikunci', res.message);
+                                setMediaItems((prev) => prev.filter((m) => !selectedIds.includes(m.id)));
+                                setSelectedIds([]);
+                                setIsSelectMode(false);
+                            }
+                        } catch (e) {
+                            Alert.alert('Gagal', e.message || 'Tidak dapat memindahkan media.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const displayedItems = (isDecoy || isLocked)
         ? []
         : mediaItems.filter((item) => {
@@ -436,10 +463,16 @@ export default function LibraryScreen() {
             {isSelectMode && selectedIds.length > 0 && (
                 <View style={styles.floatingSelectBar}>
                     <Text style={styles.selectCountText}>{selectedIds.length} Dipilih</Text>
-                    <TouchableOpacity style={styles.barActionBtn} onPress={handleBatchDelete} activeOpacity={0.7}>
-                        <SFSymbol name="trash" size={18} color="#FF453A" />
-                        <Text style={styles.barDangerText}>Hapus</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                        <TouchableOpacity style={styles.barActionBtn} onPress={handleLockSelectedToVault} activeOpacity={0.7}>
+                            <SFSymbol name="lock.fill" size={17} color="#FF9F0A" />
+                            <Text style={[styles.barDangerText, { color: '#FF9F0A' }]}>Kunci</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.barActionBtn} onPress={handleBatchDelete} activeOpacity={0.7}>
+                            <SFSymbol name="trash" size={18} color="#FF453A" />
+                            <Text style={styles.barDangerText}>Hapus</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
 

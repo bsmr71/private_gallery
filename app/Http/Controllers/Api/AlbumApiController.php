@@ -19,7 +19,10 @@ class AlbumApiController extends Controller
         $tokenParam = $token ? '?token=' . urlencode($token) : '';
         $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
 
-        $albums = Album::withCount('media')
+        $albums = Album::where('is_locked', false)
+            ->withCount(['media' => function ($q) {
+                $q->where('is_locked', false);
+            }])
             ->orderBy('name')
             ->get()
             ->map(function ($album) use ($baseApiUrl, $tokenParam) {
