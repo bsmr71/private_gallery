@@ -16,10 +16,11 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
+import SFSymbol from '../components/SFSymbol';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
-const ITEM_MARGIN = 2;
+const ITEM_MARGIN = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export default function LibraryScreen() {
@@ -38,6 +39,7 @@ export default function LibraryScreen() {
     const [isSelectMode, setIsSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [filterTab, setFilterTab] = useState('all');
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
         try {
@@ -146,57 +148,92 @@ export default function LibraryScreen() {
         );
     };
 
+    const displayedItems = mediaItems.filter((item) => {
+        if (filterTab === 'image') return item.type === 'image';
+        if (filterTab === 'video') return item.type === 'video';
+        if (filterTab === 'favorite') return item.is_favorite;
+        return true;
+    });
+
     return (
         <View style={styles.container}>
-            {/* Header (Apple Photos Style) */}
+            {/* Header (Authentic Apple Photos Style) */}
             <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerTitle}>Perpustakaan</Text>
-                    {stats && (
-                        <Text style={styles.headerSubtitle}>
-                            {stats.total} Media • {stats.images} Foto, {stats.videos} Video
-                        </Text>
-                    )}
+                <View style={styles.headerTopRow}>
+                    <View>
+                        <Text style={styles.headerTitle}>Perpustakaan</Text>
+                        {stats && (
+                            <Text style={styles.headerSubtitle}>
+                                {stats.total} Media • {stats.images} Foto, {stats.videos} Video
+                            </Text>
+                        )}
+                    </View>
+
+                    <View style={styles.headerRight}>
+                        {mediaItems.length > 0 && (
+                            <TouchableOpacity
+                                style={styles.selectBtn}
+                                onPress={() => {
+                                    setIsSelectMode(!isSelectMode);
+                                    setSelectedIds([]);
+                                }}
+                                activeOpacity={0.6}
+                            >
+                                <Text style={styles.selectBtnText}>
+                                    {isSelectMode ? 'Selesai' : 'Pilih'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity
+                            style={styles.uploadPlusBtn}
+                            onPress={handleUploadPick}
+                            disabled={uploading}
+                            activeOpacity={0.7}
+                        >
+                            {uploading ? (
+                                <ActivityIndicator size="small" color="#0A84FF" />
+                            ) : (
+                                <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
+                            )}
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
-                <View style={styles.headerRight}>
-                    {mediaItems.length > 0 && (
-                        <TouchableOpacity
-                            style={styles.selectBtn}
-                            onPress={() => {
-                                setIsSelectMode(!isSelectMode);
-                                setSelectedIds([]);
-                            }}
-                        >
-                            <Text style={styles.selectBtnText}>
-                                {isSelectMode ? 'Selesai' : 'Pilih'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-
-                    <TouchableOpacity
-                        style={styles.uploadPlusBtn}
-                        onPress={handleUploadPick}
-                        disabled={uploading}
-                    >
-                        {uploading ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                            <Text style={styles.uploadPlusText}>＋</Text>
-                        )}
-                    </TouchableOpacity>
+                {/* iOS 18 Segmented Filter Capsule */}
+                <View style={styles.segmentedFilterContainer}>
+                    {[
+                        { key: 'all', label: 'Semua' },
+                        { key: 'image', label: 'Foto' },
+                        { key: 'video', label: 'Video' },
+                        { key: 'favorite', label: 'Favorit' },
+                    ].map((tab) => {
+                        const active = filterTab === tab.key;
+                        return (
+                            <TouchableOpacity
+                                key={tab.key}
+                                style={[styles.segmentedTab, active && styles.segmentedTabActive]}
+                                onPress={() => setFilterTab(tab.key)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.segmentedLabel, active && styles.segmentedLabelActive]}>
+                                    {tab.label}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
             </View>
 
             {/* Photo Grid */}
             {loading && mediaItems.length === 0 ? (
                 <View style={styles.centerLoader}>
-                    <ActivityIndicator size="large" color={THEME.colors.accent} />
+                    <ActivityIndicator size="large" color="#0A84FF" />
                     <Text style={styles.loadingText}>Memuat Galeri...</Text>
                 </View>
             ) : (
                 <FlatList
-                    data={mediaItems}
+                    data={displayedItems}
                     keyExtractor={(item) => String(item.id)}
                     numColumns={COLUMN_COUNT}
                     renderItem={({ item, index }) => {
@@ -204,7 +241,7 @@ export default function LibraryScreen() {
                         return (
                             <TouchableOpacity
                                 style={styles.gridItem}
-                                activeOpacity={0.8}
+                                activeOpacity={0.85}
                                 onPress={() => handleItemPress(item, index)}
                             >
                                 <SecureImage
@@ -221,13 +258,15 @@ export default function LibraryScreen() {
 
                                 {item.is_favorite && !isSelectMode && (
                                     <View style={styles.favBadge}>
-                                        <Text style={styles.favBadgeText}>❤️</Text>
+                                        <SFSymbol name="heart" size={13} color="#FF375F" focused />
                                     </View>
                                 )}
 
                                 {isSelectMode && (
                                     <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
-                                        {isSelected && <Text style={styles.checkCheck}>✓</Text>}
+                                        {isSelected && (
+                                            <SFSymbol name="checkmark" size={12} color="#ffffff" weight="bold" />
+                                        )}
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -239,13 +278,13 @@ export default function LibraryScreen() {
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={onRefresh}
-                            tintColor={THEME.colors.accent}
+                            tintColor="#0A84FF"
                         />
                     }
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
-                            <Text style={styles.emptyIcon}>🖼️</Text>
+                            <SFSymbol name="photos" size={54} color="#8E8E93" />
                             <Text style={styles.emptyTitle}>Galeri Masih Kosong</Text>
                             <Text style={styles.emptyDesc}>Ketuk tombol ＋ di kanan atas untuk mengunggah foto atau video.</Text>
                         </View>
@@ -257,8 +296,9 @@ export default function LibraryScreen() {
             {isSelectMode && selectedIds.length > 0 && (
                 <View style={styles.floatingSelectBar}>
                     <Text style={styles.selectCountText}>{selectedIds.length} Dipilih</Text>
-                    <TouchableOpacity style={styles.barActionBtn} onPress={handleBatchDelete}>
-                        <Text style={styles.barDangerText}>🗑️ Hapus</Text>
+                    <TouchableOpacity style={styles.barActionBtn} onPress={handleBatchDelete} activeOpacity={0.7}>
+                        <SFSymbol name="trash" size={18} color="#FF453A" />
+                        <Text style={styles.barDangerText}>Hapus</Text>
                     </TouchableOpacity>
                 </View>
             )}
@@ -285,62 +325,86 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: THEME.colors.background,
+        backgroundColor: '#000000',
     },
     header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: 48,
-        paddingBottom: 14,
+        paddingTop: Platform.OS === 'ios' ? 52 : 44,
+        paddingBottom: 10,
         paddingHorizontal: 16,
         backgroundColor: '#000000',
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+        borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    headerTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
     },
     headerTitle: {
-        fontSize: 26,
-        fontWeight: '800',
+        fontSize: 32,
+        fontWeight: '700',
         color: '#ffffff',
-        letterSpacing: -0.5,
+        letterSpacing: -0.6,
     },
     headerSubtitle: {
         fontSize: 12,
-        color: THEME.colors.textSecondary,
+        color: '#8E8E93',
         marginTop: 2,
+        fontWeight: '400',
     },
     headerRight: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 14,
     },
     selectBtn: {
         paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        paddingHorizontal: 4,
     },
     selectBtnText: {
-        color: '#38bdf8',
+        color: '#0A84FF',
         fontWeight: '600',
-        fontSize: 13,
+        fontSize: 17,
+        letterSpacing: -0.3,
     },
     uploadPlusBtn: {
         width: 34,
         height: 34,
         borderRadius: 17,
-        backgroundColor: THEME.colors.accent,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    uploadPlusText: {
+    segmentedFilterContainer: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(118, 118, 128, 0.24)',
+        borderRadius: 9,
+        padding: 2,
+        marginTop: 4,
+    },
+    segmentedTab: {
+        flex: 1,
+        paddingVertical: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 7,
+    },
+    segmentedTabActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    },
+    segmentedLabel: {
+        color: '#8E8E93',
+        fontSize: 12,
+        fontWeight: '500',
+        letterSpacing: -0.2,
+    },
+    segmentedLabelActive: {
         color: '#ffffff',
-        fontSize: 20,
         fontWeight: '600',
-        lineHeight: 22,
     },
     listContent: {
-        paddingBottom: 90,
+        paddingBottom: 110,
     },
     gridItem: {
         width: ITEM_SIZE,
@@ -356,25 +420,26 @@ const styles = StyleSheet.create({
     },
     videoBadge: {
         position: 'absolute',
-        bottom: 4,
-        right: 4,
+        bottom: 5,
+        left: 5,
         backgroundColor: 'rgba(0, 0, 0, 0.65)',
-        paddingHorizontal: 5,
+        paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 4,
     },
     videoBadgeText: {
         color: '#ffffff',
-        fontSize: 9,
+        fontSize: 10,
         fontWeight: '600',
+        letterSpacing: -0.2,
     },
     favBadge: {
         position: 'absolute',
-        top: 4,
-        right: 4,
-    },
-    favBadgeText: {
-        fontSize: 11,
+        bottom: 5,
+        right: 5,
+        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        borderRadius: 10,
+        padding: 3,
     },
     checkCircle: {
         position: 'absolute',
@@ -383,20 +448,15 @@ const styles = StyleSheet.create({
         width: 22,
         height: 22,
         borderRadius: 11,
-        borderWidth: 2,
+        borderWidth: 1.8,
         borderColor: '#ffffff',
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         alignItems: 'center',
         justifyContent: 'center',
     },
     checkCircleActive: {
-        backgroundColor: THEME.colors.accent,
-        borderColor: THEME.colors.accent,
-    },
-    checkCheck: {
-        color: '#ffffff',
-        fontSize: 13,
-        fontWeight: '700',
+        backgroundColor: '#0A84FF',
+        borderColor: '#0A84FF',
     },
     centerLoader: {
         flex: 1,
@@ -404,45 +464,44 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     loadingText: {
-        color: THEME.colors.textSecondary,
+        color: '#8E8E93',
         marginTop: 10,
         fontSize: 13,
     },
     emptyWrap: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: 100,
+        paddingTop: 120,
         paddingHorizontal: 30,
-    },
-    emptyIcon: {
-        fontSize: 48,
-        marginBottom: 12,
     },
     emptyTitle: {
         color: '#ffffff',
         fontSize: 18,
         fontWeight: '700',
+        marginTop: 16,
         marginBottom: 6,
+        letterSpacing: -0.3,
     },
     emptyDesc: {
-        color: THEME.colors.textSecondary,
+        color: '#8E8E93',
         fontSize: 13,
         textAlign: 'center',
+        lineHeight: 18,
     },
     floatingSelectBar: {
         position: 'absolute',
-        bottom: 24,
+        bottom: 75,
         alignSelf: 'center',
         width: '88%',
-        backgroundColor: 'rgba(28, 28, 30, 0.92)',
-        borderRadius: 20,
+        backgroundColor: 'rgba(30, 30, 35, 0.95)',
+        borderRadius: 22,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingVertical: 12,
         paddingHorizontal: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.12)',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255, 255, 255, 0.16)',
         elevation: 8,
     },
     selectCountText: {
@@ -451,11 +510,14 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     barActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         paddingVertical: 4,
         paddingHorizontal: 8,
     },
     barDangerText: {
-        color: '#f87171',
+        color: '#FF453A',
         fontWeight: '600',
         fontSize: 14,
     },

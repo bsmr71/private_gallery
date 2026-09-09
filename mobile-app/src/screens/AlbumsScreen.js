@@ -16,6 +16,7 @@ import {
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import SecureImage from '../components/SecureImage';
+import SFSymbol from '../components/SFSymbol';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
@@ -75,8 +76,10 @@ export default function AlbumsScreen({ navigation }) {
                 <TouchableOpacity
                     style={styles.addBtn}
                     onPress={() => setModalVisible(true)}
+                    activeOpacity={0.7}
                 >
-                    <Text style={styles.addBtnText}>＋ Album Baru</Text>
+                    <SFSymbol name="plus" size={17} color="#0A84FF" weight="semibold" />
+                    <Text style={styles.addBtnText}>Album</Text>
                 </TouchableOpacity>
             </View>
             <Text style={styles.subHeading}>Album Saya</Text>
@@ -93,12 +96,12 @@ export default function AlbumsScreen({ navigation }) {
                     onPress={() => navigation.navigate('Library', { filterType: 'image' })}
                 >
                     <View style={styles.typeLeft}>
-                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
-                            <Text style={styles.iconEmoji}>📸</Text>
+                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(10, 132, 255, 0.15)' }]}>
+                            <SFSymbol name="photos" size={17} color="#0A84FF" />
                         </View>
                         <Text style={styles.typeLabel}>Foto</Text>
                     </View>
-                    <Text style={styles.typeChevron}>›</Text>
+                    <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
                 </TouchableOpacity>
 
                 <View style={styles.divider} />
@@ -109,12 +112,12 @@ export default function AlbumsScreen({ navigation }) {
                     onPress={() => navigation.navigate('Library', { filterType: 'video' })}
                 >
                     <View style={styles.typeLeft}>
-                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
-                            <Text style={styles.iconEmoji}>🎬</Text>
+                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(175, 82, 222, 0.15)' }]}>
+                            <SFSymbol name="play" size={15} color="#AF52DE" />
                         </View>
                         <Text style={styles.typeLabel}>Video</Text>
                     </View>
-                    <Text style={styles.typeChevron}>›</Text>
+                    <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
                 </TouchableOpacity>
 
                 <View style={styles.divider} />
@@ -125,12 +128,12 @@ export default function AlbumsScreen({ navigation }) {
                     onPress={() => navigation.navigate('Favorites')}
                 >
                     <View style={styles.typeLeft}>
-                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-                            <Text style={styles.iconEmoji}>❤️</Text>
+                        <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(255, 55, 95, 0.15)' }]}>
+                            <SFSymbol name="heart" size={16} color="#FF375F" focused />
                         </View>
                         <Text style={styles.typeLabel}>Favorit</Text>
                     </View>
-                    <Text style={styles.typeChevron}>›</Text>
+                    <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
                 </TouchableOpacity>
             </View>
         </View>
@@ -164,7 +167,7 @@ export default function AlbumsScreen({ navigation }) {
                                     <SecureImage source={item.cover_url} style={styles.coverImage} resizeMode="cover" />
                                 ) : (
                                     <View style={styles.emptyCover}>
-                                        <Text style={styles.emptyFolderEmoji}>📁</Text>
+                                        <SFSymbol name="folder" size={38} color="#8E8E93" />
                                     </View>
                                 )}
                                 <View style={styles.badgeCount}>
@@ -239,30 +242,34 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 16,
+        marginBottom: 20,
     },
     screenTitle: {
-        fontSize: 28,
-        fontWeight: '800',
+        fontSize: 32,
+        fontWeight: '700',
         color: '#ffffff',
-        letterSpacing: -0.5,
+        letterSpacing: -0.6,
     },
     addBtn: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
     },
     addBtnText: {
-        color: '#38bdf8',
-        fontSize: 13,
+        color: '#0A84FF',
+        fontSize: 14,
         fontWeight: '600',
     },
     subHeading: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '700',
         color: '#ffffff',
-        marginBottom: 12,
+        letterSpacing: -0.4,
+        marginBottom: 14,
     },
     albumCard: {
         width: ALBUM_CARD_WIDTH,

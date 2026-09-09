@@ -14,6 +14,8 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
 
+import SFSymbol from '../components/SFSymbol';
+
 export default function LoginScreen({ onLoginSuccess }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -67,10 +69,10 @@ export default function LoginScreen({ onLoginSuccess }) {
                 {/* Logo & Title */}
                 <View style={styles.brandBox}>
                     <View style={styles.logoCircle}>
-                        <Text style={styles.logoEmoji}>📸</Text>
+                        <SFSymbol name="photos" size={40} color="#0A84FF" />
                     </View>
                     <Text style={styles.brandTitle}>Private Gallery</Text>
-                    <Text style={styles.brandSubtitle}>Apple Photos Experience for Android</Text>
+                    <Text style={styles.brandSubtitle}>Apple Photos Cloud Experience</Text>
                 </View>
 
                 {/* Form Card */}
@@ -79,7 +81,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     <TextInput
                         style={styles.input}
                         placeholder="contoh@domain.com"
-                        placeholderTextColor="#8e8e93"
+                        placeholderTextColor="#8E8E93"
                         value={email}
                         onChangeText={setEmail}
                         keyboardType="email-address"
@@ -91,7 +93,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     <TextInput
                         style={styles.input}
                         placeholder="••••••••"
-                        placeholderTextColor="#8e8e93"
+                        placeholderTextColor="#8E8E93"
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry
@@ -103,7 +105,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                             <TextInput
                                 style={[styles.input, styles.twoFactorInput]}
                                 placeholder="123456"
-                                placeholderTextColor="#8e8e93"
+                                placeholderTextColor="#8E8E93"
                                 value={twoFactorCode}
                                 onChangeText={setTwoFactorCode}
                                 keyboardType="number-pad"
@@ -131,7 +133,8 @@ export default function LoginScreen({ onLoginSuccess }) {
 
                 {/* Footer Security Badge */}
                 <View style={styles.footerBadge}>
-                    <Text style={styles.footerText}>🔒 End-to-End Encrypted Google Drive Storage</Text>
+                    <SFSymbol name="lock.fill" size={13} color="#8E8E93" style={{ marginRight: 6 }} />
+                    <Text style={styles.footerText}>Terenkripsi Privat End-to-End Google Drive</Text>
                 </View>
             </View>
         </KeyboardAvoidingView>
@@ -217,8 +220,8 @@ const styles = StyleSheet.create({
         fontSize: 18,
     },
     loginBtn: {
-        backgroundColor: THEME.colors.accent,
-        borderRadius: 14,
+        backgroundColor: '#0A84FF',
+        borderRadius: 12,
         paddingVertical: 14,
         alignItems: 'center',
         marginTop: 6,
@@ -229,11 +232,14 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     footerBadge: {
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         marginTop: 28,
     },
     footerText: {
-        color: '#636366',
+        color: '#8E8E93',
         fontSize: 12,
+        fontWeight: '500',
     },
 });

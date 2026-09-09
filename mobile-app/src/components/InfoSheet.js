@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { THEME } from '../constants/theme';
+import SFSymbol from './SFSymbol';
 
 export default function InfoSheet({ visible, item, onClose, onRename }) {
     if (!item) return null;
@@ -27,8 +28,12 @@ export default function InfoSheet({ visible, item, onClose, onRename }) {
 
                     <View style={styles.header}>
                         <Text style={styles.title}>Info Media</Text>
-                        <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <Text style={styles.closeText}>✕</Text>
+                        <TouchableOpacity
+                            style={styles.closeBtn}
+                            onPress={onClose}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <SFSymbol name="xmark" size={14} color="#8E8E93" />
                         </TouchableOpacity>
                     </View>
 
@@ -38,8 +43,9 @@ export default function InfoSheet({ visible, item, onClose, onRename }) {
                             <Text style={styles.sectionLabel}>Judul</Text>
                             <View style={styles.titleRow}>
                                 <Text style={styles.itemTitle}>{item.title}</Text>
-                                <TouchableOpacity onPress={onRename} style={styles.renameBtn}>
-                                    <Text style={styles.renameBtnText}>✏️ Ubah</Text>
+                                <TouchableOpacity onPress={onRename} style={styles.renameBtn} activeOpacity={0.7}>
+                                    <SFSymbol name="pencil" size={12} color="#0A84FF" style={{ marginRight: 4 }} />
+                                    <Text style={styles.renameBtnText}>Ubah</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -75,7 +81,7 @@ export default function InfoSheet({ visible, item, onClose, onRename }) {
 
                         {/* Security Card */}
                         <View style={styles.securityCard}>
-                            <Text style={styles.securityIcon}>🛡️</Text>
+                            <SFSymbol name="lock.fill" size={22} color="#30D158" style={{ marginRight: 12, marginTop: 2 }} />
                             <View style={styles.securityTextWrap}>
                                 <Text style={styles.securityTitle}>Google Drive Cloud Storage</Text>
                                 <Text style={styles.securityDesc}>
@@ -128,10 +134,13 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#ffffff',
     },
-    closeText: {
-        fontSize: 18,
-        color: '#98989f',
-        fontWeight: '600',
+    closeBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#2c2c2e',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     content: {
         paddingHorizontal: 20,
@@ -160,15 +169,17 @@ const styles = StyleSheet.create({
         marginRight: 10,
     },
     renameBtn: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(10, 132, 255, 0.12)',
         paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
+        paddingVertical: 5,
+        borderRadius: 12,
     },
     renameBtnText: {
-        fontSize: 12,
-        color: '#38bdf8',
-        fontWeight: '500',
+        fontSize: 13,
+        color: '#0A84FF',
+        fontWeight: '600',
     },
     sectionCard: {
         backgroundColor: '#2c2c2e',
@@ -198,16 +209,12 @@ const styles = StyleSheet.create({
     securityCard: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: 'rgba(48, 209, 88, 0.12)',
+        backgroundColor: 'rgba(48, 209, 88, 0.08)',
         borderRadius: 12,
         padding: 14,
         borderWidth: 1,
-        borderColor: 'rgba(48, 209, 88, 0.25)',
+        borderColor: 'rgba(48, 209, 88, 0.2)',
         marginBottom: 20,
-    },
-    securityIcon: {
-        fontSize: 22,
-        marginRight: 12,
     },
     securityTextWrap: {
         flex: 1,

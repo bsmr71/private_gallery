@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { THEME } from './src/constants/theme';
 import { StorageService } from './src/services/storage';
+import SFSymbol from './src/components/SFSymbol';
 
 import LibraryScreen from './src/screens/LibraryScreen';
 import AlbumsScreen from './src/screens/AlbumsScreen';
@@ -17,14 +20,95 @@ const appTheme = {
     ...DarkTheme,
     colors: {
         ...DarkTheme.colors,
-        primary: THEME.colors.accent,
+        primary: '#0A84FF',
         background: '#000000',
         card: '#121214',
         text: '#ffffff',
         border: 'rgba(255, 255, 255, 0.08)',
-        notification: THEME.colors.favorite,
+        notification: '#FF375F',
     },
 };
+
+function MainTabs({ onLogout }) {
+    const insets = useSafeAreaInsets();
+    const bottomPadding = Math.max(insets.bottom, 12);
+
+    return (
+        <Tab.Navigator
+            screenOptions={({ route }) => ({
+                headerShown: false,
+                tabBarActiveTintColor: '#0A84FF',
+                tabBarInactiveTintColor: '#8E8E93',
+                tabBarStyle: {
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(18, 18, 22, 0.88)',
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: 'rgba(255, 255, 255, 0.14)',
+                    height: 50 + bottomPadding,
+                    paddingBottom: bottomPadding - 2,
+                    paddingTop: 6,
+                    elevation: 0,
+                },
+                tabBarBackground: () => (
+                    <BlurView
+                        tint="dark"
+                        intensity={90}
+                        style={StyleSheet.absoluteFill}
+                    />
+                ),
+                tabBarLabelStyle: {
+                    fontSize: 10,
+                    fontWeight: '500',
+                    letterSpacing: -0.24,
+                    marginTop: 3,
+                },
+                tabBarIcon: ({ focused, color }) => {
+                    let symbolName = 'photos';
+                    if (route.name === 'Library') symbolName = 'photos';
+                    else if (route.name === 'Albums') symbolName = 'albums';
+                    else if (route.name === 'Favorites') symbolName = 'heart';
+                    else if (route.name === 'Search') symbolName = 'search';
+
+                    return (
+                        <SFSymbol
+                            name={symbolName}
+                            size={24}
+                            color={color}
+                            focused={focused}
+                        />
+                    );
+                },
+            })}
+        >
+            <Tab.Screen
+                name="Library"
+                component={LibraryScreen}
+                options={{ tabBarLabel: 'Perpustakaan' }}
+            />
+            <Tab.Screen
+                name="Albums"
+                component={AlbumsScreen}
+                options={{ tabBarLabel: 'Album' }}
+            />
+            <Tab.Screen
+                name="Favorites"
+                component={FavoritesScreen}
+                options={{ tabBarLabel: 'Favorit' }}
+            />
+            <Tab.Screen
+                name="Search"
+                options={{ tabBarLabel: 'Cari' }}
+            >
+                {(props) => (
+                    <SearchScreen {...props} onLogout={onLogout} />
+                )}
+            </Tab.Screen>
+        </Tab.Navigator>
+    );
+}
 
 export default function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -49,80 +133,27 @@ export default function App() {
         return (
             <View style={styles.splashContainer}>
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <ActivityIndicator size="large" color={THEME.colors.accent} />
+                <ActivityIndicator size="large" color="#0A84FF" />
             </View>
         );
     }
 
     if (!isAuthenticated) {
         return (
-            <>
+            <SafeAreaProvider>
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
                 <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />
-            </>
+            </SafeAreaProvider>
         );
     }
 
     return (
-        <NavigationContainer theme={appTheme}>
-            <StatusBar barStyle="light-content" backgroundColor="#000000" />
-            <Tab.Navigator
-                screenOptions={({ route }) => ({
-                    headerShown: false,
-                    tabBarActiveTintColor: '#38bdf8',
-                    tabBarInactiveTintColor: '#8e8e93',
-                    tabBarStyle: {
-                        backgroundColor: 'rgba(18, 18, 22, 0.96)',
-                        borderTopWidth: StyleSheet.hairlineWidth,
-                        borderTopColor: 'rgba(255, 255, 255, 0.12)',
-                        height: 62,
-                        paddingBottom: 8,
-                        paddingTop: 6,
-                    },
-                    tabBarLabelStyle: {
-                        fontSize: 11,
-                        fontWeight: '600',
-                    },
-                    tabBarIcon: ({ focused }) => {
-                        let icon = '🖼️';
-                        if (route.name === 'Library') icon = '🖼️';
-                        else if (route.name === 'Albums') icon = '📁';
-                        else if (route.name === 'Favorites') icon = '❤️';
-                        else if (route.name === 'Search') icon = '🔍';
-
-                        return (
-                            <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.65 }}>
-                                {icon}
-                            </Text>
-                        );
-                    },
-                })}
-            >
-                <Tab.Screen
-                    name="Library"
-                    component={LibraryScreen}
-                    options={{ tabBarLabel: 'Perpustakaan' }}
-                />
-                <Tab.Screen
-                    name="Albums"
-                    component={AlbumsScreen}
-                    options={{ tabBarLabel: 'Album' }}
-                />
-                <Tab.Screen
-                    name="Favorites"
-                    component={FavoritesScreen}
-                    options={{ tabBarLabel: 'Favorit' }}
-                />
-                <Tab.Screen
-                    name="Search"
-                    options={{ tabBarLabel: 'Cari & Akun' }}
-                >
-                    {(props) => (
-                        <SearchScreen {...props} onLogout={() => setIsAuthenticated(false)} />
-                    )}
-                </Tab.Screen>
-            </Tab.Navigator>
-        </NavigationContainer>
+        <SafeAreaProvider>
+            <NavigationContainer theme={appTheme}>
+                <StatusBar barStyle="light-content" backgroundColor="#000000" />
+                <MainTabs onLogout={() => setIsAuthenticated(false)} />
+            </NavigationContainer>
+        </SafeAreaProvider>
     );
 }
 

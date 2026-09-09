@@ -19,6 +19,9 @@ import InfoSheet from './InfoSheet';
 import { ApiService } from '../services/api';
 import SecureImage from './SecureImage';
 
+import SFSymbol from './SFSymbol';
+import { BlurView } from 'expo-blur';
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function PhotoViewerModal({
@@ -160,12 +163,14 @@ export default function PhotoViewerModal({
                 {/* Top Bar (Apple Photos Header) */}
                 {chromeVisible && (
                     <View style={styles.topBar}>
+                        <BlurView tint="dark" intensity={70} style={StyleSheet.absoluteFill} />
                         <TouchableOpacity
                             style={styles.backButton}
                             onPress={onClose}
                             activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                            <Text style={styles.backChevron}>‹</Text>
+                            <SFSymbol name="chevron.left" size={18} color="#0A84FF" />
                             <Text style={styles.backText}>Semua Foto</Text>
                         </TouchableOpacity>
 
@@ -197,7 +202,7 @@ export default function PhotoViewerModal({
                     {activeItem.type === 'video' && (
                         <View style={styles.videoPlayOverlay}>
                             <View style={styles.playCircle}>
-                                <Text style={styles.playTriangle}>▶</Text>
+                                <SFSymbol name="play.fill" size={26} color="#ffffff" style={{ marginLeft: 3 }} />
                             </View>
                         </View>
                     )}
@@ -250,29 +255,23 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: 45,
+        paddingTop: 48,
         paddingBottom: 12,
         paddingHorizontal: 16,
-        backgroundColor: 'rgba(18, 18, 22, 0.75)',
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+        overflow: 'hidden',
     },
     backButton: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 4,
     },
-    backChevron: {
-        color: '#38bdf8',
-        fontSize: 28,
-        lineHeight: 28,
-        marginRight: 4,
-        fontWeight: '300',
-    },
     backText: {
-        color: '#38bdf8',
-        fontSize: 15,
-        fontWeight: '500',
+        color: '#0A84FF',
+        fontSize: 16,
+        fontWeight: '400',
+        marginLeft: 4,
     },
     centerInfo: {
         alignItems: 'center',

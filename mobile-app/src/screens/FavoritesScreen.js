@@ -5,7 +5,6 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    Image,
     Dimensions,
     ActivityIndicator,
     RefreshControl,
@@ -14,6 +13,7 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
+import SFSymbol from '../components/SFSymbol';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -53,14 +53,19 @@ export default function FavoritesScreen() {
 
     return (
         <View style={styles.container}>
+            {/* Apple Photos Large Title Header */}
             <View style={styles.header}>
-                <Text style={styles.screenTitle}>Favorit ❤️</Text>
-                <Text style={styles.subTitle}>{mediaItems.length} foto &amp; video favorit</Text>
+                <Text style={styles.screenTitle}>Favorit</Text>
+                <Text style={styles.subTitle}>
+                    {mediaItems.length > 0
+                        ? `${mediaItems.length} foto & video ditandai`
+                        : 'Belum ada favorit'}
+                </Text>
             </View>
 
             {loading ? (
                 <View style={styles.centerLoader}>
-                    <ActivityIndicator size="large" color={THEME.colors.favorite} />
+                    <ActivityIndicator size="small" color="#0A84FF" />
                 </View>
             ) : (
                 <FlatList
@@ -69,7 +74,7 @@ export default function FavoritesScreen() {
                     numColumns={COLUMN_COUNT}
                     contentContainerStyle={styles.listContent}
                     refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.colors.favorite} />
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0A84FF" />
                     }
                     renderItem={({ item, index }) => (
                         <TouchableOpacity
@@ -87,17 +92,19 @@ export default function FavoritesScreen() {
                             />
                             {item.type === 'video' && (
                                 <View style={styles.videoBadge}>
-                                    <Text style={styles.videoBadgeText}>▶</Text>
+                                    <SFSymbol name="play.fill" size={8} color="#ffffff" />
                                 </View>
                             )}
                         </TouchableOpacity>
                     )}
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
-                            <Text style={styles.emptyIcon}>🤍</Text>
+                            <View style={styles.emptyIconCircle}>
+                                <SFSymbol name="heart" size={48} color="#48484a" />
+                            </View>
                             <Text style={styles.emptyTitle}>Belum Ada Foto Favorit</Text>
                             <Text style={styles.emptyDesc}>
-                                Beri tanda hati (❤️) pada foto di perpustakaan agar muncul di sini.
+                                Ketuk ikon hati pada foto atau video untuk menambahkannya ke album Favorit Anda.
                             </Text>
                         </View>
                     }
@@ -119,28 +126,26 @@ export default function FavoritesScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: THEME.colors.background,
+        backgroundColor: '#000000',
     },
     header: {
-        paddingTop: 48,
-        paddingBottom: 14,
-        paddingHorizontal: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+        paddingTop: 54,
+        paddingBottom: 12,
+        paddingHorizontal: 20,
     },
     screenTitle: {
-        fontSize: 26,
-        fontWeight: '800',
+        fontSize: 34,
+        fontWeight: '700',
         color: '#ffffff',
-        letterSpacing: -0.5,
+        letterSpacing: 0.38,
     },
     subTitle: {
-        fontSize: 12,
-        color: THEME.colors.textSecondary,
-        marginTop: 2,
+        fontSize: 13,
+        color: '#8E8E93',
+        marginTop: 4,
     },
     listContent: {
-        paddingBottom: 90,
+        paddingBottom: 120,
     },
     gridItem: {
         width: ITEM_SIZE,
@@ -165,10 +170,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    videoBadgeText: {
-        color: '#ffffff',
-        fontSize: 9,
-    },
     centerLoader: {
         flex: 1,
         alignItems: 'center',
@@ -177,23 +178,28 @@ const styles = StyleSheet.create({
     emptyWrap: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: 120,
-        paddingHorizontal: 30,
+        paddingTop: 100,
+        paddingHorizontal: 36,
     },
-    emptyIcon: {
-        fontSize: 48,
-        marginBottom: 12,
-        opacity: 0.5,
+    emptyIconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: '#1c1c1e',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
     },
     emptyTitle: {
         color: '#ffffff',
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '700',
-        marginBottom: 6,
+        marginBottom: 8,
     },
     emptyDesc: {
-        color: THEME.colors.textSecondary,
-        fontSize: 13,
+        color: '#8E8E93',
+        fontSize: 14,
         textAlign: 'center',
+        lineHeight: 20,
     },
 });

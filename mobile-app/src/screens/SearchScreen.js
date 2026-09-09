@@ -6,7 +6,6 @@ import {
     TextInput,
     TouchableOpacity,
     FlatList,
-    Image,
     Dimensions,
     ActivityIndicator,
     Alert,
@@ -17,9 +16,11 @@ import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
+import SFSymbol from '../components/SFSymbol';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ITEM_SIZE = (SCREEN_WIDTH - 36) / 3;
+const ITEM_MARGIN = 2;
+const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * 2) / 3;
 
 export default function SearchScreen({ onLogout }) {
     const [query, setQuery] = useState('');
@@ -92,37 +93,42 @@ export default function SearchScreen({ onLogout }) {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
+            {/* Apple Photos Large Title Header */}
             <View style={styles.header}>
-                <Text style={styles.screenTitle}>Cari &amp; Akun</Text>
+                <Text style={styles.screenTitle}>Cari</Text>
                 <View style={styles.searchBar}>
-                    <Text style={styles.searchIcon}>🔍</Text>
+                    <SFSymbol name="search" size={16} color="#8E8E93" style={styles.searchIcon} />
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Cari foto, album, atau tanggal..."
-                        placeholderTextColor="#8e8e93"
+                        placeholder="Foto, album, atau tanggal..."
+                        placeholderTextColor="#8E8E93"
                         value={query}
                         onChangeText={handleSearch}
+                        autoCapitalize="none"
+                        autoCorrect={false}
                     />
                     {query.length > 0 && (
-                        <TouchableOpacity onPress={() => handleSearch('')}>
-                            <Text style={styles.clearSearch}>✕</Text>
+                        <TouchableOpacity
+                            onPress={() => handleSearch('')}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <SFSymbol name="xmark.circle.fill" size={17} color="#8E8E93" />
                         </TouchableOpacity>
                     )}
                 </View>
             </View>
 
             {query.length > 0 ? (
-                // Search Results
+                // Search Results Grid
                 <View style={styles.resultsContainer}>
                     {searching ? (
-                        <ActivityIndicator size="small" color={THEME.colors.accent} style={{ marginTop: 20 }} />
+                        <ActivityIndicator size="small" color="#0A84FF" style={{ marginTop: 30 }} />
                     ) : (
                         <FlatList
                             data={results}
                             keyExtractor={(item) => String(item.id)}
                             numColumns={3}
-                            contentContainerStyle={{ paddingBottom: 90 }}
+                            contentContainerStyle={styles.resultsListContent}
                             renderItem={({ item, index }) => (
                                 <TouchableOpacity
                                     style={styles.resultItem}
@@ -137,20 +143,31 @@ export default function SearchScreen({ onLogout }) {
                                         style={styles.resultImage}
                                         resizeMode="cover"
                                     />
+                                    {item.type === 'video' && (
+                                        <View style={styles.videoBadge}>
+                                            <SFSymbol name="play.fill" size={8} color="#ffffff" />
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             )}
                             ListEmptyComponent={
                                 <View style={styles.emptySearch}>
-                                    <Text style={styles.emptySearchText}>Tidak ada foto yang cocok.</Text>
+                                    <View style={styles.emptyIconCircle}>
+                                        <SFSymbol name="search" size={40} color="#48484a" />
+                                    </View>
+                                    <Text style={styles.emptySearchTitle}>Tidak Ada Hasil</Text>
+                                    <Text style={styles.emptySearchText}>
+                                        Tidak ditemukan foto atau video yang cocok dengan pencarian Anda.
+                                    </Text>
                                 </View>
                             }
                         />
                     )}
                 </View>
             ) : (
-                // Settings & Storage Info
-                <ScrollView style={styles.settingsScroll} contentContainerStyle={{ paddingBottom: 100 }}>
-                    {/* User Card */}
+                // Settings & Storage Info (Apple Inset Grouped Style)
+                <ScrollView style={styles.settingsScroll} contentContainerStyle={{ paddingBottom: 120 }}>
+                    {/* User Profile Card */}
                     <View style={styles.card}>
                         <View style={styles.userRow}>
                             <View style={styles.userAvatar}>
@@ -181,26 +198,29 @@ export default function SearchScreen({ onLogout }) {
                                         <Text style={styles.urlBtnText}>Batal</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity style={styles.urlBtnSave} onPress={handleSaveUrl}>
-                                        <Text style={[styles.urlBtnText, { color: '#38bdf8' }]}>Simpan</Text>
+                                        <Text style={[styles.urlBtnText, { color: '#0A84FF' }]}>Simpan</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
                         ) : (
                             <View style={styles.serverRow}>
                                 <View style={{ flex: 1 }}>
-                                    <Text style={styles.serverStatusText}>🟢 Terhubung ke Backend</Text>
+                                    <View style={styles.statusRow}>
+                                        <View style={styles.statusDot} />
+                                        <Text style={styles.serverStatusText}>Terhubung ke Backend</Text>
+                                    </View>
                                     <Text style={styles.serverUrlText} numberOfLines={1}>{apiUrl}</Text>
                                 </View>
                                 <TouchableOpacity onPress={() => setEditingUrl(true)}>
-                                    <Text style={styles.editBtnText}>Ganti</Text>
+                                    <Text style={styles.editBtnText}>Ubah</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
                     </View>
 
-                    {/* Cloud Security */}
+                    {/* Cloud Security Card */}
                     <View style={[styles.card, styles.securityCard]}>
-                        <Text style={styles.shieldIcon}>🛡️</Text>
+                        <SFSymbol name="lock.fill" size={24} color="#30D158" style={{ marginRight: 14 }} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.secTitle}>Penyimpanan Terenkripsi AES-256</Text>
                             <Text style={styles.secDesc}>
@@ -229,77 +249,101 @@ export default function SearchScreen({ onLogout }) {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: THEME.colors.background,
+        backgroundColor: '#000000',
     },
     header: {
-        paddingTop: 48,
+        paddingTop: 54,
         paddingBottom: 14,
-        paddingHorizontal: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+        paddingHorizontal: 20,
     },
     screenTitle: {
-        fontSize: 26,
-        fontWeight: '800',
+        fontSize: 34,
+        fontWeight: '700',
         color: '#ffffff',
-        letterSpacing: -0.5,
+        letterSpacing: 0.38,
         marginBottom: 12,
     },
     searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#1c1c1e',
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        height: 38,
     },
     searchIcon: {
-        fontSize: 16,
         marginRight: 8,
     },
     searchInput: {
         flex: 1,
         color: '#ffffff',
-        fontSize: 15,
-    },
-    clearSearch: {
-        color: '#8e8e93',
         fontSize: 16,
-        paddingHorizontal: 4,
+        paddingVertical: 0,
     },
     resultsContainer: {
         flex: 1,
-        padding: 4,
+    },
+    resultsListContent: {
+        paddingBottom: 120,
     },
     resultItem: {
         width: ITEM_SIZE,
         height: ITEM_SIZE,
-        margin: 2,
+        margin: ITEM_MARGIN,
         backgroundColor: '#121214',
     },
     resultImage: {
         width: '100%',
         height: '100%',
     },
+    videoBadge: {
+        position: 'absolute',
+        bottom: 4,
+        right: 4,
+        backgroundColor: 'rgba(0, 0, 0, 0.65)',
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     emptySearch: {
         alignItems: 'center',
+        justifyContent: 'center',
         paddingTop: 80,
+        paddingHorizontal: 36,
+    },
+    emptyIconCircle: {
+        width: 76,
+        height: 76,
+        borderRadius: 38,
+        backgroundColor: '#1c1c1e',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    emptySearchTitle: {
+        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: '700',
+        marginBottom: 6,
     },
     emptySearchText: {
-        color: '#8e8e93',
+        color: '#8E8E93',
         fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
     },
     settingsScroll: {
         flex: 1,
-        padding: 16,
+        paddingHorizontal: 20,
+        paddingTop: 8,
     },
     card: {
         backgroundColor: '#1c1c1e',
         borderRadius: 14,
         padding: 16,
         marginBottom: 14,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
     userRow: {
         flexDirection: 'row',
@@ -309,7 +353,7 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: THEME.colors.accent,
+        backgroundColor: '#0A84FF',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 14,
@@ -325,7 +369,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     userEmail: {
-        color: '#8e8e93',
+        color: '#8E8E93',
         fontSize: 13,
         marginTop: 2,
     },
@@ -333,26 +377,37 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontSize: 15,
         fontWeight: '600',
-        marginBottom: 6,
+        marginBottom: 8,
     },
     serverRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 3,
+    },
+    statusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: '#30D158',
+        marginRight: 6,
+    },
     serverStatusText: {
-        color: '#30d158',
+        color: '#30D158',
         fontSize: 13,
-        fontWeight: '500',
+        fontWeight: '600',
     },
     serverUrlText: {
-        color: '#8e8e93',
+        color: '#8E8E93',
         fontSize: 12,
-        marginTop: 2,
     },
     editBtnText: {
-        color: '#38bdf8',
-        fontSize: 13,
+        color: '#0A84FF',
+        fontSize: 14,
         fontWeight: '600',
         paddingVertical: 4,
         paddingHorizontal: 8,
@@ -388,14 +443,11 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(48, 209, 88, 0.08)',
+        borderWidth: 1,
         borderColor: 'rgba(48, 209, 88, 0.2)',
     },
-    shieldIcon: {
-        fontSize: 26,
-        marginRight: 14,
-    },
     secTitle: {
-        color: '#30d158',
+        color: '#30D158',
         fontSize: 14,
         fontWeight: '600',
     },
@@ -406,16 +458,16 @@ const styles = StyleSheet.create({
         lineHeight: 16,
     },
     logoutBtn: {
-        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+        backgroundColor: 'rgba(255, 69, 58, 0.12)',
         borderWidth: 1,
-        borderColor: 'rgba(239, 68, 68, 0.3)',
+        borderColor: 'rgba(255, 69, 58, 0.25)',
         borderRadius: 14,
         paddingVertical: 14,
         alignItems: 'center',
         marginTop: 8,
     },
     logoutText: {
-        color: '#f87171',
+        color: '#FF453A',
         fontSize: 15,
         fontWeight: '600',
     },
