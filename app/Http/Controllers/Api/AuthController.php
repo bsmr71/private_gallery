@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -116,19 +117,25 @@ class AuthController extends Controller
      */
     protected function verifyTwoFactorCode(User $user, string $code): bool
     {
-        // Check recovery codes
+        $code = trim($code);
+
+        // 1. Verify standard 6-digit TOTP
+        if (strlen($code) === 6 && ctype_digit($code)) {
+            $secret = $user->two_factor_secret;
+            if ($secret && app(TotpService::class)->verifyCode($secret, $code)) {
+                return true;
+            }
+        }
+
+        // 2. Check recovery codes (case-insensitive)
         $recoveryCodes = $user->two_factor_recovery_codes ?? [];
-        if (in_array($code, $recoveryCodes, true)) {
-            $user->two_factor_recovery_codes = array_values(array_diff($recoveryCodes, [$code]));
+        $normalizedCode = strtoupper($code);
+        if (in_array($normalizedCode, $recoveryCodes, true)) {
+            $user->two_factor_recovery_codes = array_values(array_diff($recoveryCodes, [$normalizedCode]));
             $user->save();
             return true;
         }
 
-        // Verify standard TOTP
-        $secret = $user->two_factor_secret;
-        if (!$secret) return false;
-
-        $authController = app(\App\Http\Controllers\AuthController::class);
-        return $authController->verifyTotp($secret, $code);
+        return false;
     }
 }

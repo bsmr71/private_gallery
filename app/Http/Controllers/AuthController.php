@@ -264,6 +264,14 @@ class AuthController extends Controller
         return redirect()->intended(route('admin.dashboard'));
     }
 
+    /**
+     * Verify a TOTP code against a secret key.
+     */
+    public function verifyTotp(string $secret, string $code): bool
+    {
+        return app(TotpService::class)->verifyCode($secret, $code);
+    }
+
     private function throttleKey(Request $request): string
     {
         return 'login:throttle:' . Str::transliterate(Str::lower($request->input('email')) . '|' . $request->ip());

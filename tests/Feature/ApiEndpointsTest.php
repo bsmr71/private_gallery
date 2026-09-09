@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Album;
 use App\Models\Media;
 use App\Models\User;
+use App\Services\TotpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -58,6 +59,87 @@ class ApiEndpointsTest extends TestCase
             ->assertJson([
                 'success' => false,
             ]);
+    }
+
+    public function test_api_login_prompts_for_2fa_when_enabled(): void
+    {
+        $this->user->update([
+            'two_factor_secret' => 'JBSWY3DPEHPK3PXP',
+            'two_factor_confirmed_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => false,
+                'two_factor_required' => true,
+            ]);
+    }
+
+    public function test_api_login_succeeds_with_valid_totp_code(): void
+    {
+        $secret = 'JBSWY3DPEHPK3PXP';
+        $this->user->update([
+            'two_factor_secret' => $secret,
+            'two_factor_confirmed_at' => now(),
+        ]);
+
+        $totp = app(TotpService::class);
+        $code = $totp->getTotpCode($secret);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'password123',
+            'two_factor_code' => $code,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['token', 'user']);
+    }
+
+    public function test_api_login_fails_with_invalid_totp_code(): void
+    {
+        $this->user->update([
+            'two_factor_secret' => 'JBSWY3DPEHPK3PXP',
+            'two_factor_confirmed_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'password123',
+            'two_factor_code' => '000000',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Kode 2FA atau kode pemulihan salah.');
+    }
+
+    public function test_api_login_succeeds_with_recovery_code(): void
+    {
+        $this->user->update([
+            'two_factor_secret' => 'JBSWY3DPEHPK3PXP',
+            'two_factor_confirmed_at' => now(),
+            'two_factor_recovery_codes' => ['ABCD-1234', 'EFGH-5678'],
+        ]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'password123',
+            'two_factor_code' => 'abcd-1234',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true);
+
+        $freshUser = $this->user->fresh();
+        $this->assertNotContains('ABCD-1234', $freshUser->two_factor_recovery_codes);
+        $this->assertContains('EFGH-5678', $freshUser->two_factor_recovery_codes);
     }
 
     public function test_authenticated_user_can_fetch_profile_and_logout(): void

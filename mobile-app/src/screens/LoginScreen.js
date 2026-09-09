@@ -51,7 +51,8 @@ export default function LoginScreen({ onLoginSuccess }) {
                 Alert.alert('Gagal Masuk', res.message || 'Email atau password salah.');
             }
         } catch (err) {
-            Alert.alert('Gagal Terhubung', err.message || 'Tidak dapat terhubung ke server galeri.');
+            const title = err.status === 422 ? 'Verifikasi Gagal' : (err.status === 401 ? 'Gagal Masuk' : 'Gagal Terhubung');
+            Alert.alert(title, err.message || 'Tidak dapat terhubung ke server galeri.');
         } finally {
             setLoading(false);
         }
