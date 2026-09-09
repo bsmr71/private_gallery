@@ -62,7 +62,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const handleSelectFolder = async () => {
         try {
             const folder = await SyncService.selectVaultFolder();
-            if (folder) {
+            if (folder && !folder.cancelled) {
                 setFolderName(folder.name);
                 setHasFolderUri(true);
                 // Scan folder right away
@@ -72,7 +72,8 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                 setLoadingFolder(false);
             }
         } catch (e) {
-            Alert.alert('Gagal', 'Tidak dapat memilih folder di HP.');
+            console.error('[VaultSyncModal] Error selecting folder:', e);
+            Alert.alert('Gagal Membuka Folder', e?.message || 'Tidak dapat membuka pemilih folder di perangkat Anda.');
         }
     };
 

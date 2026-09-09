@@ -1,45 +1,86 @@
-import { StorageAccessFramework } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 import { ApiService } from './api';
 import { StorageService } from './storage';
 
+const StorageAccessFramework =
+    FileSystemLegacy?.StorageAccessFramework ||
+    FileSystemLegacy?.default?.StorageAccessFramework;
+
 export const SyncService = {
     /**
-     * Request user to pick a designated sync folder on device (Android Storage Access Framework).
-     * Grants persistent read & delete permissions for this specific folder.
+     * Request user to pick a designated sync folder on device.
+     * Uses Android Storage Access Framework (SAF) for persistent folder permissions,
+     * with Directory.pickDirectoryAsync fallback for newer Expo or iOS.
      */
     async selectVaultFolder() {
-        if (Platform.OS !== 'android' || !StorageAccessFramework) {
-            return null;
-        }
+        console.log('[SyncService] selectVaultFolder called on Platform:', Platform.OS);
 
-        try {
-            const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
-            if (permissions.granted && permissions.directoryUri) {
-                // Decode URI to friendly folder name
-                let friendlyName = 'Vault';
-                try {
-                    const decoded = decodeURIComponent(permissions.directoryUri);
-                    const parts = decoded.split(':');
-                    if (parts.length > 1) {
-                        friendlyName = parts[parts.length - 1].replace(/\/$/, '') || 'Vault';
+        // 1. Primary Strategy for Android: StorageAccessFramework (grants persistent tree access)
+        if (Platform.OS === 'android' && StorageAccessFramework?.requestDirectoryPermissionsAsync) {
+            try {
+                console.log('[SyncService] Requesting Android SAF directory permissions...');
+                const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+                console.log('[SyncService] SAF result:', permissions);
+
+                if (permissions && permissions.granted && permissions.directoryUri) {
+                    let friendlyName = 'Vault';
+                    try {
+                        const decoded = decodeURIComponent(permissions.directoryUri);
+                        const parts = decoded.split(':');
+                        if (parts.length > 1) {
+                            friendlyName = parts[parts.length - 1].replace(/\/$/, '') || 'Vault';
+                        }
+                    } catch (e) {
+                        console.warn('[SyncService] Friendly name parse error:', e);
                     }
-                } catch (e) {}
 
-                await StorageService.setVaultFolderName(friendlyName);
-                await StorageService.setVaultDirectoryUri(permissions.directoryUri);
+                    await StorageService.setVaultFolderName(friendlyName);
+                    await StorageService.setVaultDirectoryUri(permissions.directoryUri);
 
-                return {
-                    uri: permissions.directoryUri,
-                    name: friendlyName,
-                };
+                    return {
+                        uri: permissions.directoryUri,
+                        name: friendlyName,
+                    };
+                }
+
+                console.log('[SyncService] User cancelled SAF picker or permission denied');
+                return { cancelled: true };
+            } catch (safErr) {
+                console.warn('[SyncService] SAF request error:', safErr);
             }
-            return null;
-        } catch (e) {
-            console.warn('Error requesting directory permissions:', e);
-            return null;
         }
+
+        // 2. Secondary Strategy / iOS: Directory.pickDirectoryAsync
+        if (Directory?.pickDirectoryAsync) {
+            try {
+                console.log('[SyncService] Calling Directory.pickDirectoryAsync()...');
+                const dir = await Directory.pickDirectoryAsync();
+                if (dir && dir.uri) {
+                    const friendlyName = dir.name || 'Vault';
+                    await StorageService.setVaultFolderName(friendlyName);
+                    await StorageService.setVaultDirectoryUri(dir.uri);
+
+                    return {
+                        uri: dir.uri,
+                        name: friendlyName,
+                    };
+                }
+                return { cancelled: true };
+            } catch (dirErr) {
+                const errMsg = (dirErr?.message || '').toLowerCase();
+                if (errMsg.includes('cancel') || dirErr?.code === 'ERR_PICKER_CANCELLED') {
+                    console.log('[SyncService] User cancelled Directory picker');
+                    return { cancelled: true };
+                }
+                console.error('[SyncService] Directory.pickDirectoryAsync error:', dirErr);
+                throw dirErr;
+            }
+        }
+
+        throw new Error('Fitur pemilihan folder belum didukung pada perangkat ini.');
     },
 
     /**
@@ -47,43 +88,81 @@ export const SyncService = {
      */
     async scanVaultFolder() {
         const folderUri = await StorageService.getVaultDirectoryUri();
-        if (!folderUri || Platform.OS !== 'android' || !StorageAccessFramework) {
+        if (!folderUri) {
             return [];
         }
 
-        try {
-            const fileUris = await StorageAccessFramework.readDirectoryAsync(folderUri);
-            const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.heic'];
+        console.log('[SyncService] Scanning vault folder:', folderUri);
+        const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.heic'];
+        const syncedIds = await StorageService.getSyncedAssetIds();
+        const syncedSet = new Set(syncedIds);
+        const pending = [];
 
-            const syncedIds = await StorageService.getSyncedAssetIds();
-            const syncedSet = new Set(syncedIds);
+        // Method A: StorageAccessFramework for Android content:// URIs
+        if (folderUri.startsWith('content://') && StorageAccessFramework?.readDirectoryAsync) {
+            try {
+                const fileUris = await StorageAccessFramework.readDirectoryAsync(folderUri);
+                console.log(`[SyncService] SAF readDirectoryAsync found ${fileUris.length} items`);
 
-            const pending = [];
-            for (let i = 0; i < fileUris.length; i++) {
-                const uri = fileUris[i];
-                const decodedUri = decodeURIComponent(uri);
-                const filename = decodedUri.split('/').pop() || `file_${i}.jpg`;
-                const ext = filename.split('.').pop().toLowerCase();
+                for (let i = 0; i < fileUris.length; i++) {
+                    const uri = fileUris[i];
+                    const decodedUri = decodeURIComponent(uri);
+                    const filename = decodedUri.split('/').pop() || `file_${i}.jpg`;
+                    const ext = filename.split('.').pop().toLowerCase();
 
-                if (validExtensions.includes(`.${ext}`)) {
-                    const isVideo = ext === 'mp4' || ext === 'mov';
-                    if (!syncedSet.has(uri)) {
-                        pending.push({
-                            id: uri,
-                            uri: uri,
-                            filename: filename,
-                            mediaType: isVideo ? 'video' : 'photo',
-                            isSafFile: true,
-                        });
+                    if (validExtensions.includes(`.${ext}`)) {
+                        const isVideo = ext === 'mp4' || ext === 'mov';
+                        if (!syncedSet.has(uri)) {
+                            pending.push({
+                                id: uri,
+                                uri: uri,
+                                filename: filename,
+                                mediaType: isVideo ? 'video' : 'photo',
+                                isSafFile: true,
+                            });
+                        }
                     }
                 }
+                return pending;
+            } catch (safScanErr) {
+                console.warn('[SyncService] SAF scan error:', safScanErr);
             }
-
-            return pending;
-        } catch (e) {
-            console.warn('Error scanning vault folder:', e);
-            return [];
         }
+
+        // Method B: Directory list from expo-file-system
+        if (Directory) {
+            try {
+                const dir = new Directory(folderUri);
+                const items = dir.list();
+                console.log(`[SyncService] Directory.list found ${items.length} items`);
+
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    const isDir = item instanceof Directory || item.isDirectory;
+                    if (!isDir) {
+                        const filename = item.name || item.uri.split('/').pop() || `file_${i}.jpg`;
+                        const ext = filename.split('.').pop().toLowerCase();
+                        if (validExtensions.includes(`.${ext}`)) {
+                            const isVideo = ext === 'mp4' || ext === 'mov';
+                            if (!syncedSet.has(item.uri)) {
+                                pending.push({
+                                    id: item.uri,
+                                    uri: item.uri,
+                                    filename: filename,
+                                    mediaType: isVideo ? 'video' : 'photo',
+                                    isSafFile: true,
+                                });
+                            }
+                        }
+                    }
+                }
+                return pending;
+            } catch (dirScanErr) {
+                console.warn('[SyncService] Directory.list scan error:', dirScanErr);
+            }
+        }
+
+        return pending;
     },
 
     /**
@@ -116,7 +195,7 @@ export const SyncService = {
                 };
             });
         } catch (e) {
-            console.warn('Error picking media:', e);
+            console.warn('[SyncService] Error picking media:', e);
             return [];
         }
     },
@@ -156,13 +235,30 @@ export const SyncService = {
                 successCount++;
                 uploadedAssetIds.push(asset.id);
 
-                // If it's a SAF folder file and autoDelete is enabled, delete local original!
-                if (autoDelete && asset.isSafFile && StorageAccessFramework) {
-                    try {
-                        await StorageAccessFramework.deleteAsync(asset.uri);
+                // If it's a SAF / designated folder file and autoDelete is enabled, delete local original!
+                if (autoDelete && asset.isSafFile) {
+                    let deleted = false;
+                    // Try SAF delete for Android content:// URIs
+                    if (asset.uri.startsWith('content://') && StorageAccessFramework?.deleteAsync) {
+                        try {
+                            await StorageAccessFramework.deleteAsync(asset.uri);
+                            deleted = true;
+                        } catch (delErr) {
+                            console.warn('[SyncService] SAF delete error:', delErr);
+                        }
+                    }
+                    // Try File.delete fallback
+                    if (!deleted && File) {
+                        try {
+                            const f = new File(asset.uri);
+                            f.delete();
+                            deleted = true;
+                        } catch (fErr) {
+                            console.warn('[SyncService] File.delete error:', fErr);
+                        }
+                    }
+                    if (deleted) {
                         deletedCount++;
-                    } catch (delErr) {
-                        console.warn('SAF delete error:', delErr);
                     }
                 }
 
@@ -176,7 +272,7 @@ export const SyncService = {
                     });
                 }
             } catch (err) {
-                console.warn(`Sync failed for ${asset.filename}:`, err);
+                console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
                 failCount++;
                 if (onProgress) {
                     onProgress({
