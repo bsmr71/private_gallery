@@ -9,6 +9,9 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    ScrollView,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
@@ -63,80 +66,93 @@ export default function LoginScreen({ onLoginSuccess }) {
     return (
         <KeyboardAvoidingView
             style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
-            <View style={styles.inner}>
-                {/* Logo & Title */}
-                <View style={styles.brandBox}>
-                    <View style={styles.logoCircle}>
-                        <SFSymbol name="photos" size={40} color="#0A84FF" />
-                    </View>
-                    <Text style={styles.brandTitle}>Private Gallery</Text>
-                    <Text style={styles.brandSubtitle}>Apple Photos Cloud Experience</Text>
-                </View>
-
-                {/* Form Card */}
-                <View style={styles.card}>
-                    <Text style={styles.inputLabel}>Email</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="contoh@domain.com"
-                        placeholderTextColor="#8E8E93"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-
-                    <Text style={styles.inputLabel}>Kata Sandi</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="••••••••"
-                        placeholderTextColor="#8E8E93"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                    />
-
-                    {requires2FA && (
-                        <View style={styles.twoFactorBox}>
-                            <Text style={styles.twoFactorLabel}>Kode Autentikasi 2FA (6 digit)</Text>
-                            <TextInput
-                                style={[styles.input, styles.twoFactorInput]}
-                                placeholder="123456"
-                                placeholderTextColor="#8E8E93"
-                                value={twoFactorCode}
-                                onChangeText={setTwoFactorCode}
-                                keyboardType="number-pad"
-                                maxLength={6}
-                                autoFocus
-                            />
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                >
+                    {/* Logo & Title */}
+                    <View style={styles.brandBox}>
+                        <View style={styles.logoCircle}>
+                            <SFSymbol name="photos" size={38} color="#0A84FF" />
                         </View>
-                    )}
+                        <Text style={styles.brandTitle}>Lumina</Text>
+                        <Text style={styles.brandSubtitle}>Personal Media Vault</Text>
+                    </View>
 
-                    <TouchableOpacity
-                        style={styles.loginBtn}
-                        onPress={handleLogin}
-                        disabled={loading}
-                        activeOpacity={0.8}
-                    >
-                        {loading ? (
-                            <ActivityIndicator color="#ffffff" />
-                        ) : (
-                            <Text style={styles.loginBtnText}>
-                                {requires2FA ? 'Verifikasi & Masuk' : 'Masuk ke Galeri'}
-                            </Text>
+                    {/* Form Card */}
+                    <View style={styles.card}>
+                        <Text style={styles.inputLabel}>Email</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="contoh@domain.com"
+                            placeholderTextColor="#8E8E93"
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            returnKeyType="next"
+                        />
+
+                        <Text style={styles.inputLabel}>Kata Sandi</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="••••••••"
+                            placeholderTextColor="#8E8E93"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry
+                            returnKeyType={requires2FA ? 'next' : 'done'}
+                            onSubmitEditing={requires2FA ? undefined : handleLogin}
+                        />
+
+                        {requires2FA && (
+                            <View style={styles.twoFactorBox}>
+                                <Text style={styles.twoFactorLabel}>Kode Autentikasi 2FA (6 digit)</Text>
+                                <TextInput
+                                    style={[styles.input, styles.twoFactorInput]}
+                                    placeholder="123456"
+                                    placeholderTextColor="#8E8E93"
+                                    value={twoFactorCode}
+                                    onChangeText={setTwoFactorCode}
+                                    keyboardType="number-pad"
+                                    maxLength={6}
+                                    autoFocus
+                                    returnKeyType="done"
+                                    onSubmitEditing={handleLogin}
+                                />
+                            </View>
                         )}
-                    </TouchableOpacity>
-                </View>
 
-                {/* Footer Security Badge */}
-                <View style={styles.footerBadge}>
-                    <SFSymbol name="lock.fill" size={13} color="#8E8E93" style={{ marginRight: 6 }} />
-                    <Text style={styles.footerText}>Terenkripsi Privat End-to-End Google Drive</Text>
-                </View>
-            </View>
+                        <TouchableOpacity
+                            style={styles.loginBtn}
+                            onPress={handleLogin}
+                            disabled={loading}
+                            activeOpacity={0.8}
+                        >
+                            {loading ? (
+                                <ActivityIndicator color="#ffffff" />
+                            ) : (
+                                <Text style={styles.loginBtnText}>
+                                    {requires2FA ? 'Verifikasi & Masuk' : 'Masuk'}
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Footer Security Badge */}
+                    <View style={styles.footerBadge}>
+                        <SFSymbol name="lock.fill" size={13} color="#8E8E93" style={{ marginRight: 6 }} />
+                        <Text style={styles.footerText}>Terenkripsi Privat End-to-End Google Drive</Text>
+                    </View>
+                </ScrollView>
+            </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
     );
 }
@@ -146,10 +162,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000000',
     },
-    inner: {
-        flex: 1,
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: 'center',
         paddingHorizontal: 24,
+        paddingVertical: 32,
     },
     brandBox: {
         alignItems: 'center',
