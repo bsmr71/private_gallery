@@ -76,7 +76,14 @@ class GenerateVideoThumbnailsCommand extends Command
         if ($specificId = $this->option('id')) {
             $query->where('id', $specificId);
         } elseif (!$this->option('force')) {
-            $query->whereNull('thumb_drive_id');
+            $nullCount = Media::where('type', 'video')->whereNull('thumb_drive_id')->count();
+            if ($nullCount > 0) {
+                $this->info("Menemukan {$nullCount} video tanpa thumbnail.");
+                $this->line("Catatan: Gunakan opsi --force untuk memproses seluruh video (termasuk mengganti placeholder lama).");
+                $query->whereNull('thumb_drive_id');
+            } else {
+                $this->info("Seluruh video sudah memiliki entri thumbnail. Memproses seluruh video untuk mengganti thumbnail lama...");
+            }
         }
 
         $videos = $query->orderBy('id', 'desc')->get();

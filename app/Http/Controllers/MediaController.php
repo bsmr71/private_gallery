@@ -1303,16 +1303,21 @@ class MediaController extends Controller
         }
 
         $limit = max(1, min(10, (int)$request->input('limit', 5)));
-        $force = $request->boolean('force', false);
+        $force = $request->boolean('force', true);
+        $afterId = $request->input('after_id');
 
         $query = Media::where('type', 'video');
-        if (!$force) {
+        if ($afterId) {
+            $query->where('id', '<', $afterId);
+        } elseif (!$force) {
             $query->whereNull('thumb_drive_id');
         }
-        $videos = $query->limit($limit)->get();
+        $videos = $query->orderBy('id', 'desc')->limit($limit)->get();
         $processed = 0;
+        $lastId = null;
 
         foreach ($videos as $media) {
+            $lastId = $media->id;
             $cachedPath = $this->cacheService->getCachedPath($media);
             $tempEncrypted = null;
             $tempDecrypted = null;
@@ -1338,11 +1343,20 @@ class MediaController extends Controller
             }
         }
 
-        $remaining = Media::where('type', 'video')->whereNull('thumb_drive_id')->count();
+        $remainingQuery = Media::where('type', 'video');
+        if ($lastId) {
+            $remainingQuery->where('id', '<', $lastId);
+        } elseif (!$force) {
+            $remainingQuery->whereNull('thumb_drive_id');
+        } else {
+            $remainingQuery->whereRaw('0 = 1');
+        }
+        $remaining = $remainingQuery->count();
 
         return response()->json([
             'success' => true,
             'processed' => $processed,
+            'last_id' => $lastId,
             'remaining' => $remaining,
             'ffmpeg_available' => true,
         ]);
@@ -1440,12 +1454,13 @@ class MediaController extends Controller
     {
         $this->authorizeMediaAccess();
 
-        $force = $request->boolean('force', false);
+        $force = $request->boolean('force', true);
         $query = Media::where('type', 'video');
         if (!$force) {
             $query->whereNull('thumb_drive_id');
         }
 
+        $totalAllVideos = Media::where('type', 'video')->count();
         $videos = $query->orderBy('id', 'desc')->get()->map(function ($m) {
             return [
                 'id' => $m->id,
@@ -1461,6 +1476,7 @@ class MediaController extends Controller
         return response()->json([
             'success' => true,
             'count' => $videos->count(),
+            'total_all_videos' => $totalAllVideos,
             'ffmpeg_available' => (bool)$ffmpeg,
             'ffmpeg_path' => $ffmpeg,
             'videos' => $videos,

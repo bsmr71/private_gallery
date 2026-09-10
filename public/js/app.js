@@ -1908,8 +1908,8 @@ async function startVideoThumbnailAutoExtraction() {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     try {
-        // 1. Get list of videos needing thumbnails
-        const infoResp = await fetch('/media-videos-needing-thumbnails');
+        // 1. Get list of videos needing thumbnails (force=1 to include videos with old GD placeholders)
+        const infoResp = await fetch('/media-videos-needing-thumbnails?force=1');
         const info = await infoResp.json();
 
         if (!info.success) {
@@ -1958,6 +1958,7 @@ async function startVideoThumbnailAutoExtraction() {
         // 3. Process via Server FFmpeg in batches if available
         if (hasFfmpeg) {
             let processed = 0;
+            let afterId = null;
             while (processed < total) {
                 statusText.textContent = `Memproses di server via FFmpeg (${processed}/${total} selesai)...`;
                 const batchResp = await fetch('/media/batch-generate-thumbnails', {
@@ -1967,7 +1968,7 @@ async function startVideoThumbnailAutoExtraction() {
                         'X-CSRF-TOKEN': csrf,
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({ limit: 5 })
+                    body: JSON.stringify({ limit: 5, force: true, after_id: afterId })
                 });
                 const batchData = await batchResp.json();
 
@@ -1976,10 +1977,11 @@ async function startVideoThumbnailAutoExtraction() {
                 }
 
                 processed += batchData.processed;
+                afterId = batchData.last_id;
                 const pct = Math.min(100, Math.round((processed / total) * 100));
                 if (progressFill) progressFill.style.width = pct + '%';
 
-                if (batchData.remaining === 0) {
+                if (!afterId || batchData.remaining === 0) {
                     break;
                 }
             }
