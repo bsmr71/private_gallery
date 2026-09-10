@@ -542,6 +542,11 @@ class MediaApiController extends Controller
         $tokenParam = $token ? '?token=' . urlencode($token) : '';
         $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
 
+        // When accessed from web session, use standard web routes so cookies work automatically
+        $streamUrl = $token ? "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}" : $m->streamUrl();
+        $thumbUrl = $token ? "{$baseApiUrl}/media/{$m->id}/thumbnail{$tokenParam}" : $m->thumbnailUrl();
+        $downloadUrl = $token ? "{$baseApiUrl}/media/{$m->id}/download{$tokenParam}" : $m->downloadUrl();
+
         return [
             'id' => $m->id,
             'title' => $m->title,
@@ -553,9 +558,9 @@ class MediaApiController extends Controller
             'is_favorite' => (bool)$m->is_favorite,
             'album_id' => $m->album_id,
             'album_name' => $m->album ? $m->album->name : null,
-            'stream_url' => "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}",
-            'thumbnail_url' => "{$baseApiUrl}/media/{$m->id}/thumbnail{$tokenParam}",
-            'download_url' => "{$baseApiUrl}/media/{$m->id}/download{$tokenParam}",
+            'stream_url' => $streamUrl,
+            'thumbnail_url' => $thumbUrl,
+            'download_url' => $downloadUrl,
             'created_at' => $m->created_at ? $m->created_at->toIso8601String() : null,
             'formatted_date' => $m->created_at ? $m->created_at->format('d M Y') : null,
         ];

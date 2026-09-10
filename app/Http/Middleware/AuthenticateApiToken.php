@@ -17,6 +17,11 @@ class AuthenticateApiToken
         $bearer = $request->bearerToken() ?: $request->query('token') ?: $request->query('api_token');
 
         if (!$bearer) {
+            // Support web session authentication fallback for AJAX requests
+            if (\Illuminate\Support\Facades\Auth::check()) {
+                return $next($request);
+            }
+
             return response()->json([
                 'message' => 'Unauthenticated.',
             ], 401);

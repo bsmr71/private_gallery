@@ -1704,7 +1704,11 @@ async function loadDuplicatesData() {
                 html += `
                     <div class="dup-item-card" id="dup-item-${item.id}">
                         <div class="dup-item-thumb-wrap">
-                            <img src="${item.thumbnail_url}" class="dup-item-img" alt="${escapeHtml(item.title)}" loading="lazy">
+                            <img src="${item.thumbnail_url || ('/media/' + item.id + '/thumbnail')}"
+                                 class="dup-item-img"
+                                 alt="${escapeHtml(item.title)}"
+                                 loading="lazy"
+                                 onerror="if(this.src!=='/media/${item.id}/thumbnail'){this.src='/media/${item.id}/thumbnail';}">
                             <span class="dup-badge ${isKeeper ? 'dup-badge-keeper' : 'dup-badge-copy'}">
                                 ${isKeeper ? '✓ Simpan (Asli)' : 'Duplikat'}
                             </span>
