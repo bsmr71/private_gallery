@@ -22,6 +22,7 @@ import InfoSheet from './InfoSheet';
 import { ApiService } from '../services/api';
 import SecureImage from './SecureImage';
 import VideoPlayerView from './VideoPlayerView';
+import AlbumPickerModal from './AlbumPickerModal';
 
 import SFSymbol from './SFSymbol';
 import { BlurView } from 'expo-blur';
@@ -63,6 +64,7 @@ export default function PhotoViewerModal({
     const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
     const [chromeVisible, setChromeVisible] = useState(true);
     const [infoVisible, setInfoVisible] = useState(false);
+    const [albumModalVisible, setAlbumModalVisible] = useState(false);
     const [downloading, setDownloading] = useState(false);
 
     // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
@@ -90,6 +92,7 @@ export default function PhotoViewerModal({
             setCurrentIndex(initialIndex || 0);
             setChromeVisible(true);
             setInfoVisible(false);
+            setAlbumModalVisible(false);
             setDownloading(false);
             pan.setValue({ x: 0, y: 0 });
         }
@@ -495,7 +498,7 @@ export default function PhotoViewerModal({
                             onShare={handleShare}
                             onDownload={handleDownload}
                             downloading={downloading}
-                            onMove={() => Alert.alert('Info', 'Gunakan menu rapikan pada album.')}
+                            onMove={() => setAlbumModalVisible(true)}
                             onDelete={handleDelete}
                         />
                     </View>
@@ -507,6 +510,19 @@ export default function PhotoViewerModal({
                     item={activeItem}
                     onClose={() => setInfoVisible(false)}
                     onRename={handleRenamePrompt}
+                />
+
+                {/* Album Picker Modal (Move / Copy) */}
+                <AlbumPickerModal
+                    visible={albumModalVisible}
+                    mediaIds={activeItem ? [activeItem.id] : []}
+                    onClose={() => setAlbumModalVisible(false)}
+                    onSuccess={(res) => {
+                        if (activeItem && res?.targetAlbumId !== undefined) {
+                            activeItem.album_id = res.targetAlbumId;
+                            onMediaUpdated && onMediaUpdated(activeItem);
+                        }
+                    }}
                 />
             </Animated.View>
         </Modal>

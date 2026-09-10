@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -27,6 +27,7 @@ import SFSymbol from '../components/SFSymbol';
 import { LocalVaultService } from '../services/localVaultService';
 import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
+import AlbumPickerModal from '../components/AlbumPickerModal';
 import { NativeSyncService } from '../services/nativeSyncService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,7 +36,7 @@ const COLUMN_COUNT = 3;
 const ITEM_MARGIN = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
-export default function LibraryScreen() {
+export default function LibraryScreen({ route, navigation }) {
     const insets = useSafeAreaInsets();
     const isDecoy = useDecoyMode();
     const isLocked = useAppLocked();
@@ -46,6 +47,17 @@ export default function LibraryScreen() {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [stats, setStats] = useState(null);
+
+    // Active Album filter (from navigation params)
+    const [activeAlbum, setActiveAlbum] = useState(
+        route?.params?.albumId
+            ? { id: route?.params?.albumId, name: route?.params?.albumName || 'Album' }
+            : null
+    );
+    const activeAlbumRef = useRef(activeAlbum);
+    useEffect(() => {
+        activeAlbumRef.current = activeAlbum;
+    }, [activeAlbum]);
 
     // Lightbox state
     const [viewerVisible, setViewerVisible] = useState(false);
@@ -64,10 +76,18 @@ export default function LibraryScreen() {
     // Security Settings Modal state
     const [securityModalVisible, setSecurityModalVisible] = useState(false);
 
-    const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false) => {
+    // Album Picker Modal (Batch Move / Copy) state
+    const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
+
+    const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false, overrideAlbumId = undefined) => {
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
-            const res = await ApiService.getMedia({ page: pageNum, per_page: 36 });
+            const albumToUse = overrideAlbumId !== undefined ? overrideAlbumId : activeAlbumRef.current?.id;
+            const params = { page: pageNum, per_page: 36 };
+            if (albumToUse) {
+                params.album_id = albumToUse;
+            }
+            const res = await ApiService.getMedia(params);
 
             if (res.success) {
                 if (pageNum === 1) {
@@ -153,6 +173,29 @@ export default function LibraryScreen() {
         return unsubscribe;
     }, [fetchMedia]);
 
+    // Handle navigation params changes (tapping album in AlbumsScreen or shortcuts)
+    useEffect(() => {
+        if (route?.params?.albumId) {
+            const newAlbum = {
+                id: route.params.albumId,
+                name: route.params.albumName || 'Album',
+            };
+            setActiveAlbum(newAlbum);
+            fetchMedia(1, true, newAlbum.id);
+        } else if (route?.params?.clearAlbum) {
+            setActiveAlbum(null);
+            fetchMedia(1, true, null);
+        }
+
+        if (route?.params?.filterType) {
+            setFilterTab(route.params.filterType);
+            if (!route?.params?.albumId) {
+                setActiveAlbum(null);
+                fetchMedia(1, true, null);
+            }
+        }
+    }, [route?.params?.albumId, route?.params?.albumName, route?.params?.filterType, route?.params?.clearAlbum, fetchMedia]);
+
     useEffect(() => {
         fetchMedia(1);
         runAutoSync();
@@ -226,6 +269,12 @@ export default function LibraryScreen() {
         }
     };
 
+    const handleBackToAlbums = () => {
+        setActiveAlbum(null);
+        navigation?.setParams({ albumId: null, albumName: null });
+        navigation?.navigate('Albums');
+    };
+
     const handleUploadPick = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -271,9 +320,14 @@ export default function LibraryScreen() {
                         total,
                         `Mengunggah berkas ${i + 1}/${total}...`
                     );
-                    await ApiService.uploadMedia(asset);
+                    await ApiService.uploadMedia(asset, activeAlbum?.id);
                 }
-                Alert.alert('Berhasil', `${total} berkas berhasil dienkripsi dan diunggah ke Google Drive.`);
+                Alert.alert(
+                    'Berhasil',
+                    activeAlbum
+                        ? `${total} berkas berhasil diunggah ke album "${activeAlbum.name}".`
+                        : `${total} berkas berhasil dienkripsi dan diunggah ke Google Drive.`
+                );
                 fetchMedia(1, true);
             } catch (err) {
                 Alert.alert('Gagal Unggah', err.message || 'Terjadi kendala saat mengunggah');
@@ -377,70 +431,123 @@ export default function LibraryScreen() {
 
             {/* Header (Authentic Apple Photos Style) */}
             <View style={styles.header}>
-                <View style={styles.headerTopRow}>
-                    <View>
-                        <Text style={styles.headerTitle}>Perpustakaan</Text>
-                        {stats && (
-                            <Text style={styles.headerSubtitle}>
-                                {isDecoy
-                                    ? '0 Media • 0 Foto, 0 Video'
-                                    : `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`}
-                            </Text>
-                        )}
-                    </View>
-
-                    <View style={styles.headerRight}>
-                        {!isDecoy && mediaItems.length > 0 && (
-                            <TouchableOpacity
-                                style={styles.selectBtn}
-                                onPress={() => {
-                                    setIsSelectMode(!isSelectMode);
-                                    setSelectedIds([]);
-                                }}
-                                activeOpacity={0.6}
-                            >
-                                <Text style={styles.selectBtnText}>
-                                    {isSelectMode ? 'Selesai' : 'Pilih'}
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-
-                        {!isDecoy && (
-                            <>
-                                {/* Security & Passcode Settings */}
-                                <TouchableOpacity
-                                    style={styles.syncHeaderBtn}
-                                    onPress={() => setSecurityModalVisible(true)}
-                                    activeOpacity={0.7}
-                                >
-                                    <SFSymbol name="lock" size={17} color="#0A84FF" weight="semibold" />
-                                </TouchableOpacity>
-
-                                {/* Vault Sync Button */}
-                                <TouchableOpacity
-                                    style={styles.syncHeaderBtn}
-                                    onPress={() => setSyncModalVisible(true)}
-                                    activeOpacity={0.7}
-                                >
-                                    <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
-                                </TouchableOpacity>
-                            </>
-                        )}
-
+                {activeAlbum ? (
+                    <View style={styles.headerTopRow}>
                         <TouchableOpacity
-                            style={styles.uploadPlusBtn}
-                            onPress={handleUploadPick}
-                            disabled={uploading}
+                            style={styles.albumBackBtn}
+                            onPress={handleBackToAlbums}
                             activeOpacity={0.7}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
-                            {uploading ? (
-                                <ActivityIndicator size="small" color="#0A84FF" />
-                            ) : (
-                                <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
-                            )}
+                            <SFSymbol name="chevron.left" size={18} color="#0A84FF" />
+                            <Text style={styles.albumBackText}>Album</Text>
                         </TouchableOpacity>
+
+                        <View style={styles.albumHeaderCenter}>
+                            <Text style={styles.albumHeaderTitle} numberOfLines={1}>
+                                {activeAlbum.name}
+                            </Text>
+                            <Text style={styles.headerSubtitle}>
+                                {displayedItems.length} Media
+                            </Text>
+                        </View>
+
+                        <View style={styles.headerRight}>
+                            {!isDecoy && mediaItems.length > 0 && (
+                                <TouchableOpacity
+                                    style={styles.selectBtn}
+                                    onPress={() => {
+                                        setIsSelectMode(!isSelectMode);
+                                        setSelectedIds([]);
+                                    }}
+                                    activeOpacity={0.6}
+                                >
+                                    <Text style={styles.selectBtnText}>
+                                        {isSelectMode ? 'Selesai' : 'Pilih'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+
+                            <TouchableOpacity
+                                style={styles.uploadPlusBtn}
+                                onPress={handleUploadPick}
+                                disabled={uploading}
+                                activeOpacity={0.7}
+                            >
+                                {uploading ? (
+                                    <ActivityIndicator size="small" color="#0A84FF" />
+                                ) : (
+                                    <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
+                                )}
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                </View>
+                ) : (
+                    <View style={styles.headerTopRow}>
+                        <View>
+                            <Text style={styles.headerTitle}>Perpustakaan</Text>
+                            {stats && (
+                                <Text style={styles.headerSubtitle}>
+                                    {isDecoy
+                                        ? '0 Media • 0 Foto, 0 Video'
+                                        : `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`}
+                                </Text>
+                            )}
+                        </View>
+
+                        <View style={styles.headerRight}>
+                            {!isDecoy && mediaItems.length > 0 && (
+                                <TouchableOpacity
+                                    style={styles.selectBtn}
+                                    onPress={() => {
+                                        setIsSelectMode(!isSelectMode);
+                                        setSelectedIds([]);
+                                    }}
+                                    activeOpacity={0.6}
+                                >
+                                    <Text style={styles.selectBtnText}>
+                                        {isSelectMode ? 'Selesai' : 'Pilih'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {!isDecoy && (
+                                <>
+                                    {/* Security & Passcode Settings */}
+                                    <TouchableOpacity
+                                        style={styles.syncHeaderBtn}
+                                        onPress={() => setSecurityModalVisible(true)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <SFSymbol name="lock" size={17} color="#0A84FF" weight="semibold" />
+                                    </TouchableOpacity>
+
+                                    {/* Vault Sync Button */}
+                                    <TouchableOpacity
+                                        style={styles.syncHeaderBtn}
+                                        onPress={() => setSyncModalVisible(true)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
+                                    </TouchableOpacity>
+                                </>
+                            )}
+
+                            <TouchableOpacity
+                                style={styles.uploadPlusBtn}
+                                onPress={handleUploadPick}
+                                disabled={uploading}
+                                activeOpacity={0.7}
+                            >
+                                {uploading ? (
+                                    <ActivityIndicator size="small" color="#0A84FF" />
+                                ) : (
+                                    <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
 
                 {/* iOS 18 Segmented Filter Capsule */}
                 <View style={styles.segmentedFilterContainer}>
@@ -551,9 +658,15 @@ export default function LibraryScreen() {
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
-                            <SFSymbol name="photos" size={54} color="#8E8E93" />
-                            <Text style={styles.emptyTitle}>Galeri Masih Kosong</Text>
-                            <Text style={styles.emptyDesc}>Ketuk tombol ＋ di kanan atas untuk mengunggah foto atau video.</Text>
+                            <SFSymbol name={activeAlbum ? 'folder' : 'photos'} size={54} color="#8E8E93" />
+                            <Text style={styles.emptyTitle}>
+                                {activeAlbum ? 'Album Masih Kosong' : 'Galeri Masih Kosong'}
+                            </Text>
+                            <Text style={styles.emptyDesc}>
+                                {activeAlbum
+                                    ? `Belum ada foto atau video di dalam album "${activeAlbum.name}". Ketuk tombol ＋ untuk mengunggah berkas ke album ini.`
+                                    : 'Ketuk tombol ＋ di kanan atas untuk mengunggah foto atau video.'}
+                            </Text>
                         </View>
                     }
                 />
@@ -583,11 +696,20 @@ export default function LibraryScreen() {
                             <>
                                 <TouchableOpacity
                                     style={styles.barActionBtn}
+                                    onPress={() => setAlbumPickerVisible(true)}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                >
+                                    <SFSymbol name="folder" size={14} color="#0A84FF" />
+                                    <Text style={[styles.barActionText, { color: '#0A84FF' }]}>Album</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.barActionBtn}
                                     onPress={handleLockSelectedToVault}
                                     activeOpacity={0.7}
                                     hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                                 >
-                                    <SFSymbol name="lock.fill" size={15} color="#FF9F0A" />
+                                    <SFSymbol name="lock.fill" size={14} color="#FF9F0A" />
                                     <Text style={[styles.barActionText, { color: '#FF9F0A' }]}>Kunci</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -643,6 +765,18 @@ export default function LibraryScreen() {
             <SecuritySettingsModal
                 visible={securityModalVisible}
                 onClose={() => setSecurityModalVisible(false)}
+            />
+
+            {/* Batch Move / Copy to Album Modal */}
+            <AlbumPickerModal
+                visible={albumPickerVisible}
+                mediaIds={selectedIds}
+                onClose={() => setAlbumPickerVisible(false)}
+                onSuccess={() => {
+                    setSelectedIds([]);
+                    setIsSelectMode(false);
+                    fetchMedia(1, true);
+                }}
             />
         </View>
     );
@@ -899,10 +1033,32 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 13,
     },
+    albumBackBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingRight: 6,
+    },
+    albumBackText: {
+        color: '#0A84FF',
+        fontSize: 17,
+        fontWeight: '500',
+        marginLeft: 2,
+    },
+    albumHeaderCenter: {
+        flex: 1,
+        marginHorizontal: 8,
+    },
+    albumHeaderTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#ffffff',
+        letterSpacing: -0.4,
+    },
     floatingBarRight: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: 6,
     },
     barActionBtn: {
         flexDirection: 'row',

@@ -196,11 +196,12 @@ class MediaApiController extends Controller
         $request->validate([
             'media_ids' => 'required|array',
             'media_ids.*' => 'integer|exists:media,id',
-            'album_id' => 'nullable|integer|exists:albums,id',
+            'album_id' => 'nullable',
             'new_album_name' => 'nullable|string|max:255',
         ]);
 
-        $targetAlbumId = $request->album_id;
+        $targetAlbumId = (!empty($request->album_id) && (int)$request->album_id > 0) ? (int)$request->album_id : null;
+        $targetAlbumName = 'Tanpa Album';
 
         if ($request->filled('new_album_name')) {
             $newAlbum = Album::create([
@@ -208,14 +209,23 @@ class MediaApiController extends Controller
                 'slug' => Str::slug(trim($request->new_album_name)) . '-' . Str::random(4),
             ]);
             $targetAlbumId = $newAlbum->id;
+            $targetAlbumName = $newAlbum->name;
+        } elseif ($targetAlbumId) {
+            $album = Album::find($targetAlbumId);
+            if ($album) {
+                $targetAlbumName = $album->name;
+            } else {
+                $targetAlbumId = null;
+            }
         }
 
         Media::whereIn('id', $request->media_ids)->update(['album_id' => $targetAlbumId]);
 
         return response()->json([
             'success' => true,
-            'message' => count($request->media_ids) . ' media berhasil dipindahkan.',
+            'message' => count($request->media_ids) . ' media berhasil dipindahkan ke "' . $targetAlbumName . '".',
             'target_album_id' => $targetAlbumId,
+            'target_album_name' => $targetAlbumName,
         ]);
     }
 
@@ -227,11 +237,12 @@ class MediaApiController extends Controller
         $request->validate([
             'media_ids' => 'required|array',
             'media_ids.*' => 'integer|exists:media,id',
-            'album_id' => 'nullable|integer|exists:albums,id',
+            'album_id' => 'nullable',
             'new_album_name' => 'nullable|string|max:255',
         ]);
 
-        $targetAlbumId = $request->album_id;
+        $targetAlbumId = (!empty($request->album_id) && (int)$request->album_id > 0) ? (int)$request->album_id : null;
+        $targetAlbumName = 'Tanpa Album';
 
         if ($request->filled('new_album_name')) {
             $newAlbum = Album::create([
@@ -239,6 +250,14 @@ class MediaApiController extends Controller
                 'slug' => Str::slug(trim($request->new_album_name)) . '-' . Str::random(4),
             ]);
             $targetAlbumId = $newAlbum->id;
+            $targetAlbumName = $newAlbum->name;
+        } elseif ($targetAlbumId) {
+            $album = Album::find($targetAlbumId);
+            if ($album) {
+                $targetAlbumName = $album->name;
+            } else {
+                $targetAlbumId = null;
+            }
         }
 
         $sourceMedia = Media::whereIn('id', $request->media_ids)->get();
@@ -262,8 +281,9 @@ class MediaApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "{$createdCount} media berhasil disalin.",
+            'message' => "{$createdCount} media berhasil disalin ke \"{$targetAlbumName}\".",
             'target_album_id' => $targetAlbumId,
+            'target_album_name' => $targetAlbumName,
         ]);
     }
 
