@@ -521,6 +521,19 @@ class MediaApiController extends Controller
     }
 
     /**
+     * Update media thumbnail via API.
+     */
+    public function updateThumbnail(Request $request, Media $media): JsonResponse
+    {
+        $mediaCtrl = app(\App\Http\Controllers\MediaController::class);
+        $resp = $mediaCtrl->updateThumbnail($request, $media);
+        if ($resp instanceof JsonResponse) {
+            return $resp;
+        }
+        return response()->json($resp->getData(), $resp->getStatusCode());
+    }
+
+    /**
      * Build API media item payload with proper authenticated URLs based on current request host.
      */
     private function formatMediaItem(Media $m, Request $request): array

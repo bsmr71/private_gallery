@@ -193,7 +193,8 @@
         <section class="ios-media-types-section" aria-label="Utilitas" style="margin-top: 32px;">
             <h2 class="ios-section-heading">Utilitas</h2>
             <div class="ios-media-types-list">
-                <div class="ios-media-type-row" style="cursor: default;">
+                <!-- Duplikat Row (Clickable) -->
+                <div class="ios-media-type-row" role="button" tabindex="0" onclick="openDuplicatesModal()" style="cursor: pointer;" title="Lihat dan bersihkan media duplikat">
                     <div class="type-row-left">
                         <span class="type-icon" style="background: rgba(10, 132, 255, 0.15); color: #0A84FF;">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -201,7 +202,24 @@
                         <span class="type-label">Duplikat</span>
                     </div>
                     <div class="type-row-right">
-                        <span class="type-count">{{ $stats['duplicates'] ?? 0 }}</span>
+                        <span class="type-count" id="dup-badge-count">{{ $stats['duplicates'] ?? 0 }}</span>
+                        <svg class="chevron-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </div>
+                </div>
+
+                <!-- Perbaiki Thumbnail Video Row (Clickable) -->
+                <div class="ios-media-type-row" role="button" tabindex="0" onclick="openVideoRepairModal()" style="cursor: pointer;" title="Perbaiki thumbnail video agar tidak lagi hitam">
+                    <div class="type-row-left">
+                        <span class="type-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                        </span>
+                        <span class="type-label">Perbaiki Thumbnail Video</span>
+                    </div>
+                    <div class="type-row-right">
+                        <span class="type-count" style="font-size: 11.5px; color: #a855f7; background: rgba(168, 85, 247, 0.12); padding: 2px 8px; border-radius: 10px;">{{ $stats['videos'] ?? 0 }} video</span>
+                        <svg class="chevron-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                     </div>
                 </div>
             </div>
@@ -275,6 +293,81 @@
             </div>
         </form>
     </div>
+</div>
+
+<!-- Modal Apple Photos Duplikat -->
+<div class="organize-modal-backdrop" id="duplicates-modal" style="display:none;" onclick="if(event.target === this) closeDuplicatesModal()">
+    <div class="duplicates-modal-box">
+        <div class="duplicates-header">
+            <div class="dup-header-left">
+                <div class="dup-header-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="dup-header-title">Duplikat</h3>
+                    <p class="dup-header-subtitle">Gabungkan foto dan video yang identik untuk menghemat ruang</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;" onclick="closeDuplicatesModal()">Tutup</button>
+        </div>
+
+        <div class="dup-summary-bar">
+            <div class="dup-summary-info" id="dup-summary-text">
+                Memindai media duplikat...
+            </div>
+            <button type="button" class="btn btn-primary" id="btn-merge-all-web" style="display:none; padding: 6px 16px; font-size: 12.5px;" onclick="mergeAllDuplicatesWeb()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Gabung Semua
+            </button>
+        </div>
+
+        <div class="duplicates-body" id="duplicates-container">
+            <!-- Dynamic content loaded via JS -->
+            <div style="text-align:center; padding: 40px 20px; color: rgba(255,255,255,0.5);">
+                <div class="spinner" style="margin: 0 auto 12px;"></div>
+                <span>Memuat data duplikat...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Perbaiki Thumbnail Video -->
+<div class="organize-modal-backdrop" id="video-repair-modal" style="display:none;" onclick="if(event.target === this) closeVideoRepairModal()">
+    <div class="organize-modal-box rename-box" style="max-width: 540px;">
+        <div class="organize-modal-header">
+            <div class="header-icon-pill" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="organize-modal-title">Perbaiki Thumbnail Video</h3>
+                <p class="organize-modal-subtitle">Ganti thumbnail hitam dengan frame asli video secara otomatis</p>
+            </div>
+        </div>
+
+        <div class="organize-modal-body" style="padding: 20px 24px;">
+            <p style="font-size: 13.5px; color: rgba(255,255,255,0.75); line-height: 1.5; margin-bottom: 14px;">
+                Browser web akan memutar potongan awal video (detik 0.5s) di latar belakang, mengambil screenshot frame berkualitas tinggi, dan menyimpannya secara permanen ke server & Google Drive.
+            </p>
+
+            <div class="video-repair-progress-bar" id="v-repair-progress-bar" style="display:none;">
+                <div class="video-repair-progress-fill" id="v-repair-progress-fill"></div>
+            </div>
+            <div id="v-repair-status-text" style="font-size: 12.5px; color: #a855f7; font-weight: 500; min-height: 20px;"></div>
+        </div>
+
+        <div class="organize-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeVideoRepairModal()">Tutup</button>
+            <button type="button" class="btn btn-primary" id="btn-start-video-repair" onclick="startVideoThumbnailAutoExtraction()" style="background: #9333ea; border-color: #9333ea;">
+                Mulai Perbaikan
+            </button>
+        </div>
 </div>
 
 @push('scripts')

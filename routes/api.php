@@ -36,6 +36,7 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     Route::post('/media/{media}/rename', [MediaApiController::class, 'rename']);
     Route::post('/media/move', [MediaApiController::class, 'move']);
     Route::post('/media/copy', [MediaApiController::class, 'copy']);
+    Route::post('/media/{media}/thumbnail', [MediaApiController::class, 'updateThumbnail']);
     Route::delete('/media/{media}', [MediaApiController::class, 'destroy']);
     Route::post('/media/batch-delete', [MediaApiController::class, 'batchDelete']);
 

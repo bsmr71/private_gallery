@@ -1442,11 +1442,559 @@ function initLightboxStageInteractions() {
 }
 
 // ============================================================
+// CLIENT-SIDE VIDEO THUMBNAIL FRAME EXTRACTOR & AUTO-REPAIR
+// ============================================================
+const videoThumbQueue = [];
+let activeVideoExtractors = 0;
+const MAX_CONCURRENT_VIDEO_EXTRACTS = 2;
+
+function enqueueVideoThumbnailExtraction(card) {
+    if (card.dataset.thumbExtracted === '1') return;
+    card.dataset.thumbExtracted = '1';
+
+    const id = card.dataset.id;
+    const streamUrl = card.dataset.streamUrl;
+    if (!id || !streamUrl) return;
+
+    // Check localStorage cache first
+    try {
+        const cached = localStorage.getItem('vthumb_' + id);
+        if (cached) {
+            const img = card.querySelector('.media-card-image');
+            if (img) {
+                img.src = cached;
+                img.classList.add('loaded');
+            }
+            return;
+        }
+    } catch (e) {}
+
+    videoThumbQueue.push({ card, id, streamUrl });
+    processVideoThumbQueue();
+}
+
+function processVideoThumbQueue() {
+    if (activeVideoExtractors >= MAX_CONCURRENT_VIDEO_EXTRACTS || videoThumbQueue.length === 0) {
+        return;
+    }
+
+    const { card, id, streamUrl } = videoThumbQueue.shift();
+    activeVideoExtractors++;
+
+    const img = card.querySelector('.media-card-image');
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+
+    let finished = false;
+    const timeout = setTimeout(() => {
+        cleanup();
+    }, 12000);
+
+    function cleanup() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        video.onloadeddata = null;
+        video.onseeked = null;
+        video.onerror = null;
+        video.src = '';
+        video.load();
+        activeVideoExtractors--;
+        processVideoThumbQueue();
+    }
+
+    function captureFrame() {
+        try {
+            const w = video.videoWidth || 480;
+            const h = video.videoHeight || 360;
+            const targetW = Math.min(480, w);
+            const targetH = Math.round(targetW * (h / w));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = targetW;
+            canvas.height = targetH;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, targetW, targetH);
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+            if (img) {
+                img.src = dataUrl;
+                img.classList.add('loaded');
+            }
+
+            // Cache in browser
+            try {
+                localStorage.setItem('vthumb_' + id, dataUrl);
+            } catch (e) {}
+
+            // Auto-heal server & Google Drive if thumb was placeholder or missing
+            if (card.dataset.hasThumb !== '1') {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+                fetch('/media/' + id + '/thumbnail', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf || '',
+                    },
+                    body: JSON.stringify({ image_data: dataUrl }),
+                }).then(res => res.json()).then(res => {
+                    if (res && res.success) {
+                        card.dataset.hasThumb = '1';
+                    }
+                }).catch(() => {});
+            }
+        } catch (err) {
+            console.warn('Frame capture failed for video ' + id, err);
+        } finally {
+            cleanup();
+        }
+    }
+
+    video.onloadeddata = () => {
+        try {
+            video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+        } catch (e) {
+            captureFrame();
+        }
+    };
+
+    video.onseeked = () => {
+        captureFrame();
+    };
+
+    video.onerror = () => {
+        cleanup();
+    };
+
+    video.src = streamUrl + '#t=0.5';
+}
+
+function initVideoThumbnailExtractor() {
+    const videoCards = document.querySelectorAll('.media-card[data-is-video="1"]');
+    if (videoCards.length === 0) return;
+
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    enqueueVideoThumbnailExtraction(entry.target);
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { rootMargin: '300px' });
+
+        videoCards.forEach(card => observer.observe(card));
+    } else {
+        videoCards.forEach(card => enqueueVideoThumbnailExtraction(card));
+    }
+}
+
+// ============================================================
+// APPLE PHOTOS DUPLICATES MODAL (WEB)
+// ============================================================
+function openDuplicatesModal() {
+    const modal = document.getElementById('duplicates-modal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    loadDuplicatesData();
+}
+
+function closeDuplicatesModal() {
+    const modal = document.getElementById('duplicates-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+async function loadDuplicatesData() {
+    const container = document.getElementById('duplicates-container');
+    const summaryText = document.getElementById('dup-summary-text');
+    const mergeAllBtn = document.getElementById('btn-merge-all-web');
+
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align:center; padding: 48px 20px; color: rgba(255,255,255,0.6);">
+            <div class="spinner" style="margin: 0 auto 14px;"></div>
+            <span>Memindai pustaka untuk menemukan media duplikat...</span>
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/media-duplicates', {
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+
+        if (!data.success || !data.groups || data.groups.length === 0) {
+            summaryText.innerHTML = 'Tidak ada duplikat ditemukan.';
+            if (mergeAllBtn) mergeAllBtn.style.display = 'none';
+            const badge = document.getElementById('dup-badge-count');
+            if (badge) badge.textContent = '0';
+
+            container.innerHTML = `
+                <div class="dup-empty-state">
+                    <div class="dup-empty-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <h3 class="dup-empty-title">Galeri Bersih & Rapi!</h3>
+                    <p class="dup-empty-desc">Tidak ada berkas duplikat yang terdeteksi di galeri Anda. Seluruh media tersimpan secara efisien.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const totalCopies = data.total_duplicate_copies || 0;
+        const totalWasted = data.formatted_total_wasted || '0 B';
+        summaryText.innerHTML = `Ditemukan <strong>${totalCopies} salinan duplikat</strong> • Hemat potensi <strong>${totalWasted}</strong> ruang penyimpanan`;
+
+        if (mergeAllBtn) {
+            mergeAllBtn.style.display = 'inline-flex';
+            mergeAllBtn.textContent = `Gabung Semua (${totalCopies})`;
+        }
+
+        const badge = document.getElementById('dup-badge-count');
+        if (badge) badge.textContent = totalCopies;
+
+        let html = '';
+        data.groups.forEach((group, idx) => {
+            const groupKey = group.group_key;
+            const duplicateIds = group.items.filter(item => !item.is_keeper).map(item => item.id);
+            const keeperId = group.keeper_id;
+
+            html += `
+                <div class="dup-group-card" id="dup-group-${groupKey}">
+                    <div class="dup-group-header">
+                        <div>
+                            <div class="dup-group-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span>${escapeHtml(group.filename)}</span>
+                            </div>
+                            <div class="dup-group-meta">
+                                ${group.formatted_size} per file • ${group.copy_count} salinan identik • Potensi hemat ${group.formatted_wasted}
+                            </div>
+                        </div>
+                        <button type="button" class="btn-merge-group" onclick="mergeDuplicateGroup('${groupKey}', ${keeperId}, ${JSON.stringify(duplicateIds)})">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                            </svg>
+                            Gabungkan ${duplicateIds.length} Salinan
+                        </button>
+                    </div>
+
+                    <div class="dup-items-row">
+            `;
+
+            group.items.forEach(item => {
+                const isKeeper = item.is_keeper;
+                const isVid = item.type === 'video';
+                html += `
+                    <div class="dup-item-card" id="dup-item-${item.id}">
+                        <div class="dup-item-thumb-wrap">
+                            <img src="${item.thumbnail_url}" class="dup-item-img" alt="${escapeHtml(item.title)}" loading="lazy">
+                            <span class="dup-badge ${isKeeper ? 'dup-badge-keeper' : 'dup-badge-copy'}">
+                                ${isKeeper ? '✓ Simpan (Asli)' : 'Duplikat'}
+                            </span>
+                            ${isVid ? '<span style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;">VIDEO</span>' : ''}
+                        </div>
+                        <div class="dup-item-info">
+                            <span class="dup-item-date">${item.formatted_date || '-'}</span>
+                            <span class="dup-item-album">${item.album_name ? '📁 ' + escapeHtml(item.album_name) : 'Semua Foto'}</span>
+                            ${!isKeeper ? `
+                                <button type="button" class="dup-delete-btn" onclick="deleteSingleDuplicate(${item.id}, '${groupKey}')" title="Hapus salinan ini">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    </svg>
+                                    Hapus
+                                </button>
+                            ` : '<span style="font-size:10.5px; color:#10b981; margin-top:4px;">Berkas dipertahankan</span>'}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `
+            <div style="text-align:center; padding: 40px; color:#ef4444;">
+                <p>Gagal memuat data duplikat: ${e.message}</p>
+                <button type="button" class="btn btn-secondary" onclick="loadDuplicatesData()" style="margin-top:12px;">Coba Lagi</button>
+            </div>
+        `;
+    }
+}
+
+async function mergeDuplicateGroup(groupKey, keepId, duplicateIds) {
+    const card = document.getElementById('dup-group-' + groupKey);
+    if (card) {
+        card.style.opacity = '0.5';
+        card.style.pointerEvents = 'none';
+    }
+
+    try {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch('/media-duplicates/merge', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                keep_id: keepId,
+                duplicate_ids: duplicateIds
+            })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            if (card) {
+                card.style.transition = 'all 0.3s ease';
+                card.style.transform = 'scale(0.95)';
+                card.style.opacity = '0';
+                setTimeout(() => card.remove(), 300);
+            }
+            showAppNotification(`Berhasil menggabungkan ${data.deleted_count} salinan duplikat.`);
+            // Refresh counts
+            setTimeout(loadDuplicatesData, 400);
+        } else {
+            alert('Gagal menggabungkan: ' + (data.message || 'Error'));
+            if (card) {
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        }
+    } catch (e) {
+        alert('Gagal: ' + e.message);
+        if (card) {
+            card.style.opacity = '1';
+            card.style.pointerEvents = 'auto';
+        }
+    }
+}
+
+async function mergeAllDuplicatesWeb() {
+    if (!confirm('Gabungkan semua duplikat sekarang?\nSemua salinan identik akan dihapus permanen dari Google Drive dan 1 salinan asli akan dipertahankan.')) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-merge-all-web');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Menggabungkan...';
+    }
+
+    try {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch('/media-duplicates/merge', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ all: true })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            showAppNotification(`Selesai! ${data.deleted_count} berkas duplikat berhasil dibersihkan 🎉`);
+            loadDuplicatesData();
+        } else {
+            alert('Gagal: ' + (data.message || 'Terjadi kesalahan'));
+        }
+    } catch (e) {
+        alert('Gagal: ' + e.message);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function deleteSingleDuplicate(mediaId, groupKey) {
+    if (!confirm('Hapus salinan duplikat ini secara permanen?')) return;
+
+    try {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch('/media-duplicates/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ media_id: mediaId })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            const itemEl = document.getElementById('dup-item-' + mediaId);
+            if (itemEl) itemEl.remove();
+            showAppNotification('Salinan duplikat berhasil dihapus.');
+            loadDuplicatesData();
+        }
+    } catch (e) {
+        alert('Gagal menghapus: ' + e.message);
+    }
+}
+
+// ============================================================
+// VIDEO THUMBNAIL REPAIR MODAL (WEB)
+// ============================================================
+function openVideoRepairModal() {
+    const modal = document.getElementById('video-repair-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeVideoRepairModal() {
+    const modal = document.getElementById('video-repair-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+async function startVideoThumbnailAutoExtraction() {
+    const btn = document.getElementById('btn-start-video-repair');
+    const progressBar = document.getElementById('v-repair-progress-bar');
+    const progressFill = document.getElementById('v-repair-progress-fill');
+    const statusText = document.getElementById('v-repair-status-text');
+
+    if (btn) btn.disabled = true;
+    if (progressBar) progressBar.style.display = 'block';
+
+    statusText.textContent = 'Memulai proses perbaikan thumbnail video...';
+
+    try {
+        // First try server batch generation
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        let batchResp = await fetch('/media/batch-generate-thumbnails', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ force: false, limit: 10 })
+        });
+        let batchData = await batchResp.json();
+
+        if (batchData.ffmpeg_available) {
+            statusText.textContent = `Server FFmpeg aktif. Memproses batch (${batchData.processed} selesai, sisa ${batchData.remaining})...`;
+            if (progressFill) progressFill.style.width = '60%';
+            // If server handled it, finish
+            setTimeout(() => {
+                if (progressFill) progressFill.style.width = '100%';
+                statusText.textContent = 'Perbaikan selesai di server! Muat ulang halaman galeri.';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Selesai ✓';
+                }
+            }, 1500);
+            return;
+        }
+
+        // Otherwise, trigger client-side video frame capture for all video cards on page
+        const videoCards = document.querySelectorAll('.media-card[data-is-video="1"]');
+        statusText.textContent = `Mengekstrak frame video via browser web (${videoCards.length} kartu di halaman ini)...`;
+
+        let count = 0;
+        videoCards.forEach(card => {
+            card.dataset.thumbExtracted = ''; // Reset extracted flag
+            enqueueVideoThumbnailExtraction(card);
+            count++;
+            if (progressFill) {
+                progressFill.style.width = Math.round((count / videoCards.length) * 100) + '%';
+            }
+        });
+
+        statusText.textContent = `Berhasil memicu ekstraksi frame untuk ${count} video di layar!`;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Selesai ✓';
+        }
+    } catch (e) {
+        statusText.textContent = 'Error: ' + e.message;
+        if (btn) btn.disabled = false;
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function showAppNotification(message) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: rgba(16, 185, 129, 0.95);
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 12px;
+        font-size: 13.5px;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        backdrop-filter: blur(12px);
+        transform: translateY(20px);
+        opacity: 0;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+    toast.innerHTML = `<span>✓</span> <span>${message}</span>`;
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.transform = 'translateY(0)';
+        toast.style.opacity = '1';
+    });
+
+    setTimeout(() => {
+        toast.style.transform = 'translateY(20px)';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 250);
+    }, 3500);
+}
+
+// ============================================================
 // INITIALIZE
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
     initMediaGrid();
     initLazyLoading();
+    initVideoThumbnailExtractor();
     initUploadZone();
     initFilters();
     initCardAnimations();

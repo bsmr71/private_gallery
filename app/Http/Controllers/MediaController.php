@@ -203,6 +203,11 @@ class MediaController extends Controller
             }
         }
 
+        // Auto-heal: If video thumbnail is missing or placeholder and FFmpeg is available, generate & upload real thumbnail
+        if ($media->isVideo() && $cachedPath && file_exists($cachedPath)) {
+            $this->autoRepairVideoThumbnail($media, $cachedPath);
+        }
+
         // Serve with HTTP Range support for smooth video streaming
         return $this->serveFileWithRangeSupport($cachedPath, $media->mime_type, $media->original_filename);
     }
@@ -280,8 +285,16 @@ class MediaController extends Controller
                     if (!is_dir($dir)) {
                         mkdir($dir, 0755, true);
                     }
-                    $cmd = sprintf('ffmpeg -y -ss 00:00:01 -i %s -vframes 1 -q:v 2 %s 2>&1', escapeshellarg($cachedPath), escapeshellarg($thumbPath));
-                    @exec($cmd);
+                    $ffmpeg = self::findFfmpegBinary();
+                    if ($ffmpeg) {
+                        $ffmpegBin = escapeshellarg($ffmpeg);
+                        $cmd = sprintf('%s -y -ss 00:00:00.5 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($cachedPath), escapeshellarg($thumbPath));
+                        @exec($cmd);
+                        if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                            $cmd = sprintf('%s -y -i %s -ss 00:00:00.5 -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($cachedPath), escapeshellarg($thumbPath));
+                            @exec($cmd);
+                        }
+                    }
                 }
                 // If ffmpeg was unavailable or produced no file, generate sleek dark GD thumbnail
                 if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
@@ -754,30 +767,25 @@ class MediaController extends Controller
             $thumbPath = $tempDir . DIRECTORY_SEPARATOR . 'thumb_' . Str::random(32) . '.jpg';
 
             // 1. Try ffmpeg if available (auto-detect path on Windows / Linux)
-            $ffmpegBin = 'ffmpeg';
-            if (PHP_OS_FAMILY === 'Windows') {
-                $candidates = [
-                    'ffmpeg',
-                    'C:\\ffmpeg\\bin\\ffmpeg.exe',
-                    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
-                    getenv('LOCALAPPDATA') . '\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-7.1-full_build\\bin\\ffmpeg.exe',
-                ];
-                foreach ($candidates as $cand) {
-                    if (file_exists($cand)) {
-                        $ffmpegBin = escapeshellarg($cand);
-                        break;
-                    }
-                }
-            }
+            $ffmpeg = self::findFfmpegBinary();
+            if ($ffmpeg) {
+                $ffmpegBin = escapeshellarg($ffmpeg);
 
-            // Try seeking 0.5 seconds into the video
-            $cmd = sprintf('%s -y -ss 00:00:00.5 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
-            @exec($cmd);
-
-            // If 0.5s failed (e.g. ultra-short video clip), try seeking to frame 0
-            if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
-                $cmd = sprintf('%s -y -ss 0 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
+                // Try seeking 0.5 seconds into the video (fast seek)
+                $cmd = sprintf('%s -y -ss 00:00:00.5 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
                 @exec($cmd);
+
+                // If fast seek produced no file, try decode seek (-i first)
+                if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                    $cmd = sprintf('%s -y -i %s -ss 00:00:00.5 -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
+                    @exec($cmd);
+                }
+
+                // If still no file, seek to frame 0
+                if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                    $cmd = sprintf('%s -y -i %s -ss 0 -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
+                    @exec($cmd);
+                }
             }
 
             // 2. Fallback to sleek dark GD video thumbnail if ffmpeg produced no file
@@ -1053,5 +1061,293 @@ class MediaController extends Controller
         }
 
         throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->guest(route('login')));
+    }
+
+    /**
+     * Locate the FFmpeg executable binary on Windows or Linux.
+     */
+    public static function findFfmpegBinary(): ?string
+    {
+        static $cachedBin = null;
+        if ($cachedBin !== null) {
+            return $cachedBin ?: null;
+        }
+
+        // 1. Direct command test
+        $out = [];
+        $code = 0;
+        @exec('ffmpeg -version 2>&1', $out, $code);
+        if ($code === 0 && !empty($out)) {
+            $cachedBin = 'ffmpeg';
+            return 'ffmpeg';
+        }
+
+        // 2. Windows specific path scanning
+        if (PHP_OS_FAMILY === 'Windows') {
+            $out = [];
+            @exec('where ffmpeg 2>nul', $out, $code);
+            if ($code === 0 && !empty($out[0]) && file_exists(trim($out[0]))) {
+                $cachedBin = trim($out[0]);
+                return $cachedBin;
+            }
+
+            $localAppData = getenv('LOCALAPPDATA');
+            if ($localAppData && is_dir($localAppData . '\\Microsoft\\WinGet\\Packages')) {
+                $dirs = @glob($localAppData . '\\Microsoft\\WinGet\\Packages\\*ffmpeg*');
+                if ($dirs) {
+                    foreach ($dirs as $dir) {
+                        try {
+                            $iter = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir));
+                            foreach ($iter as $file) {
+                                if (strtolower($file->getFilename()) === 'ffmpeg.exe') {
+                                    $cachedBin = $file->getPathname();
+                                    return $cachedBin;
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
+                }
+            }
+
+            $commonWin = [
+                'C:\\ffmpeg\\bin\\ffmpeg.exe',
+                'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+                'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
+            ];
+            foreach ($commonWin as $path) {
+                if (file_exists($path)) {
+                    $cachedBin = $path;
+                    return $cachedBin;
+                }
+            }
+        } else {
+            // Linux / macOS specific path scanning
+            $out = [];
+            @exec('which ffmpeg 2>/dev/null', $out, $code);
+            if ($code === 0 && !empty($out[0]) && file_exists(trim($out[0]))) {
+                $cachedBin = trim($out[0]);
+                return $cachedBin;
+            }
+
+            $commonLinux = [
+                '/usr/bin/ffmpeg',
+                '/usr/local/bin/ffmpeg',
+                '/snap/bin/ffmpeg',
+                '/usr/local/cpanel/3rdparty/bin/ffmpeg',
+                '/opt/ffmpeg/bin/ffmpeg',
+            ];
+            foreach ($commonLinux as $path) {
+                if (file_exists($path) && is_executable($path)) {
+                    $cachedBin = $path;
+                    return $cachedBin;
+                }
+            }
+        }
+
+        $cachedBin = false;
+        return null;
+    }
+
+    /**
+     * Auto-repair / extract real thumbnail from cached decrypted video file.
+     */
+    public function autoRepairVideoThumbnail(Media $media, string $cachedVideoPath): void
+    {
+        try {
+            $ffmpeg = self::findFfmpegBinary();
+            if (!$ffmpeg) return;
+
+            $tempDir = storage_path('app/temp_uploads');
+            if (!is_dir($tempDir)) {
+                @mkdir($tempDir, 0755, true);
+            }
+            $tempThumb = $tempDir . DIRECTORY_SEPARATOR . 'auto_thumb_' . $media->id . '_' . Str::random(16) . '.jpg';
+
+            $ffmpegBin = escapeshellarg($ffmpeg);
+            $cmd = sprintf('%s -y -ss 00:00:00.5 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($cachedVideoPath), escapeshellarg($tempThumb));
+            @exec($cmd);
+
+            if (!file_exists($tempThumb) || filesize($tempThumb) === 0) {
+                $cmd = sprintf('%s -y -i %s -ss 00:00:00.5 -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($cachedVideoPath), escapeshellarg($tempThumb));
+                @exec($cmd);
+            }
+
+            if (file_exists($tempThumb) && filesize($tempThumb) > 0) {
+                $this->applyNewThumbnail($media, $tempThumb);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Auto-repair video thumbnail failed for media {$media->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Encrypt, upload to Google Drive, and cache a new thumbnail file for media.
+     */
+    public function applyNewThumbnail(Media $media, string $unencryptedThumbPath): string
+    {
+        $encryptedThumb = $this->encryptionService->encryptFile($unencryptedThumbPath);
+        $newDriveId = $this->driveService->upload($encryptedThumb, 'thumb_' . Str::random(32) . '.enc');
+        @unlink($encryptedThumb);
+
+        // Delete old thumb drive id if present
+        $oldThumbDriveId = $media->thumb_drive_id;
+        if ($oldThumbDriveId) {
+            try {
+                $this->driveService->delete($oldThumbDriveId);
+            } catch (\Throwable $t) {}
+        }
+
+        $media->thumb_drive_id = $newDriveId;
+        $media->save();
+
+        // Save into local cache
+        $cacheDir = storage_path('app/media_cache/thumbs');
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+        $cachePath = $cacheDir . DIRECTORY_SEPARATOR . 'thumb_' . $media->id . '_' . $newDriveId . '.jpg';
+        @copy($unencryptedThumbPath, $cachePath);
+        @unlink($unencryptedThumbPath);
+
+        return $newDriveId;
+    }
+
+    /**
+     * Upload / update media thumbnail from client (browser canvas or mobile app).
+     */
+    public function updateThumbnail(Request $request, Media $media)
+    {
+        $this->authorizeMediaAccess();
+
+        $tempDir = storage_path('app/temp_uploads');
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0755, true);
+        }
+        $tempPath = $tempDir . DIRECTORY_SEPARATOR . 'client_thumb_' . $media->id . '_' . Str::random(16) . '.jpg';
+
+        if ($request->hasFile('thumbnail')) {
+            $file = $request->file('thumbnail');
+            $file->move($tempDir, basename($tempPath));
+        } elseif ($request->filled('image_data')) {
+            $data = $request->input('image_data');
+            if (preg_match('/^data:image\/(\w+);base64,/', $data, $type)) {
+                $data = substr($data, strpos($data, ',') + 1);
+            }
+            $decoded = base64_decode($data);
+            if (!$decoded) {
+                return response()->json(['success' => false, 'message' => 'Invalid image base64 data'], 422);
+            }
+            file_put_contents($tempPath, $decoded);
+        } else {
+            return response()->json(['success' => false, 'message' => 'No thumbnail file or image_data provided'], 422);
+        }
+
+        if (!file_exists($tempPath) || filesize($tempPath) === 0) {
+            return response()->json(['success' => false, 'message' => 'Failed to process thumbnail image'], 422);
+        }
+
+        $info = @getimagesize($tempPath);
+        if (!$info) {
+            @unlink($tempPath);
+            return response()->json(['success' => false, 'message' => 'File is not a valid image'], 422);
+        }
+
+        $newThumbId = $this->applyNewThumbnail($media, $tempPath);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Thumbnail berhasil diperbarui',
+            'thumb_drive_id' => $newThumbId,
+            'thumbnail_url' => $media->thumbnailUrl(),
+        ]);
+    }
+
+    /**
+     * Batch generate video thumbnails via web AJAX request.
+     */
+    public function batchGenerateThumbnails(Request $request)
+    {
+        $this->authorizeMediaAccess();
+
+        $ffmpeg = self::findFfmpegBinary();
+        if (!$ffmpeg) {
+            return response()->json([
+                'success' => false,
+                'message' => 'FFmpeg tidak ditemukan di server. Ekstraksi otomatis dilakukan via browser pengguna.',
+                'ffmpeg_available' => false,
+            ]);
+        }
+
+        $limit = max(1, min(10, (int)$request->input('limit', 5)));
+        $force = $request->boolean('force', false);
+
+        $query = Media::where('type', 'video');
+        if (!$force) {
+            $query->whereNull('thumb_drive_id');
+        }
+        $videos = $query->limit($limit)->get();
+        $processed = 0;
+
+        foreach ($videos as $media) {
+            $cachedPath = $this->cacheService->getCachedPath($media);
+            $tempEncrypted = null;
+            $tempDecrypted = null;
+
+            try {
+                if (!$cachedPath || !file_exists($cachedPath)) {
+                    $tempEncrypted = tempnam(sys_get_temp_dir(), 'drv_vid_');
+                    $this->driveService->download($media->drive_file_id, $tempEncrypted);
+                    $tempDecrypted = $this->encryptionService->decryptFile($tempEncrypted);
+                    @unlink($tempEncrypted);
+                    $cachedPath = $this->cacheService->cacheFile($media, $tempDecrypted);
+                    @unlink($tempDecrypted);
+                }
+
+                if ($cachedPath && file_exists($cachedPath)) {
+                    $this->autoRepairVideoThumbnail($media, $cachedPath);
+                    $processed++;
+                }
+            } catch (\Throwable $e) {
+                @unlink($tempEncrypted ?? '');
+                @unlink($tempDecrypted ?? '');
+                Log::warning("Batch thumbnail generation error for media {$media->id}: " . $e->getMessage());
+            }
+        }
+
+        $remaining = Media::where('type', 'video')->whereNull('thumb_drive_id')->count();
+
+        return response()->json([
+            'success' => true,
+            'processed' => $processed,
+            'remaining' => $remaining,
+            'ffmpeg_available' => true,
+        ]);
+    }
+
+    /**
+     * Get duplicate media groups for web session.
+     */
+    public function duplicates(Request $request)
+    {
+        $this->authorizeMediaAccess();
+        return app(\App\Http\Controllers\Api\MediaApiController::class)->duplicates($request);
+    }
+
+    /**
+     * Merge duplicates for web session.
+     */
+    public function mergeDuplicates(Request $request)
+    {
+        $this->authorizeMediaAccess();
+        return app(\App\Http\Controllers\Api\MediaApiController::class)->mergeDuplicates($request);
+    }
+
+    /**
+     * Delete a single duplicate copy for web session.
+     */
+    public function deleteDuplicate(Request $request, Media $media)
+    {
+        $this->authorizeMediaAccess();
+        return app(\App\Http\Controllers\Api\MediaApiController::class)->deleteDuplicate($request, $media);
     }
 }

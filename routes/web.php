@@ -30,6 +30,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/media/{media}/favorite', [MediaController::class, 'toggleFavorite'])->name('media.favorite');
     Route::post('/media/{media}/quick-rename', [MediaController::class, 'quickRename'])->name('media.quick-rename');
     Route::get('/media-albums', [MediaController::class, 'albumsList'])->name('media.albums-list');
+
+    // Duplicate Media Management (Web Session)
+    Route::get('/media-duplicates', [MediaController::class, 'duplicates'])->name('media.duplicates');
+    Route::post('/media-duplicates/merge', [MediaController::class, 'mergeDuplicates'])->name('media.duplicates.merge');
+    Route::post('/media-duplicates/delete', [MediaController::class, 'deleteDuplicate'])->name('media.duplicates.delete');
+
+    // Video Thumbnail Update & Batch Repair
+    Route::post('/media/{media}/thumbnail', [MediaController::class, 'updateThumbnail'])->name('media.thumbnail.update');
+    Route::post('/media/batch-generate-thumbnails', [MediaController::class, 'batchGenerateThumbnails'])->name('media.batch-thumbnails');
 });
 
 /*
