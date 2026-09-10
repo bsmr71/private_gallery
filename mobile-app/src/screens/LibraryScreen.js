@@ -495,7 +495,7 @@ export default function LibraryScreen() {
                                 delayLongPress={220}
                             >
                                 <SecureImage
-                                    source={item.thumbnail_url || item.stream_url}
+                                    source={item.type === 'video' ? (item.thumbnail_url || `/api/media/${item.id}/thumbnail`) : (item.thumbnail_url || item.stream_url)}
                                     style={styles.itemImage}
                                     resizeMode="cover"
                                 />

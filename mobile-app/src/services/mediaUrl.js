@@ -34,11 +34,26 @@ export const MediaUrlHelper = {
         if (!url) return null;
         let resolved = String(url);
 
+        // Do not alter local filesystem URIs or data URIs
+        if (resolved.startsWith('file://') || resolved.startsWith('content://') || resolved.startsWith('data:')) {
+            return resolved;
+        }
+
         const token = explicitToken || cachedToken;
         const apiUrl = explicitApiUrl || cachedApiUrl;
 
         if (apiUrl) {
             const serverOrigin = apiUrl.replace(/\/api\/?$/, '');
+
+            // Convert relative path (e.g. /api/media/123/thumbnail or /media/123/thumbnail) to absolute URL
+            if (resolved.startsWith('/')) {
+                resolved = `${serverOrigin}${resolved}`;
+            }
+
+            // Ensure HTTPS if serverOrigin is HTTPS (prevents Android ERR_CLEARTEXT_NOT_PERMITTED)
+            if (serverOrigin.startsWith('https://') && resolved.startsWith('http://')) {
+                resolved = resolved.replace(/^http:\/\//, 'https://');
+            }
 
             // Rewrite web routes /media/ to API routes /api/media/
             if (resolved.includes('/media/') && !resolved.includes('/api/media/')) {

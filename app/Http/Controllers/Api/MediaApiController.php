@@ -540,7 +540,16 @@ class MediaApiController extends Controller
     {
         $token = $request->attributes->get('plain_api_token') ?: $request->bearerToken() ?: $request->query('token');
         $tokenParam = $token ? '?token=' . urlencode($token) : '';
-        $baseApiUrl = rtrim($request->getSchemeAndHttpHost(), '/') . '/api';
+
+        // Properly detect HTTPS scheme behind reverse proxy / SSL termination
+        $isHttps = $request->isSecure()
+            || $request->header('X-Forwarded-Proto') === 'https'
+            || $request->server('HTTPS') === 'on'
+            || $request->server('SERVER_PORT') == 443
+            || str_starts_with(config('app.url'), 'https://');
+
+        $scheme = $isHttps ? 'https' : $request->getScheme();
+        $baseApiUrl = $scheme . '://' . $request->getHttpHost() . '/api';
 
         // When accessed from web session, use standard web routes so cookies work automatically
         $streamUrl = $token ? "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}" : $m->streamUrl();

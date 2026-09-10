@@ -26,16 +26,26 @@ export default function SecureImage({ source, style, resizeMode = 'cover', ...pr
         return <View style={[style, styles.placeholder]} />;
     }
 
+    // Do not pass raw video files (.mp4/.mov) to Image component
+    const isVideoFile = resolvedUri.split('?')[0].match(/\.(mp4|mov|m4v|3gp|webm)$/i);
+    if (isVideoFile) {
+        return <View style={[style, styles.placeholder]} />;
+    }
+
+    // If query string already carries token= or URI is local file://, avoid extra Authorization header
+    // to prevent Android OkHttp/Glide CORS and header compatibility issues
+    const hasQueryToken = resolvedUri.includes('token=') || resolvedUri.startsWith('file://') || resolvedUri.startsWith('content://');
+
     return (
         <View style={[style, styles.container]}>
             <Image
                 source={{
                     uri: resolvedUri,
-                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                    headers: (token && !hasQueryToken) ? { Authorization: `Bearer ${token}` } : undefined,
                 }}
                 style={StyleSheet.absoluteFill}
                 contentFit={resizeMode === 'contain' ? 'contain' : 'cover'}
-                transition={200}
+                transition={150}
                 cachePolicy="memory-disk"
                 onLoadEnd={() => setLoading(false)}
                 onError={(e) => {

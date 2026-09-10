@@ -1224,13 +1224,17 @@ class MediaController extends Controller
         $media->thumb_drive_id = $newDriveId;
         $media->save();
 
-        // Save into local cache
-        $cacheDir = storage_path('app/media_cache/thumbs');
-        if (!is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0755, true);
+        // Save into local cache using MediaCacheService standard path
+        $thumbPath = $this->cacheService->getThumbPath($media);
+        $thumbDir = dirname($thumbPath);
+        if (!is_dir($thumbDir)) {
+            @mkdir($thumbDir, 0755, true);
         }
-        $cachePath = $cacheDir . DIRECTORY_SEPARATOR . 'thumb_' . $media->id . '_' . $newDriveId . '.jpg';
-        @copy($unencryptedThumbPath, $cachePath);
+        @copy($unencryptedThumbPath, $thumbPath);
+
+        // Also save alternate ID-based path for backwards compatibility
+        $altCachePath = $thumbDir . DIRECTORY_SEPARATOR . 'thumb_' . $media->id . '_' . $newDriveId . '.jpg';
+        @copy($unencryptedThumbPath, $altCachePath);
         @unlink($unencryptedThumbPath);
 
         return $newDriveId;

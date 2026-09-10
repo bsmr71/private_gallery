@@ -102,7 +102,16 @@ class MediaCacheService
      */
     public function getThumbPath(Media $media): string
     {
-        return $this->cachePath . '/thumbs/' . $media->cache_key . '.jpg';
+        $standardPath = $this->cachePath . '/thumbs/' . $media->cache_key . '.jpg';
+        if (!file_exists($standardPath)) {
+            // Check alternate / legacy thumb files matching media ID (e.g. thumb_{id}_{driveId}.jpg)
+            $pattern = $this->cachePath . '/thumbs/thumb_' . $media->id . '_*.jpg';
+            $matches = glob($pattern);
+            if (!empty($matches) && file_exists($matches[0])) {
+                @copy($matches[0], $standardPath);
+            }
+        }
+        return $standardPath;
     }
 
     /**

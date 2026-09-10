@@ -48,6 +48,7 @@ class AuthenticateApiToken
         }
 
         $request->setUserResolver(fn () => $user);
+        \Illuminate\Support\Facades\Auth::setUser($user);
 
         return $next($request);
     }
