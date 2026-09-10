@@ -189,6 +189,24 @@
             </div>
         </section>
 
+        <!-- iOS 18 "Utilitas" (Utilities) Section -->
+        <section class="ios-media-types-section" aria-label="Utilitas" style="margin-top: 32px;">
+            <h2 class="ios-section-heading">Utilitas</h2>
+            <div class="ios-media-types-list">
+                <div class="ios-media-type-row" style="cursor: default;">
+                    <div class="type-row-left">
+                        <span class="type-icon" style="background: rgba(10, 132, 255, 0.15); color: #0A84FF;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </span>
+                        <span class="type-label">Duplikat</span>
+                    </div>
+                    <div class="type-row-right">
+                        <span class="type-count">{{ $stats['duplicates'] ?? 0 }}</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         @if($albums->count() === 0)
         <!-- Empty State -->
         <div class="gallery-empty-state" style="margin-top: 40px;">

@@ -39,6 +39,11 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     Route::delete('/media/{media}', [MediaApiController::class, 'destroy']);
     Route::post('/media/batch-delete', [MediaApiController::class, 'batchDelete']);
 
+    // Duplicate Media Detection & Merge Endpoints
+    Route::get('/media-duplicates', [MediaApiController::class, 'duplicates']);
+    Route::post('/media-duplicates/merge', [MediaApiController::class, 'mergeDuplicates']);
+    Route::post('/media-duplicates/delete', [MediaApiController::class, 'deleteDuplicate']);
+
     // Albums Resource Endpoints
     Route::get('/albums', [AlbumApiController::class, 'index']);
     Route::post('/albums', [AlbumApiController::class, 'store']);

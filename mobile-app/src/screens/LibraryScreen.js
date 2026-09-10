@@ -14,6 +14,7 @@ import {
     AppState,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
@@ -123,18 +124,31 @@ export default function LibraryScreen() {
         }
     }, [fetchMedia]);
 
-    // Reactively reset UI when decoy mode status changes
+    // Subscribe to real-time global sync state
     useEffect(() => {
-        if (isDecoy) {
-            setIsSelectMode(false);
-            setSelectedIds([]);
-            setViewerVisible(false);
-        } else {
-            if (mediaItems.length === 0) {
+        const unsubscribe = SyncService.subscribe((syncState) => {
+            if (syncState.isSyncing) {
+                setAutoSyncStatus({
+                    type: 'syncing',
+                    message: `Menyinkronkan (${syncState.current}/${syncState.total}) • ${syncState.percentage}%`,
+                });
+            } else if (syncState.isCancelled) {
+                setAutoSyncStatus({
+                    type: 'done',
+                    message: 'Sinkronisasi dibatalkan',
+                });
+                setTimeout(() => setAutoSyncStatus(null), 2500);
+            } else if (syncState.successCount > 0 && !syncState.isSyncing) {
+                setAutoSyncStatus({
+                    type: 'done',
+                    message: `${syncState.successCount} foto baru terenkripsi ke Cloud`,
+                });
                 fetchMedia(1, true);
+                setTimeout(() => setAutoSyncStatus(null), 3500);
             }
-        }
-    }, [isDecoy, fetchMedia, mediaItems.length]);
+        });
+        return unsubscribe;
+    }, [fetchMedia]);
 
     useEffect(() => {
         fetchMedia(1);
@@ -225,6 +239,22 @@ export default function LibraryScreen() {
             try {
                 for (let i = 0; i < total; i++) {
                     const asset = result.assets[i];
+                    const isVideo = asset.type === 'video' || (asset.uri && (asset.uri.endsWith('.mp4') || asset.uri.endsWith('.mov') || asset.uri.endsWith('.m4v')));
+
+                    if (isVideo && VideoThumbnails?.getThumbnailAsync) {
+                        try {
+                            const thumbResult = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+                                time: 500,
+                                quality: 0.85,
+                            });
+                            if (thumbResult?.uri) {
+                                asset.thumbnailUri = thumbResult.uri;
+                            }
+                        } catch (vtErr) {
+                            console.warn('[LibraryScreen] Video thumbnail extract warning:', vtErr);
+                        }
+                    }
+
                     await NativeSyncService.updateProgress(
                         i + 1,
                         total,
@@ -314,9 +344,13 @@ export default function LibraryScreen() {
 
     return (
         <View style={styles.container}>
-            {/* iOS Dynamic Island Style AutoSync Pill */}
+            {/* iOS Dynamic Island Style AutoSync Pill (Clickable to open VaultSyncModal) */}
             {autoSyncStatus && (
-                <View style={styles.autoSyncPillOuter}>
+                <TouchableOpacity
+                    style={styles.autoSyncPillOuter}
+                    onPress={() => setSyncModalVisible(true)}
+                    activeOpacity={0.8}
+                >
                     <BlurView tint="dark" intensity={85} style={StyleSheet.absoluteFill} />
                     <View style={styles.autoSyncPillInner}>
                         {autoSyncStatus.type === 'syncing' ? (
@@ -326,7 +360,7 @@ export default function LibraryScreen() {
                         )}
                         <Text style={styles.autoSyncPillText}>{autoSyncStatus.message}</Text>
                     </View>
-                </View>
+                </TouchableOpacity>
             )}
 
             {/* Header (Authentic Apple Photos Style) */}

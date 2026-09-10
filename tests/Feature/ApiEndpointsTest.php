@@ -275,4 +275,98 @@ class ApiEndpointsTest extends TestCase
         $deleteResp->assertStatus(200)
             ->assertJsonPath('success', true);
     }
+
+    public function test_duplicate_media_detection_and_merging(): void
+    {
+        $token = $this->user->createToken('test')->plainTextToken;
+
+        // Create 3 identical media items (1 original + 2 duplicates)
+        $orig = Media::create([
+            'title' => 'Foto Pantai',
+            'type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'original_filename' => 'IMG_9999.JPG',
+            'size' => 4500000,
+            'drive_file_id' => 'drive_1',
+            'is_favorite' => true,
+        ]);
+
+        $dup1 = Media::create([
+            'title' => 'Foto Pantai Salinan 1',
+            'type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'original_filename' => 'IMG_9999.JPG',
+            'size' => 4500000,
+            'drive_file_id' => 'drive_2',
+            'is_favorite' => false,
+        ]);
+
+        $dup2 = Media::create([
+            'title' => 'Foto Pantai Salinan 2',
+            'type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'original_filename' => 'IMG_9999.JPG',
+            'size' => 4500000,
+            'drive_file_id' => 'drive_3',
+            'is_favorite' => false,
+        ]);
+
+        // 1. Fetch Duplicates List
+        $resp = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/media-duplicates');
+
+        $resp->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('duplicate_groups_count', 1)
+            ->assertJsonPath('total_duplicate_copies', 2);
+
+        $this->assertEquals($orig->id, $resp->json('groups.0.keeper_id'));
+
+        // 2. Merge Duplicates (Keep keeper, delete dup1 & dup2)
+        $mergeResp = $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/media-duplicates/merge', [
+                'keep_id' => $orig->id,
+                'duplicate_ids' => [$dup1->id, $dup2->id],
+            ]);
+
+        $mergeResp->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('deleted_count', 2);
+
+        // Assert database now only contains the original keeper
+        $this->assertDatabaseHas('media', ['id' => $orig->id]);
+        $this->assertDatabaseMissing('media', ['id' => $dup1->id]);
+        $this->assertDatabaseMissing('media', ['id' => $dup2->id]);
+    }
+
+    public function test_upload_skips_duplicate_files(): void
+    {
+        $token = $this->user->createToken('test')->plainTextToken;
+
+        // Existing media in DB
+        $existing = Media::create([
+            'title' => 'My Picture',
+            'type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'original_filename' => 'photo_unique.jpg',
+            'size' => 1024,
+            'drive_file_id' => 'existing_drive_id',
+        ]);
+
+        // Upload a file with exact same size (1024 bytes) and same filename
+        $file = \Illuminate\Http\UploadedFile::fake()->create('photo_unique.jpg', 1); // 1 KB = 1024 bytes
+
+        $response = $this->withHeader('Authorization', "Bearer {$token}")
+            ->post('/api/media/upload', [
+                'file' => $file,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('uploaded.0.id', $existing->id)
+            ->assertJsonPath('uploaded.0.is_duplicate', true);
+
+        // Ensure no second record was created in database
+        $this->assertEquals(1, Media::where('original_filename', 'photo_unique.jpg')->count());
+    }
 }

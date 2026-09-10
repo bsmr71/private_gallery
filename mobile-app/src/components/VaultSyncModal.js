@@ -60,6 +60,19 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     }, []);
 
     useEffect(() => {
+        const unsubscribe = SyncService.subscribe((state) => {
+            setSyncing(state.isSyncing);
+            setProgress({
+                current: state.current,
+                total: state.total,
+                percentage: state.percentage,
+                currentFilename: state.currentFilename,
+            });
+        });
+        return unsubscribe;
+    }, []);
+
+    useEffect(() => {
         if (visible) {
             loadAndScan();
         }
@@ -113,17 +126,19 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     };
 
     const handleStartSync = async () => {
-        if (pendingAssets.length === 0) return;
-
-        setSyncing(true);
-        setProgress({ current: 0, total: pendingAssets.length, percentage: 0 });
+        if (pendingAssets.length === 0 || SyncService.isSyncActive()) return;
 
         try {
-            const res = await SyncService.syncAssets(pendingAssets, {
-                onProgress: (p) => setProgress(p),
-            });
+            const res = await SyncService.syncAssets(pendingAssets);
 
-            if (res.failCount > 0 && res.successCount === 0) {
+            if (res.alreadyRunning) {
+                Alert.alert('Info', 'Sinkronisasi sudah berjalan.');
+                return;
+            }
+
+            if (res.isCancelled) {
+                Alert.alert('Dibatalkan', 'Sinkronisasi dihentikan.');
+            } else if (res.failCount > 0 && res.successCount === 0) {
                 const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '\n\nPastikan koneksi internet stabil.';
                 Alert.alert(
                     'Sinkronisasi Belum Berhasil',
@@ -147,8 +162,6 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             onSyncCompleted && onSyncCompleted();
         } catch (err) {
             Alert.alert('Error', err.message || 'Terjadi kendala saat sinkronisasi');
-        } finally {
-            setSyncing(false);
         }
     };
 
@@ -331,19 +344,34 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                 <View style={styles.progressBarBg}>
                                     <View style={[styles.progressBarFill, { width: `${progress.percentage}%` }]} />
                                 </View>
-                                <Text style={styles.syncingSubtitle}>
-                                    Terenkripsi biner AES-256 menuju Google Drive...
+                                <Text style={styles.syncingSubtitle} numberOfLines={1}>
+                                    {progress.currentFilename ? `Mengunggah: ${progress.currentFilename}` : 'Terenkripsi biner AES-256 menuju Google Drive...'}
                                 </Text>
 
-                                {/* Background Sync & Stealth Mode Action Buttons */}
+                                {/* Background Sync & Action Buttons */}
                                 <View style={styles.syncAuxRow}>
                                     <TouchableOpacity
-                                        style={styles.auxBtn}
-                                        onPress={() => setStealthMode(true)}
+                                        style={[styles.auxBtn, { borderColor: 'rgba(255, 69, 58, 0.3)' }]}
+                                        onPress={() => {
+                                            Alert.alert(
+                                                'Hentikan Sinkronisasi?',
+                                                'Apakah Anda ingin menghentikan proses upload yang sedang berjalan?',
+                                                [
+                                                    { text: 'Lanjut Sync', style: 'cancel' },
+                                                    {
+                                                        text: 'Hentikan',
+                                                        style: 'destructive',
+                                                        onPress: () => {
+                                                            SyncService.cancelSync();
+                                                        },
+                                                    },
+                                                ]
+                                            );
+                                        }}
                                         activeOpacity={0.7}
                                     >
-                                        <SFSymbol name="eye.slash.fill" size={14} color="#FF9F0A" style={{ marginRight: 6 }} />
-                                        <Text style={styles.auxBtnTextAmber}>Layar Senyap (Stealth)</Text>
+                                        <SFSymbol name="xmark.circle" size={13} color="#FF453A" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.auxBtnTextBlue, { color: '#FF453A' }]}>Batalkan</Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
@@ -352,7 +380,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                         activeOpacity={0.7}
                                     >
                                         <SFSymbol name="arrow.down.right.and.arrow.up.left" size={13} color="#0A84FF" style={{ marginRight: 6 }} />
-                                        <Text style={styles.auxBtnTextBlue}>Lanjut di Background</Text>
+                                        <Text style={styles.auxBtnTextBlue}>Di Background</Text>
                                     </TouchableOpacity>
                                 </View>
 

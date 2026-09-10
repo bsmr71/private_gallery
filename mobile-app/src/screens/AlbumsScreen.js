@@ -22,6 +22,7 @@ import SFSymbol from '../components/SFSymbol';
 import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 import SecureVaultUnlockModal from '../components/SecureVaultUnlockModal';
 import SecureVaultScreen from './SecureVaultScreen';
+import DuplicatesModal from '../components/DuplicatesModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -42,6 +43,10 @@ export default function AlbumsScreen({ navigation }) {
     const [vaultModalVisible, setVaultModalVisible] = useState(false);
     const [vaultScreenVisible, setVaultScreenVisible] = useState(false);
     const [activeVaultToken, setActiveVaultToken] = useState(null);
+
+    // Duplicates Utility
+    const [duplicatesModalVisible, setDuplicatesModalVisible] = useState(false);
+    const [duplicateCount, setDuplicateCount] = useState(0);
 
     const fetchAlbums = useCallback(async () => {
         if (SecurityService.isDecoyMode()) {
@@ -64,18 +69,31 @@ export default function AlbumsScreen({ navigation }) {
         }
     }, []);
 
+    const fetchDuplicateCount = useCallback(async () => {
+        if (SecurityService.isDecoyMode()) return;
+        try {
+            const res = await ApiService.getDuplicates();
+            if (res && res.success) {
+                setDuplicateCount(res.total_duplicate_copies || 0);
+            }
+        } catch (e) {}
+    }, []);
+
     useEffect(() => {
         if (!isDecoy) {
             fetchAlbums();
+            fetchDuplicateCount();
         } else {
             setAlbums([]);
             setModalVisible(false);
+            setDuplicateCount(0);
         }
-    }, [isDecoy, fetchAlbums]);
+    }, [isDecoy, fetchAlbums, fetchDuplicateCount]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchAlbums();
+        fetchDuplicateCount();
     };
 
     const displayedAlbums = (isDecoy || isLocked) ? [] : albums;
@@ -189,6 +207,35 @@ export default function AlbumsScreen({ navigation }) {
                     </>
                 )}
             </View>
+
+            {/* Utilitas Section (Apple Photos Style) */}
+            {!isDecoy && (
+                <>
+                    <Text style={[styles.subHeading, { marginTop: 24 }]}>Utilitas</Text>
+                    <View style={styles.mediaTypesCard}>
+                        <TouchableOpacity
+                            style={styles.typeRow}
+                            activeOpacity={0.7}
+                            onPress={() => setDuplicatesModalVisible(true)}
+                        >
+                            <View style={styles.typeLeft}>
+                                <View style={[styles.typeIconBubble, { backgroundColor: 'rgba(10, 132, 255, 0.15)' }]}>
+                                    <SFSymbol name="square.on.square" size={16} color="#0A84FF" />
+                                </View>
+                                <Text style={styles.typeLabel}>Duplikat</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                {duplicateCount > 0 && (
+                                    <View style={styles.duplicateBadge}>
+                                        <Text style={styles.duplicateBadgeText}>{duplicateCount}</Text>
+                                    </View>
+                                )}
+                                <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </>
+            )}
         </View>
     );
 
@@ -305,6 +352,16 @@ export default function AlbumsScreen({ navigation }) {
                     setVaultScreenVisible(false);
                     setActiveVaultToken(null);
                     fetchAlbums();
+                }}
+            />
+
+            {/* Apple Photos Style Duplicates Manager Modal */}
+            <DuplicatesModal
+                visible={duplicatesModalVisible}
+                onClose={() => setDuplicatesModalVisible(false)}
+                onDuplicatesMerged={() => {
+                    fetchAlbums();
+                    fetchDuplicateCount();
                 }}
             />
         </View>
@@ -524,5 +581,17 @@ const styles = StyleSheet.create({
     mBtnSaveText: {
         color: '#ffffff',
         fontWeight: '600',
+    },
+    duplicateBadge: {
+        backgroundColor: '#0A84FF',
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 10,
+        marginRight: 8,
+    },
+    duplicateBadgeText: {
+        color: '#ffffff',
+        fontSize: 11,
+        fontWeight: '700',
     },
 });

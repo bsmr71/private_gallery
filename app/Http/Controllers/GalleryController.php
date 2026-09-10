@@ -68,12 +68,20 @@ class GalleryController extends Controller
             ->orderBy('name')
             ->get();
 
+        $dupCopies = (int)\Illuminate\Support\Facades\DB::table('media')
+            ->select('size', 'original_filename', \Illuminate\Support\Facades\DB::raw('COUNT(*) - 1 as extra'))
+            ->groupBy('size', 'original_filename')
+            ->havingRaw('COUNT(*) > 1')
+            ->get()
+            ->sum('extra');
+
         $stats = [
             'total' => Media::count(),
             'albums' => $albums->count(),
             'images' => Media::where('type', 'image')->count(),
             'videos' => Media::where('type', 'video')->count(),
             'favorites' => Media::where('is_favorite', true)->count(),
+            'duplicates' => $dupCopies,
         ];
 
         return view('gallery.albums', compact('albums', 'stats'));

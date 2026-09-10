@@ -81,6 +81,16 @@ class MediaController extends Controller
                 $title = $request->title ?: pathinfo($originalName, PATHINFO_FILENAME);
                 $size = $file->getSize();
 
+                // Prevent duplicate upload if file with identical size and original filename already exists
+                $existingMedia = Media::where('size', $size)
+                    ->where('original_filename', $originalName)
+                    ->first();
+
+                if ($existingMedia) {
+                    $uploaded[] = $existingMedia;
+                    continue;
+                }
+
                 // Move uploaded file to safe local temp storage inside project
                 $tempDir = storage_path('app/temp_uploads');
                 if (!is_dir($tempDir)) {
@@ -743,11 +753,34 @@ class MediaController extends Controller
             }
             $thumbPath = $tempDir . DIRECTORY_SEPARATOR . 'thumb_' . Str::random(32) . '.jpg';
 
-            // 1. Try ffmpeg if available
-            $cmd = sprintf('ffmpeg -y -ss 00:00:01 -i %s -vframes 1 -q:v 2 %s 2>&1', escapeshellarg($videoPath), escapeshellarg($thumbPath));
+            // 1. Try ffmpeg if available (auto-detect path on Windows / Linux)
+            $ffmpegBin = 'ffmpeg';
+            if (PHP_OS_FAMILY === 'Windows') {
+                $candidates = [
+                    'ffmpeg',
+                    'C:\\ffmpeg\\bin\\ffmpeg.exe',
+                    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+                    getenv('LOCALAPPDATA') . '\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-7.1-full_build\\bin\\ffmpeg.exe',
+                ];
+                foreach ($candidates as $cand) {
+                    if (file_exists($cand)) {
+                        $ffmpegBin = escapeshellarg($cand);
+                        break;
+                    }
+                }
+            }
+
+            // Try seeking 0.5 seconds into the video
+            $cmd = sprintf('%s -y -ss 00:00:00.5 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
             @exec($cmd);
 
-            // 2. Fallback to sleek dark GD video thumbnail
+            // If 0.5s failed (e.g. ultra-short video clip), try seeking to frame 0
+            if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
+                $cmd = sprintf('%s -y -ss 0 -i %s -vframes 1 -q:v 2 %s 2>&1', $ffmpegBin, escapeshellarg($videoPath), escapeshellarg($thumbPath));
+                @exec($cmd);
+            }
+
+            // 2. Fallback to sleek dark GD video thumbnail if ffmpeg produced no file
             if (!file_exists($thumbPath) || filesize($thumbPath) === 0) {
                 $this->createVideoPlaceholderGd($thumbPath, $title, $format);
             }

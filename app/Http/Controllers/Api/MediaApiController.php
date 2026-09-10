@@ -378,6 +378,19 @@ class MediaApiController extends Controller
                 $title = $request->title ?: pathinfo($originalName, PATHINFO_FILENAME);
                 $size = $file->getSize();
 
+                // Prevent duplicate upload if file with identical size and original filename already exists
+                $existingMedia = Media::where('size', $size)
+                    ->where('original_filename', $originalName)
+                    ->first();
+
+                if ($existingMedia) {
+                    Log::info("Duplicate upload skipped for {$originalName} ({$size} bytes), returning existing ID {$existingMedia->id}");
+                    $formatted = $this->formatMediaItem($existingMedia, $request);
+                    $formatted['is_duplicate'] = true;
+                    $uploaded[] = $formatted;
+                    continue;
+                }
+
                 $tempDir = storage_path('app/temp_uploads');
                 if (!is_dir($tempDir)) {
                     mkdir($tempDir, 0755, true);
@@ -389,17 +402,50 @@ class MediaApiController extends Controller
 
                 $thumbDriveId = null;
                 $mediaCtrl = app(\App\Http\Controllers\MediaController::class);
-                if ($type === 'image') {
-                    try {
-                        $thumbDriveId = $mediaCtrl->generateAndUploadThumbnail($tempPath, $mimeType);
-                    } catch (\Throwable $th) {
-                        Log::warning('Image thumbnail generation skipped: ' . $th->getMessage());
+
+                // If mobile uploaded a client-extracted native thumbnail for video
+                if ($type === 'video') {
+                    $clientThumbPath = null;
+                    if ($request->hasFile('thumbnail') && $request->file('thumbnail')->isValid()) {
+                        $thumbFile = $request->file('thumbnail');
+                        $clientThumbPath = $tempDir . DIRECTORY_SEPARATOR . 'client_thumb_' . Str::random(32) . '.jpg';
+                        $thumbFile->move($tempDir, basename($clientThumbPath));
+                    } elseif ($request->filled('thumbnail_base64')) {
+                        $rawB64 = $request->input('thumbnail_base64');
+                        $rawB64 = preg_replace('#^data:image/\w+;base64,#i', '', $rawB64);
+                        $decoded = base64_decode($rawB64);
+                        if ($decoded && strlen($decoded) > 0) {
+                            $clientThumbPath = $tempDir . DIRECTORY_SEPARATOR . 'client_thumb_' . Str::random(32) . '.jpg';
+                            file_put_contents($clientThumbPath, $decoded);
+                        }
                     }
-                } elseif ($type === 'video') {
-                    try {
-                        $thumbDriveId = $mediaCtrl->generateAndUploadVideoThumbnail($tempPath, $title, $ext);
-                    } catch (\Throwable $th) {
-                        Log::warning('Video thumbnail generation skipped: ' . $th->getMessage());
+
+                    if ($clientThumbPath && file_exists($clientThumbPath) && filesize($clientThumbPath) > 0) {
+                        try {
+                            $encThumb = $this->encryptionService->encryptFile($clientThumbPath);
+                            $thumbDriveId = $this->driveService->upload($encThumb, 'thumb_' . Str::random(32) . '.enc');
+                            @unlink($encThumb);
+                        } catch (\Throwable $th) {
+                            Log::warning('Client video thumbnail upload failed: ' . $th->getMessage());
+                        } finally {
+                            @unlink($clientThumbPath);
+                        }
+                    }
+                }
+
+                if (!$thumbDriveId) {
+                    if ($type === 'image') {
+                        try {
+                            $thumbDriveId = $mediaCtrl->generateAndUploadThumbnail($tempPath, $mimeType);
+                        } catch (\Throwable $th) {
+                            Log::warning('Image thumbnail generation skipped: ' . $th->getMessage());
+                        }
+                    } elseif ($type === 'video') {
+                        try {
+                            $thumbDriveId = $mediaCtrl->generateAndUploadVideoThumbnail($tempPath, $title, $ext);
+                        } catch (\Throwable $th) {
+                            Log::warning('Video thumbnail generation skipped: ' . $th->getMessage());
+                        }
                     }
                 }
 
@@ -500,5 +546,168 @@ class MediaApiController extends Controller
             'created_at' => $m->created_at ? $m->created_at->toIso8601String() : null,
             'formatted_date' => $m->created_at ? $m->created_at->format('d M Y') : null,
         ];
+    }
+
+    /**
+     * Get list of duplicate media groups.
+     */
+    public function duplicates(Request $request): JsonResponse
+    {
+        $duplicateGroups = \Illuminate\Support\Facades\DB::table('media')
+            ->select('size', 'original_filename', \Illuminate\Support\Facades\DB::raw('COUNT(*) as copy_count'))
+            ->groupBy('size', 'original_filename')
+            ->having('copy_count', '>', 1)
+            ->get();
+
+        $groups = [];
+        $totalWastedBytes = 0;
+        $totalDuplicateCopies = 0;
+
+        foreach ($duplicateGroups as $dg) {
+            $items = Media::with('album')
+                ->where('size', $dg->size)
+                ->where('original_filename', $dg->original_filename)
+                ->orderByDesc('is_favorite')
+                ->orderBy('created_at')
+                ->get();
+
+            if ($items->count() < 2) continue;
+
+            $keeper = $items->first();
+            $wasted = ($items->count() - 1) * $dg->size;
+            $totalWastedBytes += $wasted;
+            $totalDuplicateCopies += ($items->count() - 1);
+
+            $formattedItems = $items->map(function ($m) use ($request, $keeper) {
+                $f = $this->formatMediaItem($m, $request);
+                $f['is_keeper'] = ($m->id === $keeper->id);
+                return $f;
+            });
+
+            $groups[] = [
+                'group_key' => md5($dg->original_filename . '_' . $dg->size),
+                'filename' => $dg->original_filename,
+                'size' => $dg->size,
+                'formatted_size' => Media::formatBytes($dg->size),
+                'wasted_bytes' => $wasted,
+                'formatted_wasted' => Media::formatBytes($wasted),
+                'copy_count' => $items->count(),
+                'keeper_id' => $keeper->id,
+                'items' => $formattedItems,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'duplicate_groups_count' => count($groups),
+            'total_duplicate_copies' => $totalDuplicateCopies,
+            'total_wasted_bytes' => $totalWastedBytes,
+            'formatted_total_wasted' => Media::formatBytes($totalWastedBytes),
+            'groups' => $groups,
+        ]);
+    }
+
+    /**
+     * Merge duplicates: keeps specified keeper (or best keeper) and deletes duplicate copies.
+     */
+    public function mergeDuplicates(Request $request): JsonResponse
+    {
+        $all = $request->boolean('all', false);
+        $keepId = $request->input('keep_id');
+        $duplicateIds = $request->input('duplicate_ids', []);
+
+        $deletedCount = 0;
+        $freedBytes = 0;
+
+        if ($all) {
+            $duplicateGroups = \Illuminate\Support\Facades\DB::table('media')
+                ->select('size', 'original_filename', \Illuminate\Support\Facades\DB::raw('COUNT(*) as copy_count'))
+                ->groupBy('size', 'original_filename')
+                ->having('copy_count', '>', 1)
+                ->get();
+
+            foreach ($duplicateGroups as $dg) {
+                $items = Media::where('size', $dg->size)
+                    ->where('original_filename', $dg->original_filename)
+                    ->orderByDesc('is_favorite')
+                    ->orderBy('created_at')
+                    ->get();
+
+                if ($items->count() < 2) continue;
+
+                $redundant = $items->slice(1);
+
+                foreach ($redundant as $dup) {
+                    $freedBytes += $dup->size;
+                    $this->deleteMediaFilesAndRecord($dup);
+                    $deletedCount++;
+                }
+            }
+        } elseif ($keepId && !empty($duplicateIds)) {
+            $redundant = Media::whereIn('id', $duplicateIds)
+                ->where('id', '!=', $keepId)
+                ->get();
+
+            foreach ($redundant as $dup) {
+                $freedBytes += $dup->size;
+                $this->deleteMediaFilesAndRecord($dup);
+                $deletedCount++;
+            }
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter keep_id dan duplicate_ids atau all diperlukan.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$deletedCount} berkas duplikat berhasil digabungkan dan dibersihkan dari Google Drive.",
+            'deleted_count' => $deletedCount,
+            'freed_bytes' => $freedBytes,
+            'formatted_freed' => Media::formatBytes($freedBytes),
+        ]);
+    }
+
+    /**
+     * Delete a specific single duplicate media item.
+     */
+    public function deleteDuplicate(Request $request): JsonResponse
+    {
+        $request->validate([
+            'media_id' => 'required|integer|exists:media,id',
+        ]);
+
+        $media = Media::findOrFail($request->media_id);
+        $freedBytes = $media->size;
+        $this->deleteMediaFilesAndRecord($media);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Salinan duplikat berhasil dihapus.',
+            'freed_bytes' => $freedBytes,
+            'formatted_freed' => Media::formatBytes($freedBytes),
+        ]);
+    }
+
+    private function deleteMediaFilesAndRecord(Media $media): void
+    {
+        try {
+            if ($media->drive_file_id) {
+                $this->driveService->delete($media->drive_file_id);
+            }
+            if ($media->thumb_drive_id) {
+                $this->driveService->delete($media->thumb_drive_id);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed deleting duplicate Drive file: ' . $e->getMessage());
+        }
+
+        try {
+            $cacheService = app(\App\Services\MediaCacheService::class);
+            $cacheService->clearCache($media);
+        } catch (\Throwable $e) {}
+
+        $media->delete();
     }
 }

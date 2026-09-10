@@ -1,6 +1,7 @@
 import { Directory, File } from 'expo-file-system';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Platform } from 'react-native';
 import { ApiService } from './api';
 import { StorageService } from './storage';
@@ -215,20 +216,67 @@ export const SyncService = {
     },
 
     /**
+     * Subscribe to real-time global sync state updates.
+     */
+    subscribe(listener) {
+        syncListeners.add(listener);
+        listener(currentSyncState);
+        return () => syncListeners.delete(listener);
+    },
+
+    isSyncActive() {
+        return isGlobalSyncRunning;
+    },
+
+    getCurrentProgress() {
+        return currentSyncState;
+    },
+
+    cancelSync() {
+        if (isGlobalSyncRunning) {
+            console.log('[SyncService] cancelSync requested by user');
+            isSyncAborted = true;
+            notifySync({ isSyncing: false, isCancelled: true, currentFilename: 'Dibatalkan oleh pengguna' });
+        }
+    },
+
+    /**
      * Sync staged assets to Google Drive encrypted cloud.
      * Deletes the local original from the designated folder once securely backed up.
      */
     async syncAssets(assets, options = {}) {
+        if (isGlobalSyncRunning) {
+            console.warn('[SyncService] syncAssets blocked: global sync already running!');
+            return {
+                alreadyRunning: true,
+                successCount: 0,
+                failCount: 0,
+                deletedCount: 0,
+            };
+        }
+
         const { onProgress, cloudAlbumId = null } = options;
         const autoDelete = await StorageService.getAutoDeleteLocal();
+
+        isGlobalSyncRunning = true;
+        isSyncAborted = false;
 
         let successCount = 0;
         let failCount = 0;
         let deletedCount = 0;
-        const uploadedAssetIds = [];
         const total = assets.length;
-
         let lastError = null;
+
+        notifySync({
+            isSyncing: true,
+            isCancelled: false,
+            current: 0,
+            total,
+            percentage: 0,
+            currentFilename: total > 0 ? (assets[0].filename || 'Menyiapkan...') : 'Selesai',
+            successCount: 0,
+            failCount: 0,
+        });
 
         // Keep Android process alive even when app is minimized
         await NativeSyncService.startForegroundSync(
@@ -238,20 +286,53 @@ export const SyncService = {
 
         try {
             for (let i = 0; i < total; i++) {
+                if (isSyncAborted) {
+                    console.log('[SyncService] Sync loop interrupted: user cancelled.');
+                    break;
+                }
+
                 const asset = assets[i];
+                let extractedThumbUri = null;
+
                 try {
                     const ext = asset.filename ? asset.filename.split('.').pop().toLowerCase() : 'jpg';
-                    const isVideo = asset.mediaType === 'video' || ext === 'mp4' || ext === 'mov';
+                    const isVideo = asset.mediaType === 'video' || ext === 'mp4' || ext === 'mov' || ext === 'm4v';
                     const mimeType = isVideo
                         ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
                         : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
+
+                    // Native Video Thumbnail extraction on device
+                    if (isVideo && VideoThumbnails?.getThumbnailAsync) {
+                        try {
+                            const thumbResult = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+                                time: 500,
+                                quality: 0.85,
+                            });
+                            if (thumbResult && thumbResult.uri) {
+                                extractedThumbUri = thumbResult.uri;
+                            }
+                        } catch (vtErr) {
+                            console.warn('[SyncService] Device video thumbnail extraction warning:', vtErr);
+                        }
+                    }
 
                     const filePayload = {
                         uri: asset.uri,
                         fileName: asset.filename || `vault_${Date.now()}.${ext}`,
                         mimeType: mimeType,
                         type: isVideo ? 'video' : 'image',
+                        thumbnailUri: extractedThumbUri,
                     };
+
+                    notifySync({
+                        isSyncing: true,
+                        current: i + 1,
+                        total,
+                        percentage: Math.round((i / total) * 100),
+                        currentFilename: asset.filename || `Berkas ${i + 1}`,
+                        successCount,
+                        failCount,
+                    });
 
                     await NativeSyncService.updateProgress(
                         i + 1,
@@ -261,11 +342,15 @@ export const SyncService = {
 
                     // Upload to cloud (AES-256 encrypted storage) with progress
                     await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
+                        const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / total) * 100));
+                        notifySync({
+                            percentage: overallPercent,
+                        });
                         if (onProgress) {
                             onProgress({
                                 current: i + 1,
                                 total,
-                                percentage: Math.round(((i + (percent / 100)) / total) * 100),
+                                percentage: overallPercent,
                                 asset,
                                 itemPercent: percent,
                                 success: true,
@@ -274,12 +359,20 @@ export const SyncService = {
                     });
 
                     successCount++;
-                    uploadedAssetIds.push(asset.id);
+
+                    // Mark synced IMMEDIATELY per-file so interrupted sync never repeats already uploaded items!
+                    await StorageService.addSyncedAssetIds([asset.id]);
+
+                    // Clean up extracted thumbnail file
+                    if (extractedThumbUri) {
+                        try {
+                            await FileSystemLegacy.deleteAsync(extractedThumbUri, { idempotent: true });
+                        } catch (e) {}
+                    }
 
                     // If it's a SAF / designated folder file and autoDelete is enabled, delete local original!
                     if (autoDelete && asset.isSafFile) {
                         let deleted = false;
-                        // Try SAF delete for Android content:// URIs
                         if (asset.uri.startsWith('content://') && StorageAccessFramework?.deleteAsync) {
                             try {
                                 await StorageAccessFramework.deleteAsync(asset.uri);
@@ -288,7 +381,6 @@ export const SyncService = {
                                 console.warn('[SyncService] SAF delete error:', delErr);
                             }
                         }
-                        // Try File.delete fallback
                         if (!deleted && File) {
                             try {
                                 const f = new File(asset.uri);
@@ -303,11 +395,20 @@ export const SyncService = {
                         }
                     }
 
+                    const itemDonePercent = Math.round(((i + 1) / total) * 100);
+                    notifySync({
+                        current: i + 1,
+                        total,
+                        percentage: itemDonePercent,
+                        successCount,
+                        failCount,
+                    });
+
                     if (onProgress) {
                         onProgress({
                             current: i + 1,
                             total,
-                            percentage: Math.round(((i + 1) / total) * 100),
+                            percentage: itemDonePercent,
                             asset,
                             success: true,
                         });
@@ -316,6 +417,9 @@ export const SyncService = {
                     lastError = err?.message || String(err);
                     console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
                     failCount++;
+                    notifySync({
+                        failCount,
+                    });
                     if (onProgress) {
                         onProgress({
                             current: i + 1,
@@ -329,13 +433,15 @@ export const SyncService = {
                 }
             }
         } finally {
-            // Dismiss foreground notification and release wakelock
+            isGlobalSyncRunning = false;
+            notifySync({
+                isSyncing: false,
+                currentFilename: isSyncAborted ? 'Sinkronisasi Dibatalkan' : 'Sinkronisasi Selesai',
+                percentage: 100,
+                successCount,
+                failCount,
+            });
             await NativeSyncService.stopForegroundSync();
-        }
-
-        // Record synced asset IDs
-        if (uploadedAssetIds.length > 0) {
-            await StorageService.addSyncedAssetIds(uploadedAssetIds);
         }
 
         return {
@@ -344,11 +450,12 @@ export const SyncService = {
             deletedCount,
             autoDeleteRequested: autoDelete,
             lastError,
+            isCancelled: isSyncAborted,
         };
     },
 
     isAutoSyncActive() {
-        return isAutoSyncRunning;
+        return isGlobalSyncRunning;
     },
 
     /**
@@ -359,7 +466,7 @@ export const SyncService = {
     async triggerAutoSyncIfPending(callbacks = {}) {
         const { onStart, onProgress, onComplete, onError } = callbacks;
 
-        if (isAutoSyncRunning) {
+        if (isGlobalSyncRunning) {
             return null;
         }
 
@@ -374,10 +481,8 @@ export const SyncService = {
         }
 
         try {
-            isAutoSyncRunning = true;
             const pending = await this.scanVaultFolder();
             if (!pending || pending.length === 0) {
-                isAutoSyncRunning = false;
                 return null;
             }
 
@@ -396,10 +501,29 @@ export const SyncService = {
             console.error('[SyncService] AutoSync error:', err);
             onError && onError(err);
             return null;
-        } finally {
-            isAutoSyncRunning = false;
         }
     },
 };
 
-let isAutoSyncRunning = false;
+let isGlobalSyncRunning = false;
+let isSyncAborted = false;
+let currentSyncState = {
+    isSyncing: false,
+    isCancelled: false,
+    current: 0,
+    total: 0,
+    percentage: 0,
+    currentFilename: '',
+    successCount: 0,
+    failCount: 0,
+};
+const syncListeners = new Set();
+
+function notifySync(state) {
+    currentSyncState = { ...currentSyncState, ...state };
+    syncListeners.forEach((fn) => {
+        try {
+            fn(currentSyncState);
+        } catch (e) {}
+    });
+}

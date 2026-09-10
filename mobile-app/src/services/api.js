@@ -258,6 +258,18 @@ export const ApiService = {
                 if (albumId) formData.append('album_id', String(albumId));
                 if (title) formData.append('title', String(title));
 
+                const thumbUri = fileAsset.thumbnailUri || fileAsset.thumbUri;
+                if (thumbUri) {
+                    formData.append('thumbnail', {
+                        uri: thumbUri,
+                        name: 'thumb.jpg',
+                        type: 'image/jpeg',
+                    });
+                }
+                if (fileAsset.thumbnailBase64) {
+                    formData.append('thumbnail_base64', fileAsset.thumbnailBase64);
+                }
+
                 xhr.send(formData);
             });
         } finally {
@@ -269,6 +281,39 @@ export const ApiService = {
                 }
             }
         }
+    },
+
+    // Duplicates Management
+    async getDuplicates() {
+        return this.request('/media-duplicates');
+    },
+
+    async mergeDuplicates(keepId, duplicateIds) {
+        return this.request('/media-duplicates/merge', {
+            method: 'POST',
+            body: JSON.stringify({
+                keep_id: keepId,
+                duplicate_ids: duplicateIds,
+            }),
+        });
+    },
+
+    async mergeAllDuplicates() {
+        return this.request('/media-duplicates/merge', {
+            method: 'POST',
+            body: JSON.stringify({
+                all: true,
+            }),
+        });
+    },
+
+    async deleteDuplicate(mediaId) {
+        return this.request('/media-duplicates/delete', {
+            method: 'POST',
+            body: JSON.stringify({
+                media_id: mediaId,
+            }),
+        });
     },
 
     // Secure Vault (Brankas Terkunci)
