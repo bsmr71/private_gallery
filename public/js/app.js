@@ -1869,6 +1869,19 @@ function openVideoRepairModal() {
     if (modal) {
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
+
+        const btn = document.getElementById('btn-start-video-repair');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Mulai Perbaikan';
+            btn.onclick = startVideoThumbnailAutoExtraction;
+        }
+        const statusText = document.getElementById('v-repair-status-text');
+        if (statusText) statusText.textContent = '';
+        const progressBar = document.getElementById('v-repair-progress-bar');
+        if (progressBar) progressBar.style.display = 'none';
+        const progressFill = document.getElementById('v-repair-progress-fill');
+        if (progressFill) progressFill.style.width = '0%';
     }
 }
 
@@ -1888,61 +1901,210 @@ async function startVideoThumbnailAutoExtraction() {
 
     if (btn) btn.disabled = true;
     if (progressBar) progressBar.style.display = 'block';
+    if (progressFill) progressFill.style.width = '5%';
 
-    statusText.textContent = 'Memulai proses perbaikan thumbnail video...';
+    statusText.textContent = 'Memeriksa video yang memerlukan thumbnail...';
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     try {
-        // First try server batch generation
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-        let batchResp = await fetch('/media/batch-generate-thumbnails', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrf || '',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ force: false, limit: 10 })
-        });
-        let batchData = await batchResp.json();
+        // 1. Get list of videos needing thumbnails
+        const infoResp = await fetch('/media-videos-needing-thumbnails');
+        const info = await infoResp.json();
 
-        if (batchData.ffmpeg_available) {
-            statusText.textContent = `Server FFmpeg aktif. Memproses batch (${batchData.processed} selesai, sisa ${batchData.remaining})...`;
-            if (progressFill) progressFill.style.width = '60%';
-            // If server handled it, finish
-            setTimeout(() => {
-                if (progressFill) progressFill.style.width = '100%';
-                statusText.textContent = 'Perbaikan selesai di server! Muat ulang halaman galeri.';
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = 'Selesai ✓';
-                }
-            }, 1500);
+        if (!info.success) {
+            throw new Error(info.message || 'Gagal mengambil data video');
+        }
+
+        if (info.count === 0) {
+            statusText.textContent = '✓ Seluruh video sudah memiliki thumbnail asli! Tidak ada yang perlu diperbaiki.';
+            if (progressFill) progressFill.style.width = '100%';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Tutup';
+                btn.onclick = closeVideoRepairModal;
+            }
             return;
         }
 
-        // Otherwise, trigger client-side video frame capture for all video cards on page
-        const videoCards = document.querySelectorAll('.media-card[data-is-video="1"]');
-        statusText.textContent = `Mengekstrak frame video via browser web (${videoCards.length} kartu di halaman ini)...`;
+        const total = info.count;
+        statusText.textContent = `Menemukan ${total} video untuk diproses...`;
+        if (progressFill) progressFill.style.width = '10%';
 
-        let count = 0;
-        videoCards.forEach(card => {
-            card.dataset.thumbExtracted = ''; // Reset extracted flag
-            enqueueVideoThumbnailExtraction(card);
-            count++;
-            if (progressFill) {
-                progressFill.style.width = Math.round((count / videoCards.length) * 100) + '%';
+        let hasFfmpeg = info.ffmpeg_available;
+
+        // 2. If FFmpeg not available on server, attempt automatic server installation
+        if (!hasFfmpeg) {
+            statusText.textContent = 'FFmpeg server belum terdeteksi. Mengunduh FFmpeg ke server...';
+            try {
+                const instResp = await fetch('/media/install-ffmpeg', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json'
+                    }
+                });
+                const instData = await instResp.json();
+                if (instData.success) {
+                    hasFfmpeg = true;
+                    statusText.textContent = '✓ FFmpeg berhasil dipasang di server! Melanjutkan perbaikan...';
+                }
+            } catch (instErr) {
+                console.warn('Server FFmpeg auto-install skipped:', instErr);
             }
-        });
+        }
 
-        statusText.textContent = `Berhasil memicu ekstraksi frame untuk ${count} video di layar!`;
+        // 3. Process via Server FFmpeg in batches if available
+        if (hasFfmpeg) {
+            let processed = 0;
+            while (processed < total) {
+                statusText.textContent = `Memproses di server via FFmpeg (${processed}/${total} selesai)...`;
+                const batchResp = await fetch('/media/batch-generate-thumbnails', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ limit: 5 })
+                });
+                const batchData = await batchResp.json();
+
+                if (!batchData.success || batchData.processed === 0) {
+                    break;
+                }
+
+                processed += batchData.processed;
+                const pct = Math.min(100, Math.round((processed / total) * 100));
+                if (progressFill) progressFill.style.width = pct + '%';
+
+                if (batchData.remaining === 0) {
+                    break;
+                }
+            }
+
+            statusText.textContent = `Selesai! ${processed} thumbnail video berhasil diperbarui 🎉`;
+            if (progressFill) progressFill.style.width = '100%';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Tutup';
+                btn.onclick = closeVideoRepairModal;
+            }
+            showAppNotification(`Berhasil memperbarui thumbnail ${processed} video!`);
+            return;
+        }
+
+        // 4. Fallback: Process via Client Browser Canvas (sequential for smooth performance)
+        statusText.textContent = `Mengekstrak frame via browser (0/${total})...`;
+        let extractedCount = 0;
+
+        for (let i = 0; i < info.videos.length; i++) {
+            const vItem = info.videos[i];
+            statusText.textContent = `Mengekstrak frame via browser (${i + 1}/${total}): ${escapeHtml(vItem.title)}...`;
+
+            try {
+                await extractAndUploadSingleVideoFrame(vItem, csrf);
+                extractedCount++;
+            } catch (err) {
+                console.warn(`Frame extraction failed for video ${vItem.id}:`, err);
+            }
+
+            const pct = Math.min(100, Math.round(((i + 1) / total) * 100));
+            if (progressFill) progressFill.style.width = pct + '%';
+        }
+
+        statusText.textContent = `Selesai! ${extractedCount} dari ${total} thumbnail video berhasil diperbarui via browser 🎉`;
+        if (progressFill) progressFill.style.width = '100%';
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'Selesai ✓';
+            btn.textContent = 'Tutup';
+            btn.onclick = closeVideoRepairModal;
         }
+        showAppNotification(`Berhasil memperbarui ${extractedCount} thumbnail video!`);
     } catch (e) {
-        statusText.textContent = 'Error: ' + e.message;
-        if (btn) btn.disabled = false;
+        statusText.textContent = 'Terjadi kesalahan: ' + e.message;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Coba Lagi';
+            btn.onclick = startVideoThumbnailAutoExtraction;
+        }
     }
+}
+
+function extractAndUploadSingleVideoFrame(vItem, csrf) {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.crossOrigin = 'anonymous';
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+
+        let done = false;
+        const timer = setTimeout(() => {
+            finish(null);
+        }, 12000);
+
+        function finish(dataUrl) {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            video.onloadeddata = null;
+            video.onseeked = null;
+            video.onerror = null;
+            video.src = '';
+            video.load();
+
+            if (!dataUrl) {
+                resolve(false);
+                return;
+            }
+
+            // Cache in browser
+            try { localStorage.setItem('vthumb_' + vItem.id, dataUrl); } catch (e) {}
+
+            // Send to server
+            fetch('/media/' + vItem.id + '/thumbnail', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf || '',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ image_data: dataUrl })
+            }).then(() => resolve(true)).catch(() => resolve(false));
+        }
+
+        function capture() {
+            try {
+                const w = video.videoWidth || 480;
+                const h = video.videoHeight || 360;
+                const targetW = Math.min(480, w);
+                const targetH = Math.round(targetW * (h / w));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = targetW;
+                canvas.height = targetH;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, targetW, targetH);
+                finish(canvas.toDataURL('image/jpeg', 0.82));
+            } catch (e) {
+                finish(null);
+            }
+        }
+
+        video.onloadeddata = () => {
+            try {
+                video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+            } catch (e) {
+                capture();
+            }
+        };
+
+        video.onseeked = () => capture();
+        video.onerror = () => finish(null);
+        video.src = vItem.stream_url + '#t=0.5';
+    });
 }
 
 function escapeHtml(str) {

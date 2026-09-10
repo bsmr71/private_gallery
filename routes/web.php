@@ -39,6 +39,8 @@ Route::middleware('auth')->group(function () {
     // Video Thumbnail Update & Batch Repair
     Route::post('/media/{media}/thumbnail', [MediaController::class, 'updateThumbnail'])->name('media.thumbnail.update');
     Route::post('/media/batch-generate-thumbnails', [MediaController::class, 'batchGenerateThumbnails'])->name('media.batch-thumbnails');
+    Route::post('/media/install-ffmpeg', [MediaController::class, 'installServerFfmpeg'])->name('media.install-ffmpeg');
+    Route::get('/media-videos-needing-thumbnails', [MediaController::class, 'videosNeedingThumbnails'])->name('media.videos-needing-thumbs');
 });
 
 /*

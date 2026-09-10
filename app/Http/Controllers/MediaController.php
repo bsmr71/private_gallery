@@ -1374,4 +1374,96 @@ class MediaController extends Controller
         $this->authorizeMediaAccess();
         return app(\App\Http\Controllers\Api\MediaApiController::class)->deleteDuplicate($request, $media);
     }
+
+    /**
+     * Install standalone static FFmpeg to storage/bin/ffmpeg via Web AJAX.
+     */
+    public function installServerFfmpeg(Request $request)
+    {
+        $this->authorizeMediaAccess();
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pada Windows, silakan pasang via PowerShell: winget install Gyan.FFmpeg'
+            ]);
+        }
+
+        $binDir = storage_path('bin');
+        if (!is_dir($binDir)) {
+            @mkdir($binDir, 0755, true);
+        }
+        $targetFile = $binDir . DIRECTORY_SEPARATOR . 'ffmpeg';
+
+        if (file_exists($targetFile) && filesize($targetFile) > 1000000) {
+            @chmod($targetFile, 0755);
+            return response()->json([
+                'success' => true,
+                'message' => 'FFmpeg sudah aktif di storage/bin/ffmpeg',
+                'path' => $targetFile
+            ]);
+        }
+
+        $url = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64';
+        $fp = @fopen($targetFile, 'w+');
+        if (!$fp) {
+            return response()->json(['success' => false, 'message' => 'Gagal membuka storage/bin/ffmpeg untuk menulis'], 500);
+        }
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 240);
+        curl_setopt($ch, CURLOPT_FILE, $fp);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        fclose($fp);
+
+        if ($httpCode === 200 && file_exists($targetFile) && filesize($targetFile) > 1000000) {
+            @chmod($targetFile, 0755);
+            return response()->json([
+                'success' => true,
+                'message' => 'FFmpeg berhasil dipasang di server!',
+                'path' => $targetFile
+            ]);
+        }
+
+        @unlink($targetFile);
+        return response()->json(['success' => false, 'message' => 'Gagal mengunduh FFmpeg binary (HTTP ' . $httpCode . ')'], 500);
+    }
+
+    /**
+     * Get list of video media records needing thumbnails.
+     */
+    public function videosNeedingThumbnails(Request $request)
+    {
+        $this->authorizeMediaAccess();
+
+        $force = $request->boolean('force', false);
+        $query = Media::where('type', 'video');
+        if (!$force) {
+            $query->whereNull('thumb_drive_id');
+        }
+
+        $videos = $query->orderBy('id', 'desc')->get()->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'title' => $m->title,
+                'original_filename' => $m->original_filename,
+                'stream_url' => $m->streamUrl(),
+                'thumbnail_url' => $m->thumbnailUrl(),
+            ];
+        });
+
+        $ffmpeg = self::findFfmpegBinary();
+
+        return response()->json([
+            'success' => true,
+            'count' => $videos->count(),
+            'ffmpeg_available' => (bool)$ffmpeg,
+            'ffmpeg_path' => $ffmpeg,
+            'videos' => $videos,
+        ]);
+    }
 }
