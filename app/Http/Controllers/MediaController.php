@@ -1311,10 +1311,11 @@ class MediaController extends Controller
         $afterId = $request->input('after_id');
 
         $query = Media::where('type', 'video');
+        if (!$force) {
+            $query->whereNull('thumb_drive_id');
+        }
         if ($afterId) {
             $query->where('id', '<', $afterId);
-        } elseif (!$force) {
-            $query->whereNull('thumb_drive_id');
         }
         $videos = $query->orderBy('id', 'desc')->limit($limit)->get();
         $processed = 0;
@@ -1348,12 +1349,11 @@ class MediaController extends Controller
         }
 
         $remainingQuery = Media::where('type', 'video');
+        if (!$force) {
+            $remainingQuery->whereNull('thumb_drive_id');
+        }
         if ($lastId) {
             $remainingQuery->where('id', '<', $lastId);
-        } elseif (!$force) {
-            $remainingQuery->whereNull('thumb_drive_id');
-        } else {
-            $remainingQuery->whereRaw('0 = 1');
         }
         $remaining = $remainingQuery->count();
 

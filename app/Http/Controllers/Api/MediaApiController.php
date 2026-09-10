@@ -542,19 +542,30 @@ class MediaApiController extends Controller
         $tokenParam = $token ? '?token=' . urlencode($token) : '';
 
         // Properly detect HTTPS scheme behind reverse proxy / SSL termination
+        $host = $request->getHttpHost();
         $isHttps = $request->isSecure()
             || $request->header('X-Forwarded-Proto') === 'https'
             || $request->server('HTTPS') === 'on'
             || $request->server('SERVER_PORT') == 443
+            || str_contains($host, 'gallery.bsmrlab.com')
             || str_starts_with(config('app.url'), 'https://');
 
         $scheme = $isHttps ? 'https' : $request->getScheme();
-        $baseApiUrl = $scheme . '://' . $request->getHttpHost() . '/api';
+        $baseApiUrl = $scheme . '://' . $host . '/api';
+
+        $vTimestamp = $m->updated_at ? $m->updated_at->timestamp : ($m->created_at ? $m->created_at->timestamp : 1);
+        $vParam = "v={$vTimestamp}";
 
         // When accessed from web session, use standard web routes so cookies work automatically
-        $streamUrl = $token ? "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}" : $m->streamUrl();
-        $thumbUrl = $token ? "{$baseApiUrl}/media/{$m->id}/thumbnail{$tokenParam}" : $m->thumbnailUrl();
-        $downloadUrl = $token ? "{$baseApiUrl}/media/{$m->id}/download{$tokenParam}" : $m->downloadUrl();
+        if ($token) {
+            $streamUrl = "{$baseApiUrl}/media/{$m->id}/stream{$tokenParam}";
+            $thumbUrl = "{$baseApiUrl}/media/{$m->id}/thumbnail{$tokenParam}&{$vParam}";
+            $downloadUrl = "{$baseApiUrl}/media/{$m->id}/download{$tokenParam}";
+        } else {
+            $streamUrl = $m->streamUrl();
+            $thumbUrl = $m->thumbnailUrl() . "?{$vParam}";
+            $downloadUrl = $m->downloadUrl();
+        }
 
         return [
             'id' => $m->id,

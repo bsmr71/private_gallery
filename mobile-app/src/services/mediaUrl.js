@@ -1,11 +1,12 @@
 import { StorageService } from './storage';
+import { DEFAULT_CONFIG } from '../constants/config';
 
 let cachedToken = null;
-let cachedApiUrl = null;
+let cachedApiUrl = DEFAULT_CONFIG.apiBaseUrl;
 
 // Keep token and apiUrl in memory for synchronous URL resolution
 StorageService.getToken().then((t) => { cachedToken = t; });
-StorageService.getApiUrl().then((u) => { cachedApiUrl = u; });
+StorageService.getApiUrl().then((u) => { if (u) cachedApiUrl = u; });
 
 export const MediaUrlHelper = {
     async init() {
