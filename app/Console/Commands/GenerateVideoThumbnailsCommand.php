@@ -28,12 +28,48 @@ class GenerateVideoThumbnailsCommand extends Command
 
         $ffmpeg = MediaController::findFfmpegBinary();
         if (!$ffmpeg) {
-            $this->error('FFmpeg tidak terdeteksi di sistem ini.');
-            $this->line('Pastikan FFmpeg terpasang di server (misal: /usr/bin/ffmpeg di Linux atau winget di Windows).');
-            return 1;
+            $this->warn('FFmpeg belum terdeteksi di server.');
+
+            if (PHP_OS_FAMILY !== 'Windows') {
+                $this->info('Mengunduh binary standalone static FFmpeg untuk Linux ke storage/bin/ffmpeg...');
+                $binDir = storage_path('bin');
+                if (!is_dir($binDir)) {
+                    @mkdir($binDir, 0755, true);
+                }
+                $targetFile = $binDir . DIRECTORY_SEPARATOR . 'ffmpeg';
+
+                $url = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64';
+                $fp = @fopen($targetFile, 'w+');
+                if ($fp) {
+                    $ch = curl_init($url);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 180);
+                    curl_setopt($ch, CURLOPT_FILE, $fp);
+                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    fclose($fp);
+
+                    if ($httpCode === 200 && file_exists($targetFile) && filesize($targetFile) > 1000000) {
+                        @chmod($targetFile, 0755);
+                        $this->info("✓ Berhasil memasang FFmpeg ke: {$targetFile}");
+                        $ffmpeg = $targetFile;
+                    } else {
+                        @unlink($targetFile);
+                    }
+                }
+            }
+
+            if (!$ffmpeg) {
+                $this->error('FFmpeg tidak dapat dipasang otomatis.');
+                $this->line('Anda dapat memasangnya manual di cPanel terminal dengan perintah:');
+                $this->line('  mkdir -p storage/bin && curl -sL https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64 -o storage/bin/ffmpeg && chmod +x storage/bin/ffmpeg');
+                return 1;
+            }
         }
 
-        $this->info("FFmpeg terdeteksi: {$ffmpeg}");
+        $this->info("Menggunakan FFmpeg: {$ffmpeg}");
 
         $query = Media::where('type', 'video');
 

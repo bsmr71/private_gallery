@@ -1073,7 +1073,31 @@ class MediaController extends Controller
             return $cachedBin ?: null;
         }
 
-        // 1. Direct command test
+        // 0. Explicit environment variable
+        $envPath = env('FFMPEG_PATH') ?: env('FFMPEG_BIN');
+        if ($envPath && file_exists($envPath)) {
+            $cachedBin = $envPath;
+            return $cachedBin;
+        }
+
+        // 1. Check project & user local bin (storage/bin/ffmpeg, bin/ffmpeg, ~/bin/ffmpeg)
+        $homeDir = getenv('HOME') ?: (isset($_SERVER['HOME']) ? $_SERVER['HOME'] : '');
+        $localBins = [
+            storage_path('bin/ffmpeg'),
+            storage_path('bin/ffmpeg.exe'),
+            base_path('bin/ffmpeg'),
+            base_path('bin/ffmpeg.exe'),
+            $homeDir ? $homeDir . '/bin/ffmpeg' : null,
+        ];
+        foreach ($localBins as $lb) {
+            if ($lb && file_exists($lb)) {
+                @chmod($lb, 0755);
+                $cachedBin = $lb;
+                return $cachedBin;
+            }
+        }
+
+        // 2. Direct command test
         $out = [];
         $code = 0;
         @exec('ffmpeg -version 2>&1', $out, $code);
