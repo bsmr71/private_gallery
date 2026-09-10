@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalVaultService } from '../services/localVaultService';
 import { MediaUrlHelper } from '../services/mediaUrl';
 import { ApiService } from '../services/api';
 import SecureImage from './SecureImage';
 
-const THUMB_CACHE_DIR = `${FileSystemLegacy.cacheDirectory}video_thumbs/`;
 const localThumbMemoryCache = new Map();
 const inFlightExtractions = new Set();
 
@@ -30,27 +29,22 @@ export default function VideoGridThumbnail({ item, style }) {
                 return;
             }
 
+            // 2. Check AsyncStorage persistent cache
             try {
-                // 2. Ensure cache directory exists
-                const dirInfo = await FileSystemLegacy.getInfoAsync(THUMB_CACHE_DIR);
-                if (!dirInfo.exists) {
-                    await FileSystemLegacy.makeDirectoryAsync(THUMB_CACHE_DIR, { intermediates: true });
-                }
-
-                // 3. Check persistent disk cache
-                const cachedFilePath = `${THUMB_CACHE_DIR}thumb_${idStr}.jpg`;
-                const fileInfo = await FileSystemLegacy.getInfoAsync(cachedFilePath);
-                if (fileInfo.exists && fileInfo.size > 0) {
-                    localThumbMemoryCache.set(idStr, cachedFilePath);
-                    if (isMounted) setLocalThumbUri(cachedFilePath);
+                const storedUri = await AsyncStorage.getItem(`@vthumb_${idStr}`);
+                if (storedUri) {
+                    localThumbMemoryCache.set(idStr, storedUri);
+                    if (isMounted) setLocalThumbUri(storedUri);
                     return;
                 }
+            } catch (e) {}
 
-                // Prevent duplicate simultaneous extractions for same item
-                if (inFlightExtractions.has(idStr)) return;
-                inFlightExtractions.add(idStr);
+            // Prevent duplicate simultaneous extractions
+            if (inFlightExtractions.has(idStr)) return;
+            inFlightExtractions.add(idStr);
 
-                // 4. Source selection: Local Vault (0.01s) or Cloud Stream URL
+            try {
+                // 3. Source selection: Local Vault (0.01s) or Cloud Stream URL
                 let videoSource = LocalVaultService.getLocalUri(item.id);
                 const token = MediaUrlHelper.getToken();
 
@@ -66,7 +60,7 @@ export default function VideoGridThumbnail({ item, style }) {
 
                 console.log(`[VideoGridThumbnail] Extracting frame for media ${idStr}...`);
 
-                // 5. Extract frame at 1000ms via native MediaMetadataRetriever according to Expo docs
+                // 4. Extract frame at 1000ms according to official Expo SDK documentation
                 const options = {
                     time: 1000,
                     quality: 0.85,
@@ -78,22 +72,19 @@ export default function VideoGridThumbnail({ item, style }) {
                 const result = await VideoThumbnails.getThumbnailAsync(videoSource, options);
 
                 if (result?.uri) {
-                    await FileSystemLegacy.copyAsync({
-                        from: result.uri,
-                        to: cachedFilePath,
-                    });
-
-                    localThumbMemoryCache.set(idStr, cachedFilePath);
+                    // Use result.uri directly as per official Expo documentation
+                    localThumbMemoryCache.set(idStr, result.uri);
                     if (isMounted) {
-                        setLocalThumbUri(cachedFilePath);
+                        setLocalThumbUri(result.uri);
                     }
-                    console.log(`[VideoGridThumbnail] Successfully cached thumbnail for media ${idStr}: ${cachedFilePath}`);
+                    AsyncStorage.setItem(`@vthumb_${idStr}`, result.uri).catch(() => {});
+                    console.log(`[VideoGridThumbnail] Successfully extracted thumbnail for media ${idStr}: ${result.uri}`);
 
-                    // 6. Background auto-heal: upload extracted frame to server so Google Drive and web benefit
+                    // 5. Background auto-heal: upload extracted frame to server
                     try {
                         const formData = new FormData();
                         formData.append('thumbnail', {
-                            uri: cachedFilePath,
+                            uri: result.uri,
                             name: `thumb_${idStr}.jpg`,
                             type: 'image/jpeg',
                         });
@@ -132,7 +123,7 @@ export default function VideoGridThumbnail({ item, style }) {
         );
     }
 
-    // While extracting or if extraction failed, display server thumbnail via SecureImage
+    // While extracting, display server thumbnail as fallback via SecureImage
     return (
         <SecureImage
             source={item?.thumbnail_url || `/api/media/${item?.id}/thumbnail`}
