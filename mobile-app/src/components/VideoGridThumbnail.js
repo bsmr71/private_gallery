@@ -52,9 +52,9 @@ export default function VideoGridThumbnail({ item, style }) {
 
                 // 4. Source selection: Local Vault (0.01s) or Cloud Stream URL
                 let videoSource = LocalVaultService.getLocalUri(item.id);
+                const token = MediaUrlHelper.getToken();
 
                 if (!videoSource) {
-                    const token = MediaUrlHelper.getToken();
                     const rawStream = item.stream_url || `/api/media/${item.id}/stream`;
                     videoSource = MediaUrlHelper.resolve(rawStream, token);
                 }
@@ -64,11 +64,18 @@ export default function VideoGridThumbnail({ item, style }) {
                     return;
                 }
 
-                // 5. Extract frame at 0.5s via native MediaMetadataRetriever
-                const result = await VideoThumbnails.getThumbnailAsync(videoSource, {
-                    time: 500,
-                    quality: 0.82,
-                });
+                console.log(`[VideoGridThumbnail] Extracting frame for media ${idStr}...`);
+
+                // 5. Extract frame at 1000ms via native MediaMetadataRetriever according to Expo docs
+                const options = {
+                    time: 1000,
+                    quality: 0.85,
+                };
+                if (token && !videoSource.startsWith('file://')) {
+                    options.headers = { Authorization: `Bearer ${token}` };
+                }
+
+                const result = await VideoThumbnails.getThumbnailAsync(videoSource, options);
 
                 if (result?.uri) {
                     await FileSystemLegacy.copyAsync({
@@ -80,6 +87,7 @@ export default function VideoGridThumbnail({ item, style }) {
                     if (isMounted) {
                         setLocalThumbUri(cachedFilePath);
                     }
+                    console.log(`[VideoGridThumbnail] Successfully cached thumbnail for media ${idStr}: ${cachedFilePath}`);
 
                     // 6. Background auto-heal: upload extracted frame to server so Google Drive and web benefit
                     try {
@@ -93,12 +101,13 @@ export default function VideoGridThumbnail({ item, style }) {
                             method: 'POST',
                             body: formData,
                         });
+                        console.log(`[VideoGridThumbnail] Auto-uploaded thumbnail for media ${idStr} to server`);
                     } catch (uploadErr) {
                         // Best-effort auto sync
                     }
                 }
             } catch (err) {
-                // Silently fallback to SecureImage server thumbnail
+                console.warn(`[VideoGridThumbnail] Thumbnail extraction failed for media ${idStr}:`, err?.message || err);
             } finally {
                 inFlightExtractions.delete(idStr);
             }
