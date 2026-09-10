@@ -166,4 +166,21 @@ export const StorageService = {
             await AsyncStorage.setItem('@vault_synced_asset_ids', JSON.stringify(Array.from(set)));
         } catch (e) {}
     },
+
+    // Local Vault Offline Cache Setting (Default true: instant playback from local private sandbox)
+    async getKeepLocalVault() {
+        try {
+            const val = await AsyncStorage.getItem('@vault_keep_local_vault');
+            return val !== 'false'; // Default true for instant 0.05s playback
+        } catch (e) {
+            return true;
+        }
+    },
+
+    async setKeepLocalVault(boolVal) {
+        try {
+            await AsyncStorage.setItem('@vault_keep_local_vault', boolVal ? 'true' : 'false');
+        } catch (e) {}
+    },
 };
+

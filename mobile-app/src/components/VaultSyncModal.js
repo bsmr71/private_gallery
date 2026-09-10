@@ -16,6 +16,7 @@ import {
 import SFSymbol from './SFSymbol';
 import { SyncService } from '../services/syncService';
 import { StorageService } from '../services/storage';
+import { LocalVaultService } from '../services/localVaultService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,6 +33,8 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const [pendingAssets, setPendingAssets] = useState([]);
     const [autoDelete, setAutoDelete] = useState(true);
     const [autoSync, setAutoSync] = useState(true);
+    const [keepLocalVault, setKeepLocalVault] = useState(true);
+    const [vaultStorageInfo, setVaultStorageInfo] = useState({ formatted: '0 MB', count: 0 });
     const [stealthMode, setStealthMode] = useState(false);
 
     const loadAndScan = useCallback(async () => {
@@ -41,11 +44,15 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             const uri = await StorageService.getVaultDirectoryUri();
             const del = await StorageService.getAutoDeleteLocal();
             const syncOnOpen = await StorageService.getAutoSyncEnabled();
+            const keepLocal = await StorageService.getKeepLocalVault();
+            const storageInfo = await LocalVaultService.getVaultStorageUsage();
 
             setFolderName(name);
             setHasFolderUri(!!uri);
             setAutoDelete(del);
             setAutoSync(syncOnOpen);
+            setKeepLocalVault(keepLocal);
+            setVaultStorageInfo(storageInfo);
 
             if (uri) {
                 // Auto scan the designated folder
@@ -119,6 +126,31 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const handleToggleAutoSync = async (val) => {
         setAutoSync(val);
         await StorageService.setAutoSyncEnabled(val);
+    };
+
+    const handleToggleKeepLocalVault = async (val) => {
+        setKeepLocalVault(val);
+        await StorageService.setKeepLocalVault(val);
+    };
+
+    const handleClearLocalVault = () => {
+        Alert.alert(
+            'Kosongkan Penyimpanan HP?',
+            'Semua berkas foto & video offline di memori HP akan dibersihkan untuk menghemat ruang penyimpanan ponsel.\n\nFoto & video Anda di Google Drive tetap 100% aman dan masih bisa diakses kapan saja.',
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Kosongkan',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await LocalVaultService.clearLocalVault();
+                        const updatedInfo = await LocalVaultService.getVaultStorageUsage();
+                        setVaultStorageInfo(updatedInfo);
+                        Alert.alert('Selesai', 'Penyimpanan offline HP berhasil dikosongkan.');
+                    },
+                },
+            ]
+        );
     };
 
     const handleRemoveItem = (index) => {
@@ -297,12 +329,33 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
 
                         {/* Privacy & Zero Footprint Toggle */}
                         <View style={styles.card}>
-                            <Text style={styles.cardLabel}>PENGATURAN KERAHASIAAN</Text>
+                            <Text style={styles.cardLabel}>PENGATURAN BRANKAS &amp; KECEPATAN</Text>
+
+                            {/* Keep in Local Vault for Instant 0.05s Playback */}
                             <View style={styles.toggleRow}>
                                 <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Hapus dari Folder HP Setelah Backup</Text>
+                                    <Text style={styles.toggleTitle}>Simpan di Brankas Offline HP</Text>
                                     <Text style={styles.toggleDesc}>
-                                        Membersihkan file mentah di folder HP setelah berhasil dienkripsi di Google Drive agar tidak ada jejak fisik di ponsel (Zero Footprint).
+                                        Menyimpan berkas terenkripsi di memori HP agar foto &amp; video langsung terbuka instan (0.05 detik) tanpa kuota dan tanpa buffering.
+                                    </Text>
+                                </View>
+                                <Switch
+                                    value={keepLocalVault}
+                                    onValueChange={handleToggleKeepLocalVault}
+                                    trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
+                                    thumbColor="#ffffff"
+                                    disabled={syncing}
+                                />
+                            </View>
+
+                            <View style={styles.divider} />
+
+                            {/* Clean public folder */}
+                            <View style={styles.toggleRow}>
+                                <View style={{ flex: 1, marginRight: 12 }}>
+                                    <Text style={styles.toggleTitle}>Hapus dari Folder Publik HP</Text>
+                                    <Text style={styles.toggleDesc}>
+                                        Membersihkan file dari folder kamera/galeri umum HP setelah backup agar tidak tampak di luar aplikasi (Zero Footprint).
                                     </Text>
                                 </View>
                                 <Switch
@@ -321,7 +374,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                 <View style={{ flex: 1, marginRight: 12 }}>
                                     <Text style={styles.toggleTitle}>Auto-Sync Saat Buka Aplikasi</Text>
                                     <Text style={styles.toggleDesc}>
-                                        Otomatis memindai dan mencadangkan foto baru saat Anda membuka atau beralih ke galeri tanpa perlu menekan tombol manual.
+                                        Otomatis memindai dan mencadangkan foto baru saat Anda membuka aplikasi tanpa perlu menekan tombol manual.
                                     </Text>
                                 </View>
                                 <Switch
@@ -331,6 +384,29 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                     thumbColor="#ffffff"
                                     disabled={syncing}
                                 />
+                            </View>
+
+                            <View style={styles.divider} />
+
+                            {/* Local Vault Storage Usage & Clear Button */}
+                            <View style={styles.storageUsageRow}>
+                                <View style={{ flex: 1, marginRight: 10 }}>
+                                    <Text style={styles.storageUsageTitle}>Penyimpanan Offline HP</Text>
+                                    <Text style={styles.storageUsageDesc}>
+                                        {vaultStorageInfo.formatted ? `${vaultStorageInfo.formatted} • ${vaultStorageInfo.count} berkas tersimpan` : '0 MB'}
+                                    </Text>
+                                </View>
+                                {vaultStorageInfo.count > 0 && (
+                                    <TouchableOpacity
+                                        style={styles.clearStorageBtn}
+                                        onPress={handleClearLocalVault}
+                                        disabled={syncing}
+                                        activeOpacity={0.7}
+                                    >
+                                        <SFSymbol name="trash" size={13} color="#FF453A" style={{ marginRight: 5 }} />
+                                        <Text style={styles.clearStorageText}>Kosongkan</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
 
@@ -744,5 +820,37 @@ const styles = StyleSheet.create({
         color: '#3a3a3c',
         fontSize: 11,
         textAlign: 'center',
+    },
+    storageUsageRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 6,
+    },
+    storageUsageTitle: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    storageUsageDesc: {
+        color: '#8E8E93',
+        fontSize: 12,
+        lineHeight: 16,
+        marginTop: 2,
+    },
+    clearStorageBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 69, 58, 0.12)',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 69, 58, 0.25)',
+    },
+    clearStorageText: {
+        color: '#FF453A',
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

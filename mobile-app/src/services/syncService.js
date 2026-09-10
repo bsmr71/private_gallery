@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { ApiService } from './api';
 import { StorageService } from './storage';
 import { NativeSyncService } from './nativeSyncService';
+import { LocalVaultService } from './localVaultService';
 
 const StorageAccessFramework =
     FileSystemLegacy?.StorageAccessFramework ||
@@ -341,7 +342,7 @@ export const SyncService = {
                     );
 
                     // Upload to cloud (AES-256 encrypted storage) with progress
-                    await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
+                    const uploadRes = await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
                         const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / total) * 100));
                         notifySync({
                             percentage: overallPercent,
@@ -368,6 +369,22 @@ export const SyncService = {
                         try {
                             await FileSystemLegacy.deleteAsync(extractedThumbUri, { idempotent: true });
                         } catch (e) {}
+                    }
+
+                    // Preserve copy in private offline sandbox for 0.05s instant playback
+                    const uploadedMediaId = uploadRes?.uploaded?.[0]?.id;
+                    const keepLocal = await StorageService.getKeepLocalVault();
+                    if (uploadedMediaId && keepLocal) {
+                        try {
+                            await LocalVaultService.saveSyncedAsset(
+                                uploadedMediaId,
+                                asset.uri,
+                                asset.filename,
+                                mimeType
+                            );
+                        } catch (vaultErr) {
+                            console.warn('[SyncService] Local vault save warning:', vaultErr);
+                        }
                     }
 
                     // If it's a SAF / designated folder file and autoDelete is enabled, delete local original!

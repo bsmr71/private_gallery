@@ -28,6 +28,7 @@ import { BlurView } from 'expo-blur';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { MediaUrlHelper } from '../services/mediaUrl';
+import { LocalVaultService } from '../services/localVaultService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -94,12 +95,21 @@ export default function PhotoViewerModal({
         }
     }, [visible, initialIndex]);
 
-    const activeItem = items && items[currentIndex];
-
+    const activeItem = items && items[currentIndex] ? items[currentIndex] : null;
     const isCurrentVideo = Boolean(
-        activeItem?.type === 'video' ||
-        (activeItem?.mime_type && activeItem.mime_type.includes('video'))
+        activeItem &&
+        (activeItem.type === 'video' ||
+            (activeItem.mime_type && activeItem.mime_type.includes('video')))
     );
+
+    const activeLocalUri = activeItem ? LocalVaultService.getLocalUri(activeItem.id) : null;
+
+    // Auto-cache full photo to local vault in background when viewing
+    useEffect(() => {
+        if (visible && activeItem && !activeLocalUri && !isCurrentVideo) {
+            LocalVaultService.cacheMediaFromCloud(activeItem);
+        }
+    }, [visible, activeItem, activeLocalUri, isCurrentVideo]);
 
     // PanResponder for smooth sliding gestures:
     // - Slide Left / Right: Navigate to Next / Prev item (for both photos and videos)
@@ -256,27 +266,24 @@ export default function PhotoViewerModal({
     const handleDownload = async () => {
         if (!activeItem || downloading) return;
         try {
-            setDownloading(true);
-            const rawUrl = activeItem.download_url || activeItem.stream_url;
-            const downloadUrl = MediaUrlHelper.resolve(rawUrl);
+            let shareTargetUri = activeLocalUri;
+            if (!shareTargetUri) {
+                const rawUrl = activeItem.download_url || activeItem.stream_url;
+                const downloadUrl = MediaUrlHelper.resolve(rawUrl);
+                const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${filename}`;
+                const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
 
-            const isVideo = (activeItem.mime_type && activeItem.mime_type.includes('video')) || activeItem.type === 'video';
-            const ext = isVideo ? 'mp4' : 'jpg';
-            const cleanTitle = (activeItem.title || `media_${activeItem.id}`).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-            const filename = cleanTitle.toLowerCase().endsWith(`.${ext}`) ? cleanTitle : `${cleanTitle}.${ext}`;
-
-            const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${filename}`;
-            const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
+                if (downloadRes.status !== 200) {
+                    throw new Error(`Gagal mengunduh: status ${downloadRes.status}`);
+                }
+                shareTargetUri = downloadRes.uri;
+            }
 
             setDownloading(false);
 
-            if (downloadRes.status !== 200) {
-                throw new Error(`Gagal mengunduh: status ${downloadRes.status}`);
-            }
-
             const isSharingAvailable = await Sharing.isAvailableAsync();
             if (isSharingAvailable) {
-                await Sharing.shareAsync(downloadRes.uri, {
+                await Sharing.shareAsync(shareTargetUri, {
                     mimeType: activeItem.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
                     dialogTitle: `Simpan ${filename}`,
                     UTI: isVideo ? 'public.movie' : 'public.image',
@@ -304,6 +311,7 @@ export default function PhotoViewerModal({
                     onPress: async () => {
                         try {
                             await ApiService.deleteMedia(activeItem.id);
+                            LocalVaultService.deleteLocalMedia(activeItem.id);
                             onMediaDeleted && onMediaDeleted(activeItem.id);
                             if (items.length <= 1) {
                                 onClose();
@@ -464,7 +472,7 @@ export default function PhotoViewerModal({
                         </VideoErrorBoundary>
                     ) : (
                         <SecureImage
-                            source={activeItem.stream_url}
+                            source={activeLocalUri || activeItem.stream_url}
                             style={styles.mainImage}
                             resizeMode="contain"
                         />

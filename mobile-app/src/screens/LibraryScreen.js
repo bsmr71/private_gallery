@@ -23,6 +23,7 @@ import { SecurityService, useDecoyMode, useAppLocked } from '../services/securit
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
+import { LocalVaultService } from '../services/localVaultService';
 import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import { NativeSyncService } from '../services/nativeSyncService';
@@ -40,6 +41,7 @@ export default function LibraryScreen() {
     const [mediaItems, setMediaItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [localVaultVer, setLocalVaultVer] = useState(0);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [stats, setStats] = useState(null);
@@ -153,6 +155,14 @@ export default function LibraryScreen() {
     useEffect(() => {
         fetchMedia(1);
         runAutoSync();
+        LocalVaultService.init();
+
+        const unsubVault = LocalVaultService.subscribe(() => {
+            setLocalVaultVer((v) => v + 1);
+        });
+        return () => {
+            unsubVault && unsubVault();
+        };
     }, [fetchMedia, runAutoSync]);
 
     // Listen for app returning to foreground (after user puts photos in folder)
@@ -286,6 +296,7 @@ export default function LibraryScreen() {
                     onPress: async () => {
                         try {
                             await ApiService.batchDelete(selectedIds);
+                            selectedIds.forEach((id) => LocalVaultService.deleteLocalMedia(id));
                             setSelectedIds([]);
                             setIsSelectMode(false);
                             fetchMedia(1, true);
@@ -490,6 +501,13 @@ export default function LibraryScreen() {
                                 />
 
                                 {isSelected && <View style={styles.selectedOverlay} />}
+
+                                {/* Cloud indicator for items not yet stored in local vault */}
+                                {!LocalVaultService.hasLocalMedia(item.id) && !isSelectMode && (
+                                    <View style={styles.cloudBadge}>
+                                        <SFSymbol name="icloud" size={11} color="rgba(255, 255, 255, 0.85)" />
+                                    </View>
+                                )}
 
                                 {item.type === 'video' && (
                                     <View style={styles.videoBadge}>
@@ -775,6 +793,15 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         borderRadius: 10,
         padding: 3,
+    },
+    cloudBadge: {
+        position: 'absolute',
+        top: 5,
+        left: 5,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        borderRadius: 6,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
     },
     checkCircle: {
         position: 'absolute',
