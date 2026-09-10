@@ -22,6 +22,7 @@ import { SyncService } from '../services/syncService';
 import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
+import VideoGridThumbnail from '../components/VideoGridThumbnail';
 import SFSymbol from '../components/SFSymbol';
 import { LocalVaultService } from '../services/localVaultService';
 import VaultSyncModal from '../components/VaultSyncModal';
@@ -494,11 +495,18 @@ export default function LibraryScreen() {
                                 }}
                                 delayLongPress={220}
                             >
-                                <SecureImage
-                                    source={item.type === 'video' ? (item.thumbnail_url || `/api/media/${item.id}/thumbnail`) : (item.thumbnail_url || item.stream_url)}
-                                    style={styles.itemImage}
-                                    resizeMode="cover"
-                                />
+                                {item.type === 'video' ? (
+                                    <VideoGridThumbnail
+                                        item={item}
+                                        style={styles.itemImage}
+                                    />
+                                ) : (
+                                    <SecureImage
+                                        source={item.thumbnail_url || item.stream_url}
+                                        style={styles.itemImage}
+                                        resizeMode="cover"
+                                    />
+                                )}
 
                                 {isSelected && <View style={styles.selectedOverlay} />}
 
