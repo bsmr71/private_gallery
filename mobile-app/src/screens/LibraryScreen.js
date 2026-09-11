@@ -29,6 +29,7 @@ import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import AlbumPickerModal from '../components/AlbumPickerModal';
 import LocalOfflineSyncModal from '../components/LocalOfflineSyncModal';
+import { DeviceGalleryService } from '../services/deviceGalleryService';
 import { NativeSyncService } from '../services/nativeSyncService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
@@ -378,23 +379,51 @@ export default function LibraryScreen({ route, navigation }) {
         );
     };
 
-    const handleDownloadSelectedToVault = () => {
+    const handleExportSelectedToPhoneGallery = () => {
         if (selectedIds.length === 0) return;
         const selectedItems = displayedItems.filter((it) => selectedIds.includes(it.id));
         Alert.alert(
-            'Simpan ke Memori HP',
-            `Unduh ${selectedItems.length} media terpilih ke penyimpanan lokal HP Anda agar dapat dibuka seketika dan 100% offline?`,
+            'Simpan ke Galeri HP (Publik)',
+            `Ekspor ${selectedItems.length} media terpilih ke aplikasi Galeri bawaan HP (Samsung Gallery, Google Photos, DCIM)?\n\nSetelah diekspor, media akan dapat dilihat langsung di aplikasi galeri ponsel Anda.`,
             [
                 { text: 'Batal', style: 'cancel' },
                 {
-                    text: 'Simpan ke HP',
+                    text: 'Ekspor ke Galeri HP',
+                    onPress: async () => {
+                        Alert.alert('Memproses', `Sedang mengunduh dan menyimpan ${selectedItems.length} media ke Galeri HP Anda...`);
+                        await DeviceGalleryService.saveMultipleToDeviceGallery(selectedItems, {
+                            onComplete: (res) => {
+                                Alert.alert(
+                                    'Berhasil Disimpan 🎉',
+                                    `Berhasil menyimpan ${res.successCount} berkas ke Galeri HP Anda (Album: Private Gallery). Anda sekarang bisa membukanya di luar aplikasi ini!`
+                                );
+                                setIsSelectMode(false);
+                                setSelectedIds([]);
+                            },
+                        });
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleCacheSelectedToAppVault = () => {
+        if (selectedIds.length === 0) return;
+        const selectedItems = displayedItems.filter((it) => selectedIds.includes(it.id));
+        Alert.alert(
+            'Simpan ke Cache Aplikasi (Anti-Loading)',
+            `Simpan ${selectedItems.length} media ke memori internal aplikasi ini agar terbuka seketika (0 detik) dan bebas loading saat di-scroll?\n\nCatatan: Berkas TIDAK akan muncul di Galeri umum HP Anda (tetap aman dan privat).`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Simpan ke Cache App',
                     onPress: () => {
                         LocalVaultService.downloadAllToLocal({
                             items: selectedItems,
                             onComplete: (res) => {
                                 Alert.alert(
-                                    'Selesai 🎉',
-                                    `Berhasil menyimpan ${res.successCount} berkas ke memori HP.`
+                                    'Selesai ⚡',
+                                    `Berhasil menyimpan ${res.successCount} berkas ke cache aplikasi. Media kini terbuka instan di aplikasi ini!`
                                 );
                                 setIsSelectMode(false);
                                 setSelectedIds([]);
@@ -833,12 +862,21 @@ export default function LibraryScreen({ route, navigation }) {
                             <>
                                 <TouchableOpacity
                                     style={styles.barActionBtn}
-                                    onPress={handleDownloadSelectedToVault}
+                                    onPress={handleExportSelectedToPhoneGallery}
                                     activeOpacity={0.7}
                                     hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                                 >
-                                    <SFSymbol name="arrow.down.circle" size={14} color="#30D158" />
-                                    <Text style={[styles.barActionText, { color: '#30D158' }]}>Simpan</Text>
+                                    <SFSymbol name="photo.on.rectangle" size={14} color="#0A84FF" />
+                                    <Text style={[styles.barActionText, { color: '#0A84FF' }]}>Ke Galeri HP</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.barActionBtn}
+                                    onPress={handleCacheSelectedToAppVault}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                >
+                                    <SFSymbol name="bolt.fill" size={14} color="#30D158" />
+                                    <Text style={[styles.barActionText, { color: '#30D158' }]}>Cache App</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.barActionBtn}

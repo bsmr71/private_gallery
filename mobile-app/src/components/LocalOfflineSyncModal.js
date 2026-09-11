@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SFSymbol from './SFSymbol';
 import { LocalVaultService } from '../services/localVaultService';
+import { DeviceGalleryService } from '../services/deviceGalleryService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +31,15 @@ export default function LocalOfflineSyncModal({
     const [vaultUsage, setVaultUsage] = useState({ formatted: '0 MB', count: 0 });
     const [downloading, setDownloading] = useState(false);
     const [progress, setProgress] = useState({
+        current: 0,
+        total: 0,
+        percentage: 0,
+        activeFilename: '',
+    });
+
+    // Export to Device Gallery state
+    const [exportingToDevice, setExportingToDevice] = useState(false);
+    const [exportProgress, setExportProgress] = useState({
         current: 0,
         total: 0,
         percentage: 0,
@@ -76,13 +86,14 @@ export default function LocalOfflineSyncModal({
         };
     }, [visible, downloading]);
 
-    const handleStartDownload = async (onlyAlbum = false) => {
+    // 1. Download to App Cache (Private Sandbox - No loading & 60 FPS in this app)
+    const handleStartAppCacheDownload = async (onlyAlbum = false) => {
         const albumIdToUse = onlyAlbum && targetAlbum ? targetAlbum.id : null;
         const targetLabel = albumIdToUse ? `Album "${targetAlbum.name}"` : 'Seluruh Galeri';
 
         Alert.alert(
-            'Unduh ke Memori HP',
-            `Mulai menyimpan ${targetLabel} ke memori lokal HP Anda? Proses ini akan mengunduh thumbnail dan berkas asli agar galeri dapat dibuka 100% offline dan secepat kilat (0 detik).`,
+            'Simpan ke Cache Aplikasi',
+            `Unduh ${targetLabel} ke memori internal aplikasi ini agar scroll super mulus 60 FPS dan terbuka instan 0 detik tanpa loading?\n\n🔒 Privasi Aman: Berkas disimpan di ruang privat aplikasi, TIDAK akan muncul di Galeri umum HP / Google Photos.`,
             [
                 { text: 'Batal', style: 'cancel' },
                 {
@@ -101,20 +112,69 @@ export default function LocalOfflineSyncModal({
                                 onSyncFinished && onSyncFinished(res);
 
                                 if (res.cancelled) {
-                                    Alert.alert('Unduhan Dibatalkan', 'Proses unduh ke memori HP telah dihentikan.');
+                                    Alert.alert('Unduhan Dibatalkan', 'Proses unduh ke cache aplikasi telah dihentikan.');
                                 } else {
                                     Alert.alert(
-                                        'Unduhan Selesai 🎉',
-                                        `Berhasil menyimpan ${res.successCount} berkas ke HP (${res.skippedCount} berkas sudah tersimpan sebelumnya). Galeri kini dapat dibuka seketika tanpa koneksi internet!`
+                                        'Unduhan Selesai ⚡',
+                                        `Berhasil menyimpan ${res.successCount} berkas ke cache aplikasi (${res.skippedCount} berkas sudah ada sebelumnya). Galeri di aplikasi ini kini dapat dibuka seketika tanpa loading dan 100% offline!`
                                     );
                                 }
                             },
                             onError: (err) => {
                                 setDownloading(false);
                                 refreshStats();
-                                Alert.alert('Gagal Mengunduh', err?.message || 'Terjadi kesalahan saat mengunduh berkas ke HP.');
+                                Alert.alert('Gagal Mengunduh', err?.message || 'Terjadi kesalahan saat mengunduh berkas.');
                             },
                         });
+                    },
+                },
+            ]
+        );
+    };
+
+    // 2. Export to Phone's Public Gallery (Google Photos, Samsung Gallery, DCIM)
+    const handleExportToPublicGallery = async (onlyAlbum = false) => {
+        const albumIdToUse = onlyAlbum && targetAlbum ? targetAlbum.id : null;
+        const targetLabel = albumIdToUse ? `Album "${targetAlbum.name}"` : 'Seluruh Galeri';
+
+        Alert.alert(
+            'Simpan ke Galeri HP (Publik)',
+            `Apakah Anda ingin mengekspor seluruh foto & video dari ${targetLabel} ke aplikasi Galeri bawaan HP (Samsung Gallery, Google Photos, DCIM)?\n\n⚠️ Perhatian: Berkas akan dapat dilihat secara publik di luar aplikasi ini. Lanjutkan?`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Ekspor ke Galeri HP',
+                    onPress: async () => {
+                        setExportingToDevice(true);
+                        try {
+                            const { ApiService } = require('../services/api');
+                            const params = { all: 1, per_page: 2000 };
+                            if (albumIdToUse) params.album_id = albumIdToUse;
+                            const res = await ApiService.getMedia(params);
+                            const itemsToExport = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+
+                            if (itemsToExport.length === 0) {
+                                Alert.alert('Informasi', 'Tidak ada media untuk diekspor.');
+                                setExportingToDevice(false);
+                                return;
+                            }
+
+                            await DeviceGalleryService.saveMultipleToDeviceGallery(itemsToExport, {
+                                onProgress: (prog) => {
+                                    setExportProgress(prog);
+                                },
+                                onComplete: (result) => {
+                                    setExportingToDevice(false);
+                                    Alert.alert(
+                                        'Ekspor Selesai 🎉',
+                                        `Berhasil menyimpan ${result.successCount} berkas ke Galeri HP Anda (Album: Private Gallery). Anda dapat melihatnya di Google Photos atau Galeri ponsel!`
+                                    );
+                                },
+                            });
+                        } catch (err) {
+                            setExportingToDevice(false);
+                            Alert.alert('Gagal Ekspor', err?.message || 'Terjadi kesalahan saat mengekspor ke galeri HP.');
+                        }
                     },
                 },
             ]
@@ -124,7 +184,7 @@ export default function LocalOfflineSyncModal({
     const handleCancelDownload = () => {
         Alert.alert(
             'Batalkan Unduhan?',
-            'Apakah Anda ingin menghentikan unduhan berkas ke HP? Berkas yang sudah selesai diunduh akan tetap tersimpan di HP.',
+            'Apakah Anda ingin menghentikan unduhan berkas ke cache aplikasi? Berkas yang sudah selesai diunduh akan tetap tersimpan.',
             [
                 { text: 'Lanjutkan Unduh', style: 'cancel' },
                 {
@@ -140,21 +200,21 @@ export default function LocalOfflineSyncModal({
 
     const handleClearVault = () => {
         Alert.alert(
-            'Kosongkan Salinan HP?',
-            'Apakah Anda ingin menghapus seluruh salinan foto & video dari memori HP?\n\nSemua foto & video Anda TETAP 100% AMAN di Google Drive / Cloud. Hanya salinan offline di HP ini yang dihapus untuk membebaskan ruang memori perangkat.',
+            'Kosongkan Cache Aplikasi?',
+            'Hapus seluruh salinan foto & video dari cache internal aplikasi ini?\n\nSemua foto & video Anda TETAP 100% AMAN di Google Drive / Cloud. Hanya cache internal aplikasi ini yang dibersihkan untuk menghemat memori HP.',
             [
                 { text: 'Batal', style: 'cancel' },
                 {
-                    text: 'Hapus dari HP',
+                    text: 'Kosongkan Cache',
                     style: 'destructive',
                     onPress: async () => {
                         try {
                             await LocalVaultService.clearLocalVault();
                             await refreshStats();
                             onSyncFinished && onSyncFinished();
-                            Alert.alert('Selesai', 'Ruang memori HP berhasil dibersihkan.');
+                            Alert.alert('Selesai', 'Cache internal aplikasi berhasil dibersihkan.');
                         } catch (e) {
-                            Alert.alert('Gagal', 'Tidak dapat menghapus salinan lokal.');
+                            Alert.alert('Gagal', 'Tidak dapat menghapus cache lokal.');
                         }
                     },
                 },
@@ -162,7 +222,7 @@ export default function LocalOfflineSyncModal({
         );
     };
 
-    const isFullyLocal = totalMediaCount > 0 && localCount >= totalMediaCount;
+    const isFullyCached = totalMediaCount > 0 && localCount >= totalMediaCount;
     const remainingCount = Math.max(0, totalMediaCount - localCount);
 
     return (
@@ -183,7 +243,7 @@ export default function LocalOfflineSyncModal({
                     >
                         <Text style={styles.closeBtnText}>Tutup</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Offline Local Vault</Text>
+                    <Text style={styles.headerTitle}>Penyimpanan &amp; Ekspor</Text>
                     <View style={{ width: 44 }} />
                 </View>
 
@@ -195,22 +255,43 @@ export default function LocalOfflineSyncModal({
                     ]}
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* Hero Card */}
-                    <View style={styles.heroCard}>
-                        <View style={styles.heroIconWrap}>
-                            <SFSymbol name="arrow.down.circle.fill" size={38} color="#0A84FF" />
+                    {/* Concept Distinction Card */}
+                    <View style={styles.explainerCard}>
+                        <Text style={styles.explainerCardTitle}>PILIHAN PENYIMPANAN</Text>
+                        <View style={styles.explainerRow}>
+                            <View style={[styles.explainerBadge, { backgroundColor: 'rgba(48, 209, 88, 0.15)' }]}>
+                                <Text style={{ fontSize: 16 }}>⚡</Text>
+                            </View>
+                            <View style={styles.explainerTextWrap}>
+                                <Text style={[styles.explainerTypeTitle, { color: '#30D158' }]}>
+                                    Cache Cepat Aplikasi (Anti-Loading)
+                                </Text>
+                                <Text style={styles.explainerTypeDesc}>
+                                    Tersimpan di dalam aplikasi ini saja agar scroll 60 FPS dan buka 0 detik. <Text style={{ color: '#ffffff', fontWeight: '600' }}>TIDAK muncul di Galeri HP</Text> (privasi aman).
+                                </Text>
+                            </View>
                         </View>
-                        <Text style={styles.heroTitle}>Simpan Seluruh Galeri ke HP</Text>
-                        <Text style={styles.heroDesc}>
-                            Simpan semua foto & video ke memori lokal HP agar galeri dapat dibuka seketika (0 detik), scroll mulus 60 FPS tanpa patah-patah, dan dapat diakses 100% offline tanpa internet.
-                        </Text>
+
+                        <View style={[styles.explainerRow, { marginTop: 12 }]}>
+                            <View style={[styles.explainerBadge, { backgroundColor: 'rgba(10, 132, 255, 0.15)' }]}>
+                                <Text style={{ fontSize: 16 }}>🖼️</Text>
+                            </View>
+                            <View style={styles.explainerTextWrap}>
+                                <Text style={[styles.explainerTypeTitle, { color: '#0A84FF' }]}>
+                                    Simpan ke Galeri HP (Publik)
+                                </Text>
+                                <Text style={styles.explainerTypeDesc}>
+                                    Diekspor ke album perangkat HP Anda agar bisa dibuka di <Text style={{ color: '#ffffff', fontWeight: '600' }}>Google Photos, Samsung Gallery</Text>, atau dikirim ke WhatsApp.
+                                </Text>
+                            </View>
+                        </View>
                     </View>
 
-                    {/* Stats Metric Card */}
+                    {/* Cache Stats Metric Card */}
                     <View style={styles.statsCard}>
                         <View style={styles.statRow}>
                             <View style={styles.statItem}>
-                                <Text style={styles.statLabel}>Media di HP</Text>
+                                <Text style={styles.statLabel}>Media di Cache App</Text>
                                 <Text style={styles.statValue}>
                                     {localCount} <Text style={styles.statValueSub}>/ {totalMediaCount || localCount}</Text>
                                 </Text>
@@ -219,45 +300,44 @@ export default function LocalOfflineSyncModal({
                             <View style={styles.statDivider} />
 
                             <View style={styles.statItem}>
-                                <Text style={styles.statLabel}>Memori Terpakai</Text>
+                                <Text style={styles.statLabel}>Memori Cache</Text>
                                 <Text style={styles.statValue}>{vaultUsage.formatted}</Text>
                             </View>
                         </View>
 
                         <View style={styles.statusBadgeWrap}>
-                            {isFullyLocal ? (
+                            {isFullyCached ? (
                                 <View style={styles.badgeSuccess}>
                                     <SFSymbol name="checkmark.circle.fill" size={13} color="#30D158" />
-                                    <Text style={styles.badgeSuccessText}>100% Tersimpan di HP (Siap Offline)</Text>
+                                    <Text style={styles.badgeSuccessText}>100% Tersimpan di Cache (Siap Bebas Loading)</Text>
                                 </View>
                             ) : (
                                 <View style={styles.badgePending}>
                                     <SFSymbol name="icloud" size={13} color="#FF9F0A" />
                                     <Text style={styles.badgePendingText}>
-                                        {remainingCount > 0 ? `${remainingCount} media belum disimpan di HP` : 'Siap Disinkronkan'}
+                                        {remainingCount > 0 ? `${remainingCount} media belum di-cache di aplikasi` : 'Siap Disinkronkan'}
                                     </Text>
                                 </View>
                             )}
                         </View>
                     </View>
 
-                    {/* Live Progress Bar (when downloading) */}
-                    {downloading ? (
+                    {/* Progress Bar 1: Downloading to App Cache */}
+                    {downloading && (
                         <View style={styles.downloadProgressCard}>
                             <View style={styles.progressHeaderRow}>
                                 <View style={styles.progressHeaderLeft}>
-                                    <ActivityIndicator size="small" color="#0A84FF" style={{ marginRight: 8 }} />
-                                    <Text style={styles.progressTitle}>Sedang Mengunduh ke HP...</Text>
+                                    <ActivityIndicator size="small" color="#30D158" style={{ marginRight: 8 }} />
+                                    <Text style={styles.progressTitle}>Menyimpan ke Cache Aplikasi...</Text>
                                 </View>
-                                <Text style={styles.progressPercent}>{progress.percentage || 0}%</Text>
+                                <Text style={[styles.progressPercent, { color: '#30D158' }]}>{progress.percentage || 0}%</Text>
                             </View>
 
-                            {/* Progress bar line */}
                             <View style={styles.progressBarTrack}>
                                 <View
                                     style={[
                                         styles.progressBarFill,
-                                        { width: `${Math.min(100, Math.max(0, progress.percentage || 0))}%` },
+                                        { backgroundColor: '#30D158', width: `${Math.min(100, Math.max(0, progress.percentage || 0))}%` },
                                     ]}
                                 />
                             </View>
@@ -279,100 +359,104 @@ export default function LocalOfflineSyncModal({
                                 <Text style={styles.cancelBtnText}>Batalkan Unduhan</Text>
                             </TouchableOpacity>
                         </View>
-                    ) : (
-                        /* Action Buttons (when idle) */
+                    )}
+
+                    {/* Progress Bar 2: Exporting to Phone Public Gallery */}
+                    {exportingToDevice && (
+                        <View style={[styles.downloadProgressCard, { borderColor: 'rgba(10, 132, 255, 0.4)' }]}>
+                            <View style={styles.progressHeaderRow}>
+                                <View style={styles.progressHeaderLeft}>
+                                    <ActivityIndicator size="small" color="#0A84FF" style={{ marginRight: 8 }} />
+                                    <Text style={styles.progressTitle}>Mengekspor ke Galeri HP...</Text>
+                                </View>
+                                <Text style={[styles.progressPercent, { color: '#0A84FF' }]}>{exportProgress.percentage || 0}%</Text>
+                            </View>
+
+                            <View style={styles.progressBarTrack}>
+                                <View
+                                    style={[
+                                        styles.progressBarFill,
+                                        { backgroundColor: '#0A84FF', width: `${Math.min(100, Math.max(0, exportProgress.percentage || 0))}%` },
+                                    ]}
+                                />
+                            </View>
+
+                            <View style={styles.progressInfoRow}>
+                                <Text style={styles.progressCountText}>
+                                    {exportProgress.current || 0} dari {exportProgress.total || totalMediaCount} berkas
+                                </Text>
+                                <Text style={styles.progressFilenameText} numberOfLines={1}>
+                                    {exportProgress.activeFilename || 'Menyimpan ke album...'}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Action Buttons Section */}
+                    {!downloading && !exportingToDevice && (
                         <View style={styles.actionSection}>
                             {targetAlbum && (
                                 <TouchableOpacity
                                     style={styles.albumDownloadBtn}
-                                    onPress={() => handleStartDownload(true)}
+                                    onPress={() => handleStartAppCacheDownload(true)}
                                     activeOpacity={0.8}
                                 >
-                                    <SFSymbol name="folder" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
+                                    <Text style={{ fontSize: 16, marginRight: 8 }}>⚡</Text>
                                     <Text style={styles.albumDownloadBtnText}>
-                                        Simpan Album "{targetAlbum.name}" ke HP
+                                        Cache Album "{targetAlbum.name}" (Anti-Loading)
                                     </Text>
                                 </TouchableOpacity>
                             )}
 
+                            {/* Button 1: Cache App (Anti Loading) */}
                             <TouchableOpacity
-                                style={styles.primaryDownloadBtn}
-                                onPress={() => handleStartDownload(false)}
+                                style={styles.primaryCacheBtn}
+                                onPress={() => handleStartAppCacheDownload(false)}
                                 activeOpacity={0.85}
                             >
-                                <SFSymbol name="arrow.down.circle.fill" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-                                <Text style={styles.primaryDownloadBtnText}>
-                                    {isFullyLocal
-                                        ? 'Perbarui / Unduh Berkas Terbaru'
-                                        : `Unduh Semua Media ke HP (${remainingCount} Berkas)`}
-                                </Text>
+                                <Text style={{ fontSize: 18, marginRight: 8 }}>⚡</Text>
+                                <View>
+                                    <Text style={styles.primaryBtnText}>
+                                        {isFullyCached
+                                            ? 'Perbarui Cache Aplikasi'
+                                            : `Unduh Semua ke Cache App (${remainingCount} Berkas)`}
+                                    </Text>
+                                    <Text style={styles.primaryBtnSub}>
+                                        Buka kilat 0 detik &amp; scroll mulus di aplikasi ini (Privat)
+                                    </Text>
+                                </View>
                             </TouchableOpacity>
 
+                            {/* Button 2: Export to Phone Public Gallery */}
+                            <TouchableOpacity
+                                style={styles.secondaryExportBtn}
+                                onPress={() => handleExportToPublicGallery(false)}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={{ fontSize: 18, marginRight: 8 }}>🖼️</Text>
+                                <View>
+                                    <Text style={styles.secondaryBtnText}>
+                                        Ekspor Semua ke Galeri HP (Publik)
+                                    </Text>
+                                    <Text style={styles.secondaryBtnSub}>
+                                        Muncul di Samsung Gallery, Google Photos, &amp; DCIM
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            {/* Button 3: Clear Cache */}
                             {localCount > 0 && (
                                 <TouchableOpacity
                                     style={styles.clearBtn}
                                     onPress={handleClearVault}
                                     activeOpacity={0.7}
                                 >
-                                    <SFSymbol name="trash" size={15} color="#FF453A" style={{ marginRight: 6 }} />
-                                    <Text style={styles.clearBtnText}>Kosongkan Memori HP ({vaultUsage.formatted})</Text>
+                                    <SFSymbol name="trash" size={14} color="#FF453A" style={{ marginRight: 6 }} />
+                                    <Text style={styles.clearBtnText}>Kosongkan Cache Aplikasi ({vaultUsage.formatted})</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
                     )}
-
-                    {/* Feature Perks */}
-                    <View style={styles.perksCard}>
-                        <Text style={styles.perksSectionTitle}>KEUNTUNGAN PENYIMPANAN HP</Text>
-
-                        <View style={styles.perkRow}>
-                            <View style={styles.perkIconWrap}>
-                                <Text style={styles.perkEmoji}>⚡</Text>
-                            </View>
-                            <View style={styles.perkTextWrap}>
-                                <Text style={styles.perkTitle}>Buka Instan 0 Detik</Text>
-                                <Text style={styles.perkDesc}>
-                                    Foto dan video terbuka seketika tanpa menunggu koneksi atau buffering.
-                                </Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.perkRow}>
-                            <View style={styles.perkIconWrap}>
-                                <Text style={styles.perkEmoji}>📱</Text>
-                            </View>
-                            <View style={styles.perkTextWrap}>
-                                <Text style={styles.perkTitle}>Scroll Super Mulus (60 FPS)</Text>
-                                <Text style={styles.perkDesc}>
-                                    Thumbnail diambil langsung dari memori lokal sehingga tidak patah-patah saat scrolling.
-                                </Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.perkRow}>
-                            <View style={styles.perkIconWrap}>
-                                <Text style={styles.perkEmoji}>✈️</Text>
-                            </View>
-                            <View style={styles.perkTextWrap}>
-                                <Text style={styles.perkTitle}>100% Akses Offline</Text>
-                                <Text style={styles.perkDesc}>
-                                    Tetap bisa menikmati seluruh galeri di pesawat atau di daerah tanpa sinyal internet.
-                                </Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.perkRow}>
-                            <View style={styles.perkIconWrap}>
-                                <Text style={styles.perkEmoji}>🔒</Text>
-                            </View>
-                            <View style={styles.perkTextWrap}>
-                                <Text style={styles.perkTitle}>Aman & Tersembunyi</Text>
-                                <Text style={styles.perkDesc}>
-                                    Tersimpan di ruang privat aplikasi (Sandbox), aman dari aplikasi lain dan tidak mencemari galeri umum HP.
-                                </Text>
-                            </View>
-                        </View>
-                    </View>
                 </ScrollView>
             </View>
         </Modal>
@@ -414,35 +498,45 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: 16,
     },
-    heroCard: {
-        alignItems: 'center',
-        paddingVertical: 18,
-        paddingHorizontal: 12,
+    explainerCard: {
+        backgroundColor: '#1C1C1E',
+        borderRadius: 16,
+        padding: 16,
         marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
-    heroIconWrap: {
-        width: 68,
-        height: 68,
-        borderRadius: 34,
-        backgroundColor: 'rgba(10, 132, 255, 0.12)',
-        alignItems: 'center',
-        justifyContent: 'center',
+    explainerCardTitle: {
+        color: '#8E8E93',
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 0.8,
         marginBottom: 12,
     },
-    heroTitle: {
-        color: '#ffffff',
-        fontSize: 20,
-        fontWeight: '800',
-        textAlign: 'center',
-        marginBottom: 8,
-        letterSpacing: -0.3,
+    explainerRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
     },
-    heroDesc: {
+    explainerBadge: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    explainerTextWrap: {
+        flex: 1,
+    },
+    explainerTypeTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 3,
+    },
+    explainerTypeDesc: {
         color: '#8E8E93',
-        fontSize: 13,
-        lineHeight: 18,
-        textAlign: 'center',
-        paddingHorizontal: 8,
+        fontSize: 12,
+        lineHeight: 16,
     },
     statsCard: {
         backgroundColor: '#1C1C1E',
@@ -523,7 +617,7 @@ const styles = StyleSheet.create({
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: 'rgba(10, 132, 255, 0.3)',
+        borderColor: 'rgba(48, 209, 88, 0.3)',
     },
     progressHeaderRow: {
         flexDirection: 'row',
@@ -541,7 +635,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     progressPercent: {
-        color: '#0A84FF',
         fontSize: 16,
         fontWeight: '800',
     },
@@ -554,7 +647,6 @@ const styles = StyleSheet.create({
     },
     progressBarFill: {
         height: '100%',
-        backgroundColor: '#0A84FF',
         borderRadius: 4,
     },
     progressInfoRow: {
@@ -591,36 +683,62 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(10, 132, 255, 0.12)',
+        backgroundColor: 'rgba(48, 209, 88, 0.12)',
         borderRadius: 14,
         paddingVertical: 13,
-        marginBottom: 10,
+        marginBottom: 12,
         borderWidth: 1,
-        borderColor: 'rgba(10, 132, 255, 0.25)',
+        borderColor: 'rgba(48, 209, 88, 0.25)',
     },
     albumDownloadBtnText: {
-        color: '#0A84FF',
+        color: '#30D158',
         fontSize: 14,
         fontWeight: '600',
     },
-    primaryDownloadBtn: {
+    primaryCacheBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#0A84FF',
+        backgroundColor: '#248A3D',
         borderRadius: 14,
         paddingVertical: 14,
-        marginBottom: 10,
-        shadowColor: '#0A84FF',
+        paddingHorizontal: 16,
+        marginBottom: 12,
+        shadowColor: '#30D158',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 4,
     },
-    primaryDownloadBtnText: {
+    primaryBtnText: {
         color: '#ffffff',
         fontSize: 15,
         fontWeight: '700',
+    },
+    primaryBtnSub: {
+        color: 'rgba(255, 255, 255, 0.75)',
+        fontSize: 11,
+        marginTop: 2,
+    },
+    secondaryExportBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(10, 132, 255, 0.14)',
+        borderRadius: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(10, 132, 255, 0.3)',
+    },
+    secondaryBtnText: {
+        color: '#0A84FF',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    secondaryBtnSub: {
+        color: '#8E8E93',
+        fontSize: 11,
+        marginTop: 2,
     },
     clearBtn: {
         flexDirection: 'row',
@@ -632,50 +750,5 @@ const styles = StyleSheet.create({
         color: '#FF453A',
         fontSize: 13,
         fontWeight: '500',
-    },
-    perksCard: {
-        backgroundColor: '#1C1C1E',
-        borderRadius: 16,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
-    },
-    perksSectionTitle: {
-        color: '#8E8E93',
-        fontSize: 11,
-        fontWeight: '700',
-        letterSpacing: 0.8,
-        marginBottom: 14,
-    },
-    perkRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginBottom: 14,
-    },
-    perkIconWrap: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.06)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 12,
-    },
-    perkEmoji: {
-        fontSize: 16,
-    },
-    perkTextWrap: {
-        flex: 1,
-    },
-    perkTitle: {
-        color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '600',
-        marginBottom: 2,
-    },
-    perkDesc: {
-        color: '#8E8E93',
-        fontSize: 12,
-        lineHeight: 16,
     },
 });

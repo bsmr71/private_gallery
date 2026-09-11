@@ -30,6 +30,7 @@ import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { MediaUrlHelper } from '../services/mediaUrl';
 import { LocalVaultService } from '../services/localVaultService';
+import { DeviceGalleryService } from '../services/deviceGalleryService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -267,53 +268,96 @@ export default function PhotoViewerModal({
         } catch (e) {}
     };
 
-    const handleDownload = async () => {
+    const handleDownload = () => {
         if (!activeItem || downloading) return;
-        setDownloading(true);
-        try {
-            const isVideo = Boolean(
-                activeItem.type === 'video' ||
-                (activeItem.mime_type && activeItem.mime_type.includes('video'))
-            );
-            const rawFilename = activeItem.original_filename || activeItem.title;
-            const ext = isVideo ? 'mp4' : 'jpg';
-            const filename = rawFilename
-                ? (rawFilename.includes('.') ? rawFilename : `${rawFilename}.${ext}`)
-                : `media_${activeItem.id}.${ext}`;
-            const safeLocalName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-            let shareTargetUri = activeLocalUri;
-            if (!shareTargetUri) {
-                const rawUrl = activeItem.download_url || activeItem.stream_url;
-                const downloadUrl = MediaUrlHelper.resolve(rawUrl);
-                const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${safeLocalName}`;
-                const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
+        Alert.alert(
+            'Simpan & Ekspor Media',
+            'Pilih tujuan penyimpanan berkas ini:',
+            [
+                {
+                    text: '🖼️ Simpan ke Galeri HP (Publik)',
+                    onPress: async () => {
+                        setDownloading(true);
+                        try {
+                            const res = await DeviceGalleryService.saveToDeviceGallery(activeItem);
+                            if (res.success) {
+                                if (res.method === 'mediaLibrary') {
+                                    Alert.alert(
+                                        'Tersimpan di Galeri HP 🎉',
+                                        `Foto/video berhasil disimpan ke aplikasi Galeri bawaan HP Anda (Album: Private Gallery). Anda dapat melihatnya di Google Photos atau Galeri ponsel!`
+                                    );
+                                }
+                            } else {
+                                Alert.alert('Gagal Menyimpan', res.message || 'Tidak dapat menyimpan ke galeri HP.');
+                            }
+                        } catch (err) {
+                            Alert.alert('Gagal', err?.message || 'Terjadi kesalahan.');
+                        } finally {
+                            setDownloading(false);
+                        }
+                    },
+                },
+                {
+                    text: '⚡ Simpan ke Cache App (Anti-Loading)',
+                    onPress: async () => {
+                        setDownloading(true);
+                        try {
+                            await LocalVaultService.cacheMediaFromCloud(activeItem);
+                            Alert.alert(
+                                'Tersimpan di Cache App ⚡',
+                                'Berkas berhasil disimpan ke memori internal aplikasi ini agar terbuka seketika tanpa loading. Berkas TIDAK akan muncul di Galeri umum HP Anda (tetap privat).'
+                            );
+                        } catch (err) {
+                            Alert.alert('Gagal', 'Terjadi kesalahan saat menyimpan cache.');
+                        } finally {
+                            setDownloading(false);
+                        }
+                    },
+                },
+                {
+                    text: '📤 Bagikan Berkas (WhatsApp, dll)',
+                    onPress: async () => {
+                        setDownloading(true);
+                        try {
+                            let shareTargetUri = activeLocalUri;
+                            const isVideo = Boolean(
+                                activeItem.type === 'video' ||
+                                (activeItem.mime_type && activeItem.mime_type.includes('video'))
+                            );
+                            const rawFilename = activeItem.original_filename || activeItem.title;
+                            const ext = isVideo ? 'mp4' : 'jpg';
+                            const filename = rawFilename
+                                ? (rawFilename.includes('.') ? rawFilename : `${rawFilename}.${ext}`)
+                                : `media_${activeItem.id}.${ext}`;
+                            const safeLocalName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-                if (downloadRes.status !== 200) {
-                    throw new Error(`Gagal mengunduh: status ${downloadRes.status}`);
-                }
-                shareTargetUri = downloadRes.uri;
-            }
+                            if (!shareTargetUri) {
+                                const rawUrl = activeItem.download_url || activeItem.stream_url;
+                                const downloadUrl = MediaUrlHelper.resolve(rawUrl);
+                                const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${safeLocalName}`;
+                                const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
+                                shareTargetUri = downloadRes.uri;
+                            }
 
-            setDownloading(false);
-
-            const isSharingAvailable = await Sharing.isAvailableAsync();
-            if (isSharingAvailable) {
-                await Sharing.shareAsync(shareTargetUri, {
-                    mimeType: activeItem.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
-                    dialogTitle: `Simpan ${filename}`,
-                    UTI: isVideo ? 'public.movie' : 'public.image',
-                });
-            } else {
-                Alert.alert('Unduhan Selesai', `Berkas berhasil diunduh:\n${filename}`);
-            }
-        } catch (err) {
-            setDownloading(false);
-            console.error('Download error:', err);
-            Alert.alert('Gagal Mengunduh', err?.message || 'Terjadi kesalahan saat mengunduh berkas.');
-        } finally {
-            setDownloading(false);
-        }
+                            const isSharingAvailable = await Sharing.isAvailableAsync();
+                            if (isSharingAvailable) {
+                                await Sharing.shareAsync(shareTargetUri, {
+                                    mimeType: activeItem.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                                    dialogTitle: `Bagikan ${filename}`,
+                                    UTI: isVideo ? 'public.movie' : 'public.image',
+                                });
+                            }
+                        } catch (err) {
+                            Alert.alert('Gagal', err?.message || 'Terjadi kesalahan saat membagikan berkas.');
+                        } finally {
+                            setDownloading(false);
+                        }
+                    },
+                },
+                { text: 'Batal', style: 'cancel' },
+            ]
+        );
     };
 
     const handleDelete = () => {
