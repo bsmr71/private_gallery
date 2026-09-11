@@ -593,6 +593,7 @@ class MediaApiController extends Controller
             'description' => $m->description,
             'type' => $m->type,
             'mime_type' => $m->mime_type,
+            'original_filename' => $m->original_filename,
             'size' => $m->size,
             'formatted_size' => $m->formattedSize(),
             'is_favorite' => (bool)$m->is_favorite,

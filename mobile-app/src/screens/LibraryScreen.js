@@ -30,6 +30,8 @@ import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import AlbumPickerModal from '../components/AlbumPickerModal';
 import { NativeSyncService } from '../services/nativeSyncService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -78,6 +80,7 @@ export default function LibraryScreen({ route, navigation }) {
 
     // Album Picker Modal (Batch Move / Copy) state
     const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
+    const [albumDownloading, setAlbumDownloading] = useState(false);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false, overrideAlbumId = undefined) => {
         try {
@@ -391,6 +394,55 @@ export default function LibraryScreen({ route, navigation }) {
         );
     };
 
+    const handleDownloadAlbum = () => {
+        if (!activeAlbum || albumDownloading) return;
+        if (displayedItems.length === 0) {
+            Alert.alert('Album Kosong', 'Tidak ada foto atau video dalam album ini untuk diunduh.');
+            return;
+        }
+
+        Alert.alert(
+            'Unduh Album (.zip)',
+            `Unduh seluruh ${displayedItems.length} foto & video dalam album "${activeAlbum.name}" sebagai file ZIP?`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Unduh',
+                    onPress: async () => {
+                        setAlbumDownloading(true);
+                        try {
+                            const downloadUrl = await ApiService.getAlbumDownloadUrl(activeAlbum.id);
+                            const safeAlbumName = activeAlbum.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'album';
+                            const targetZipUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${safeAlbumName}.zip`;
+
+                            const res = await FileSystemLegacy.downloadAsync(downloadUrl, targetZipUri);
+
+                            if (res.status !== 200) {
+                                throw new Error(`Gagal mengunduh: status server ${res.status}`);
+                            }
+
+                            const isSharingAvailable = await Sharing.isAvailableAsync();
+                            if (isSharingAvailable) {
+                                await Sharing.shareAsync(res.uri, {
+                                    mimeType: 'application/zip',
+                                    dialogTitle: `Simpan Album ${activeAlbum.name}`,
+                                    UTI: 'public.zip-archive',
+                                });
+                            } else {
+                                Alert.alert('Unduhan Selesai', `File ZIP album tersimpan:\n${res.uri}`);
+                            }
+                        } catch (err) {
+                            console.error('Album download error:', err);
+                            Alert.alert('Gagal Mengunduh Album', err?.message || 'Terjadi kesalahan.');
+                        } finally {
+                            setAlbumDownloading(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const displayedItems = (isDecoy || isLocked)
         ? []
         : mediaItems.filter((item) => {
@@ -453,6 +505,20 @@ export default function LibraryScreen({ route, navigation }) {
                         </View>
 
                         <View style={styles.headerRight}>
+                            <TouchableOpacity
+                                style={styles.albumDownloadHeaderBtn}
+                                onPress={handleDownloadAlbum}
+                                disabled={albumDownloading}
+                                activeOpacity={0.7}
+                                accessibilityLabel="Unduh Seluruh Album (.zip)"
+                            >
+                                {albumDownloading ? (
+                                    <ActivityIndicator size="small" color="#0A84FF" />
+                                ) : (
+                                    <SFSymbol name="arrow.down.circle" size={19} color="#0A84FF" />
+                                )}
+                            </TouchableOpacity>
+
                             {!isDecoy && mediaItems.length > 0 && (
                                 <TouchableOpacity
                                     style={styles.selectBtn}
@@ -827,6 +893,15 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 17,
         letterSpacing: -0.3,
+    },
+    albumDownloadHeaderBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: 'rgba(10, 132, 255, 0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 6,
     },
     uploadPlusBtn: {
         width: 34,

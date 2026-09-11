@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/media/{media}/stream', [MediaController::class, 'stream'])->name('media.stream');
 Route::get('/media/{media}/thumbnail', [MediaController::class, 'thumbnail'])->name('media.thumbnail');
 Route::get('/media/{media}/download', [MediaController::class, 'download'])->name('media.download');
+Route::get('/album/{album:slug}/download', [AlbumController::class, 'download'])->name('gallery.album.download');
 
 Route::middleware('auth')->group(function () {
     Route::get('/', [GalleryController::class, 'index'])->name('gallery.index');

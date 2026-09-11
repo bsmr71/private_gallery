@@ -62,6 +62,7 @@ class AlbumApiController extends Controller
                     'description' => $album->description,
                     'media_count' => $album->media_count,
                     'cover_url' => $coverUrl,
+                    'download_url' => "{$baseApiUrl}/albums/{$album->id}/download{$tokenParam}",
                     'created_at' => $album->created_at ? $album->created_at->toIso8601String() : null,
                 ];
             });
@@ -150,5 +151,13 @@ class AlbumApiController extends Controller
             'success' => true,
             'message' => 'Album berhasil dihapus.',
         ]);
+    }
+
+    /**
+     * Download an entire album as a ZIP file via API.
+     */
+    public function download(Request $request, Album $album, \App\Http\Controllers\AlbumController $albumController)
+    {
+        return $albumController->download($request, $album);
     }
 }

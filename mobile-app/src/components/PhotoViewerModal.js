@@ -66,6 +66,7 @@ export default function PhotoViewerModal({
     const [infoVisible, setInfoVisible] = useState(false);
     const [albumModalVisible, setAlbumModalVisible] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const [filmstripMinimized, setFilmstripMinimized] = useState(false);
 
     // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
     const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -268,12 +269,24 @@ export default function PhotoViewerModal({
 
     const handleDownload = async () => {
         if (!activeItem || downloading) return;
+        setDownloading(true);
         try {
+            const isVideo = Boolean(
+                activeItem.type === 'video' ||
+                (activeItem.mime_type && activeItem.mime_type.includes('video'))
+            );
+            const rawFilename = activeItem.original_filename || activeItem.title;
+            const ext = isVideo ? 'mp4' : 'jpg';
+            const filename = rawFilename
+                ? (rawFilename.includes('.') ? rawFilename : `${rawFilename}.${ext}`)
+                : `media_${activeItem.id}.${ext}`;
+            const safeLocalName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+
             let shareTargetUri = activeLocalUri;
             if (!shareTargetUri) {
                 const rawUrl = activeItem.download_url || activeItem.stream_url;
                 const downloadUrl = MediaUrlHelper.resolve(rawUrl);
-                const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${filename}`;
+                const tempLocalUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${safeLocalName}`;
                 const downloadRes = await FileSystemLegacy.downloadAsync(downloadUrl, tempLocalUri);
 
                 if (downloadRes.status !== 200) {
@@ -298,6 +311,8 @@ export default function PhotoViewerModal({
             setDownloading(false);
             console.error('Download error:', err);
             Alert.alert('Gagal Mengunduh', err?.message || 'Terjadi kesalahan saat mengunduh berkas.');
+        } finally {
+            setDownloading(false);
         }
     };
 
@@ -485,11 +500,26 @@ export default function PhotoViewerModal({
                 {/* Bottom Section (Filmstrip + Dock) */}
                 {chromeVisible && (
                     <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-                        <Filmstrip
-                            items={items}
-                            activeIndex={currentIndex}
-                            onSelectIndex={(idx) => setCurrentIndex(idx)}
-                        />
+                        {items && items.length > 1 && (
+                            filmstripMinimized ? (
+                                <TouchableOpacity
+                                    style={styles.restoreFilmstripPill}
+                                    onPress={() => setFilmstripMinimized(false)}
+                                    activeOpacity={0.8}
+                                >
+                                    <SFSymbol name="photo.on.rectangle" size={13} color="#0A84FF" />
+                                    <Text style={styles.restoreFilmstripText}>Pratinjau Foto ({currentIndex + 1}/{items.length})</Text>
+                                    <SFSymbol name="chevron.up" size={11} color="#8E8E93" />
+                                </TouchableOpacity>
+                            ) : (
+                                <Filmstrip
+                                    items={items}
+                                    activeIndex={currentIndex}
+                                    onSelectIndex={(idx) => setCurrentIndex(idx)}
+                                    onMinimize={() => setFilmstripMinimized(true)}
+                                />
+                            )
+                        )}
 
                         <AppleDock
                             item={activeItem}
@@ -626,6 +656,23 @@ const styles = StyleSheet.create({
         zIndex: 50,
         alignItems: 'center',
         paddingBottom: 15,
+    },
+    restoreFilmstripPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(20, 20, 26, 0.88)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.16)',
+        gap: 6,
+    },
+    restoreFilmstripText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '500',
     },
     floatingNavLeft: {
         position: 'absolute',

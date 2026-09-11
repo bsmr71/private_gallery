@@ -2,8 +2,9 @@ import React, { useRef, useEffect } from 'react';
 import { View, FlatList, TouchableOpacity, Image, StyleSheet, Text } from 'react-native';
 import { THEME } from '../constants/theme';
 import SecureImage from './SecureImage';
+import SFSymbol from './SFSymbol';
 
-export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
+export default function Filmstrip({ items, activeIndex, onSelectIndex, onMinimize }) {
     const listRef = useRef(null);
 
     useEffect(() => {
@@ -22,6 +23,7 @@ export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
         <View style={styles.container}>
             <FlatList
                 ref={listRef}
+                style={styles.flatList}
                 data={items}
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -62,6 +64,17 @@ export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
                     );
                 }}
             />
+            {onMinimize && (
+                <TouchableOpacity
+                    style={styles.minimizeBtn}
+                    onPress={onMinimize}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Minimalkan Pratinjau"
+                >
+                    <SFSymbol name="chevron.down" size={13} color="#ffffff" weight="semibold" />
+                </TouchableOpacity>
+            )}
         </View>
     );
 }
@@ -69,15 +82,28 @@ export default function Filmstrip({ items, activeIndex, onSelectIndex }) {
 const styles = StyleSheet.create({
     container: {
         height: 54,
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: THEME.colors.filmstripBg,
-        borderRadius: 12,
+        borderRadius: 14,
         marginHorizontal: 12,
         marginBottom: 8,
         paddingVertical: 4,
         paddingHorizontal: 6,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    flatList: {
+        flex: 1,
+    },
+    minimizeBtn: {
+        width: 28,
+        height: 44,
         justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderRadius: 8,
+        marginLeft: 4,
     },
     listContent: {
         alignItems: 'center',

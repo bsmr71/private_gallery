@@ -142,6 +142,13 @@ export const ApiService = {
         return this.request(`/albums/${albumId}`, { method: 'DELETE' });
     },
 
+    async getAlbumDownloadUrl(albumId) {
+        const baseUrl = await StorageService.getApiUrl();
+        const token = await StorageService.getToken();
+        const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+        return `${baseUrl}/albums/${albumId}/download${tokenParam}`;
+    },
+
     // Upload
     async uploadMedia(fileAsset, albumId = null, title = null, onProgress = null) {
         const baseUrl = await StorageService.getApiUrl();

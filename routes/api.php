@@ -48,6 +48,7 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     // Albums Resource Endpoints
     Route::get('/albums', [AlbumApiController::class, 'index']);
     Route::post('/albums', [AlbumApiController::class, 'store']);
+    Route::get('/albums/{album}/download', [AlbumApiController::class, 'download'])->name('api.album.download');
     Route::put('/albums/{album}', [AlbumApiController::class, 'update']);
     Route::delete('/albums/{album}', [AlbumApiController::class, 'destroy']);
 

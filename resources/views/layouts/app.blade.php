@@ -265,15 +265,45 @@
 
         <!-- Apple Photos Bottom Section: Filmstrip Scroller & Floating Action Dock -->
         <div class="lightbox-bottom-section" id="lightbox-bottom-section">
-            <!-- Filmstrip Scroller -->
-            <div class="lightbox-filmstrip-bar" id="lightbox-filmstrip-bar" aria-label="Filmstrip Pratinjau Cepat">
-                <div class="lightbox-filmstrip-track" id="lightbox-filmstrip-track">
-                    <!-- Dynamic mini thumbnails injected via JS -->
+            <!-- Filmstrip Scroller Container -->
+            <div class="lightbox-filmstrip-container" id="lightbox-filmstrip-container">
+                <!-- Filmstrip Scroller -->
+                <div class="lightbox-filmstrip-bar" id="lightbox-filmstrip-bar" aria-label="Filmstrip Pratinjau Cepat">
+                    <div class="lightbox-filmstrip-track" id="lightbox-filmstrip-track">
+                        <!-- Dynamic mini thumbnails injected via JS -->
+                    </div>
+                    <!-- Minimize Button -->
+                    <button type="button" class="filmstrip-minimize-btn" id="filmstrip-minimize-btn" onclick="minimizeLightboxFilmstrip()" title="Minimalkan Pratinjau Foto">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
                 </div>
+
+                <!-- Floating Restore Pill Button (Visible when filmstrip is minimized) -->
+                <button type="button" class="filmstrip-restore-pill" id="filmstrip-restore-pill" onclick="expandLightboxFilmstrip()" title="Tampilkan Pratinjau Foto">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <span id="filmstrip-restore-text">Pratinjau Foto</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="18 15 12 9 6 15"></polyline>
+                    </svg>
+                </button>
             </div>
 
             <!-- Apple Photos Action Dock -->
             <div class="lightbox-apple-dock" id="lightbox-apple-dock">
+                <!-- Filmstrip Toggle (Quick Toggle on Mobile) -->
+                <button type="button" class="dock-btn dock-btn-filmstrip" id="lightbox-filmstrip-toggle-dock" onclick="toggleLightboxFilmstrip()" title="Sembunyikan/Tampilkan Pratinjau (Spasi / T)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="5" width="20" height="14" rx="2"/>
+                        <path d="M2 10h20M7 5v5M17 5v5"/>
+                    </svg>
+                    <span>Pratinjau</span>
+                </button>
                 <!-- Share / Copy Link -->
                 <button type="button" class="dock-btn" onclick="shareCurrentLightboxMedia()" title="Salin Tautan Media">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

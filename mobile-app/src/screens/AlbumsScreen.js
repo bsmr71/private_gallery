@@ -24,6 +24,8 @@ import SecureVaultUnlockModal from '../components/SecureVaultUnlockModal';
 import SecureVaultScreen from './SecureVaultScreen';
 import DuplicatesModal from '../components/DuplicatesModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
@@ -47,6 +49,7 @@ export default function AlbumsScreen({ navigation }) {
     // Duplicates Utility
     const [duplicatesModalVisible, setDuplicatesModalVisible] = useState(false);
     const [duplicateCount, setDuplicateCount] = useState(0);
+    const [downloadingAlbumId, setDownloadingAlbumId] = useState(null);
 
     const fetchAlbums = useCallback(async () => {
         if (SecurityService.isDecoyMode()) {
@@ -113,6 +116,55 @@ export default function AlbumsScreen({ navigation }) {
         } finally {
             setCreating(false);
         }
+    };
+
+    const handleDownloadAlbum = (album) => {
+        if (!album || downloadingAlbumId) return;
+        if (!album.media_count || album.media_count === 0) {
+            Alert.alert('Album Kosong', 'Tidak ada foto atau video dalam album ini untuk diunduh.');
+            return;
+        }
+
+        Alert.alert(
+            'Unduh Album (.zip)',
+            `Unduh seluruh ${album.media_count} foto & video dalam album "${album.name}" sebagai file ZIP?`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Unduh',
+                    onPress: async () => {
+                        setDownloadingAlbumId(album.id);
+                        try {
+                            const downloadUrl = album.download_url || (await ApiService.getAlbumDownloadUrl(album.id));
+                            const safeAlbumName = album.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'album';
+                            const targetZipUri = `${FileSystemLegacy.cacheDirectory}${Date.now()}_${safeAlbumName}.zip`;
+
+                            const res = await FileSystemLegacy.downloadAsync(downloadUrl, targetZipUri);
+
+                            if (res.status !== 200) {
+                                throw new Error(`Gagal mengunduh: status server ${res.status}`);
+                            }
+
+                            const isSharingAvailable = await Sharing.isAvailableAsync();
+                            if (isSharingAvailable) {
+                                await Sharing.shareAsync(res.uri, {
+                                    mimeType: 'application/zip',
+                                    dialogTitle: `Simpan Album ${album.name}`,
+                                    UTI: 'public.zip-archive',
+                                });
+                            } else {
+                                Alert.alert('Unduhan Selesai', `File ZIP album tersimpan:\n${res.uri}`);
+                            }
+                        } catch (err) {
+                            console.error('Album download error:', err);
+                            Alert.alert('Gagal Mengunduh Album', err?.message || 'Terjadi kesalahan.');
+                        } finally {
+                            setDownloadingAlbumId(null);
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const renderHeader = () => (
@@ -269,6 +321,7 @@ export default function AlbumsScreen({ navigation }) {
                             style={styles.albumCard}
                             activeOpacity={0.8}
                             onPress={() => navigation.navigate('Library', { albumId: item.id, albumName: item.name })}
+                            onLongPress={() => handleDownloadAlbum(item)}
                         >
                             <View style={styles.coverWrapper}>
                                 {item.cover_url ? (
@@ -281,6 +334,22 @@ export default function AlbumsScreen({ navigation }) {
                                 <View style={styles.badgeCount}>
                                     <Text style={styles.badgeText}>{item.media_count}</Text>
                                 </View>
+
+                                {item.media_count > 0 && (
+                                    <TouchableOpacity
+                                        style={styles.cardDownloadBtn}
+                                        onPress={() => handleDownloadAlbum(item)}
+                                        disabled={downloadingAlbumId === item.id}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                        accessibilityLabel={`Unduh Album ${item.name}`}
+                                    >
+                                        {downloadingAlbumId === item.id ? (
+                                            <ActivityIndicator size="small" color="#ffffff" />
+                                        ) : (
+                                            <SFSymbol name="arrow.down.circle" size={17} color="#ffffff" />
+                                        )}
+                                    </TouchableOpacity>
+                                )}
                             </View>
                             <Text style={styles.albumTitle} numberOfLines={1}>
                                 {item.name}
@@ -450,6 +519,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 10,
+    },
+    cardDownloadBtn: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.18)',
     },
     badgeText: {
         color: '#ffffff',

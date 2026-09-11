@@ -63,6 +63,74 @@ function jumpToLightbox(index) {
     }
 }
 
+let isFilmstripMinimized = localStorage.getItem('gallery_filmstrip_minimized') === 'true';
+
+function applyFilmstripMinimizedState() {
+    const container = document.getElementById('lightbox-filmstrip-container');
+    const bar = document.getElementById('lightbox-filmstrip-bar');
+    const restorePill = document.getElementById('filmstrip-restore-pill');
+    const restoreText = document.getElementById('filmstrip-restore-text');
+    const toggleDockBtn = document.getElementById('lightbox-filmstrip-toggle-dock');
+
+    if (!bar) return;
+
+    if (lightboxItems.length <= 1) {
+        if (container) container.style.display = 'none';
+        else bar.style.display = 'none';
+        if (toggleDockBtn) toggleDockBtn.style.display = 'none';
+        return;
+    }
+    if (container) container.style.display = 'flex';
+    if (toggleDockBtn) toggleDockBtn.style.display = 'flex';
+
+    if (isFilmstripMinimized) {
+        bar.classList.add('minimized');
+        if (restorePill) {
+            restorePill.classList.add('visible');
+            if (restoreText) {
+                restoreText.textContent = `Pratinjau (${lightboxIndex + 1}/${lightboxItems.length})`;
+            }
+        }
+        if (toggleDockBtn) {
+            toggleDockBtn.classList.remove('active');
+            toggleDockBtn.title = 'Tampilkan Pratinjau Foto (Spasi / T)';
+        }
+    } else {
+        bar.classList.remove('minimized');
+        if (restorePill) restorePill.classList.remove('visible');
+        if (toggleDockBtn) {
+            toggleDockBtn.classList.add('active');
+            toggleDockBtn.title = 'Minimalkan Pratinjau Foto (Spasi / T)';
+        }
+    }
+}
+
+function minimizeLightboxFilmstrip() {
+    isFilmstripMinimized = true;
+    localStorage.setItem('gallery_filmstrip_minimized', 'true');
+    applyFilmstripMinimizedState();
+}
+
+function expandLightboxFilmstrip() {
+    isFilmstripMinimized = false;
+    localStorage.setItem('gallery_filmstrip_minimized', 'false');
+    applyFilmstripMinimizedState();
+    updateLightboxFilmstrip();
+}
+
+function toggleLightboxFilmstrip(force) {
+    if (typeof force === 'boolean') {
+        isFilmstripMinimized = !force;
+    } else {
+        isFilmstripMinimized = !isFilmstripMinimized;
+    }
+    localStorage.setItem('gallery_filmstrip_minimized', isFilmstripMinimized ? 'true' : 'false');
+    applyFilmstripMinimizedState();
+    if (!isFilmstripMinimized) {
+        updateLightboxFilmstrip();
+    }
+}
+
 function buildLightboxFilmstrip() {
     const track = document.getElementById('lightbox-filmstrip-track');
     const bar = document.getElementById('lightbox-filmstrip-bar');
@@ -70,9 +138,11 @@ function buildLightboxFilmstrip() {
 
     if (lightboxItems.length <= 1) {
         bar.style.display = 'none';
+        applyFilmstripMinimizedState();
         return;
     }
     bar.style.display = 'flex';
+    applyFilmstripMinimizedState();
 
     track.innerHTML = '';
     lightboxItems.forEach((item, idx) => {
@@ -121,6 +191,11 @@ function updateLightboxFilmstrip() {
             item.classList.remove('active');
         }
     });
+
+    const restoreText = document.getElementById('filmstrip-restore-text');
+    if (restoreText) {
+        restoreText.textContent = `Pratinjau (${lightboxIndex + 1}/${lightboxItems.length})`;
+    }
 }
 
 function updateLightboxContent() {
@@ -358,6 +433,10 @@ document.addEventListener('keydown', (e) => {
         case 'l':
         case 'L':
             toggleCurrentLightboxFavorite();
+            break;
+        case 't':
+        case 'T':
+            toggleLightboxFilmstrip();
             break;
         case 'd':
         case 'D':
@@ -1438,6 +1517,28 @@ function initLightboxStageInteractions() {
                 filmstripBar.scrollLeft += e.deltaY;
             }
         }, { passive: false });
+
+        // Touch swipe-down on filmstrip on mobile to minimize it
+        let touchStartY = 0;
+        let touchStartX = 0;
+        filmstripBar.addEventListener('touchstart', (e) => {
+            if (e.touches && e.touches[0]) {
+                touchStartY = e.touches[0].clientY;
+                touchStartX = e.touches[0].clientX;
+            }
+        }, { passive: true });
+
+        filmstripBar.addEventListener('touchend', (e) => {
+            if (e.changedTouches && e.changedTouches[0]) {
+                const touchEndY = e.changedTouches[0].clientY;
+                const touchEndX = e.changedTouches[0].clientX;
+                const dy = touchEndY - touchStartY;
+                const dx = touchEndX - touchStartX;
+                if (dy > 35 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+                    minimizeLightboxFilmstrip();
+                }
+            }
+        }, { passive: true });
     }
 }
 
