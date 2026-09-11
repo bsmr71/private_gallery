@@ -28,6 +28,7 @@ import { LocalVaultService } from '../services/localVaultService';
 import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import AlbumPickerModal from '../components/AlbumPickerModal';
+import LocalOfflineSyncModal from '../components/LocalOfflineSyncModal';
 import { NativeSyncService } from '../services/nativeSyncService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
@@ -81,6 +82,16 @@ export default function LibraryScreen({ route, navigation }) {
     // Album Picker Modal (Batch Move / Copy) state
     const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
     const [albumDownloading, setAlbumDownloading] = useState(false);
+
+    // Local Offline Vault Sync Modal state
+    const [offlineSyncModalVisible, setOfflineSyncModalVisible] = useState(false);
+
+    // Fixed 3-column getItemLayout for instant 60 FPS scrolling without dynamic layout measurement
+    const getItemLayout = useCallback((data, index) => ({
+        length: ITEM_SIZE + ITEM_MARGIN,
+        offset: (ITEM_SIZE + ITEM_MARGIN) * Math.floor(index / COLUMN_COUNT),
+        index,
+    }), []);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false, overrideAlbumId = undefined) => {
         try {
@@ -367,7 +378,39 @@ export default function LibraryScreen({ route, navigation }) {
         );
     };
 
-    const handleLockSelectedToVault = () => {
+    const handleDownloadSelectedToVault = () => {
+        if (selectedIds.length === 0) return;
+        const selectedItems = displayedItems.filter((it) => selectedIds.includes(it.id));
+        Alert.alert(
+            'Simpan ke Memori HP',
+            `Unduh ${selectedItems.length} media terpilih ke penyimpanan lokal HP Anda agar dapat dibuka seketika dan 100% offline?`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Simpan ke HP',
+                    onPress: () => {
+                        LocalVaultService.downloadAllToLocal({
+                            items: selectedItems,
+                            onComplete: (res) => {
+                                Alert.alert(
+                                    'Selesai 🎉',
+                                    `Berhasil menyimpan ${res.successCount} berkas ke memori HP.`
+                                );
+                                setIsSelectMode(false);
+                                setSelectedIds([]);
+                                setLocalVaultVer((v) => v + 1);
+                            },
+                            onError: () => {
+                                Alert.alert('Gagal', 'Terjadi kesalahan saat mengunduh berkas.');
+                            },
+                        });
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleLockSelectedToVault = async () => {
         if (selectedIds.length === 0) return;
         Alert.alert(
             'Kunci ke Brankas?',
@@ -507,6 +550,15 @@ export default function LibraryScreen({ route, navigation }) {
                         <View style={styles.headerRight}>
                             <TouchableOpacity
                                 style={styles.albumDownloadHeaderBtn}
+                                onPress={() => setOfflineSyncModalVisible(true)}
+                                activeOpacity={0.7}
+                                accessibilityLabel="Simpan Album ke HP (Offline)"
+                            >
+                                <SFSymbol name="arrow.down.circle" size={19} color="#0A84FF" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.albumDownloadHeaderBtn}
                                 onPress={handleDownloadAlbum}
                                 disabled={albumDownloading}
                                 activeOpacity={0.7}
@@ -515,7 +567,7 @@ export default function LibraryScreen({ route, navigation }) {
                                 {albumDownloading ? (
                                     <ActivityIndicator size="small" color="#0A84FF" />
                                 ) : (
-                                    <SFSymbol name="arrow.down.circle" size={19} color="#0A84FF" />
+                                    <SFSymbol name="folder" size={18} color="#0A84FF" />
                                 )}
                             </TouchableOpacity>
 
@@ -579,6 +631,16 @@ export default function LibraryScreen({ route, navigation }) {
 
                             {!isDecoy && (
                                 <>
+                                    {/* Offline Local Vault Button */}
+                                    <TouchableOpacity
+                                        style={styles.syncHeaderBtn}
+                                        onPress={() => setOfflineSyncModalVisible(true)}
+                                        activeOpacity={0.7}
+                                        accessibilityLabel="Simpan ke HP (Offline Vault)"
+                                    >
+                                        <SFSymbol name="arrow.down.circle" size={17} color="#0A84FF" weight="semibold" />
+                                    </TouchableOpacity>
+
                                     {/* Security & Passcode Settings */}
                                     <TouchableOpacity
                                         style={styles.syncHeaderBtn}
@@ -651,6 +713,13 @@ export default function LibraryScreen({ route, navigation }) {
                     data={displayedItems}
                     keyExtractor={(item) => String(item.id)}
                     numColumns={COLUMN_COUNT}
+                    extraData={{ selectedIds, isSelectMode, localVaultVer }}
+                    getItemLayout={getItemLayout}
+                    initialNumToRender={21}
+                    maxToRenderPerBatch={21}
+                    windowSize={7}
+                    removeClippedSubviews={Platform.OS === 'android'}
+                    updateCellsBatchingPeriod={30}
                     renderItem={({ item, index }) => {
                         const isSelected = selectedIds.includes(item.id);
                         return (
@@ -676,8 +745,10 @@ export default function LibraryScreen({ route, navigation }) {
                                 ) : (
                                     <SecureImage
                                         source={item.thumbnail_url || item.stream_url}
+                                        mediaId={item.id}
                                         style={styles.itemImage}
                                         resizeMode="cover"
+                                        showLoader={false}
                                     />
                                 )}
 
@@ -762,6 +833,15 @@ export default function LibraryScreen({ route, navigation }) {
                             <>
                                 <TouchableOpacity
                                     style={styles.barActionBtn}
+                                    onPress={handleDownloadSelectedToVault}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                >
+                                    <SFSymbol name="arrow.down.circle" size={14} color="#30D158" />
+                                    <Text style={[styles.barActionText, { color: '#30D158' }]}>Simpan</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.barActionBtn}
                                     onPress={() => setAlbumPickerVisible(true)}
                                     activeOpacity={0.7}
                                     hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
@@ -842,6 +922,17 @@ export default function LibraryScreen({ route, navigation }) {
                     setSelectedIds([]);
                     setIsSelectMode(false);
                     fetchMedia(1, true);
+                }}
+            />
+
+            {/* Local Offline Vault Sync Modal */}
+            <LocalOfflineSyncModal
+                visible={offlineSyncModalVisible}
+                onClose={() => setOfflineSyncModalVisible(false)}
+                totalMediaCount={stats?.total || mediaItems.length}
+                targetAlbum={activeAlbum}
+                onSyncFinished={() => {
+                    setLocalVaultVer((v) => v + 1);
                 }}
             />
         </View>

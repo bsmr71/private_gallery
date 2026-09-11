@@ -3,8 +3,16 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { MediaUrlHelper } from '../services/mediaUrl';
 import { StorageService } from '../services/storage';
+import { LocalVaultService } from '../services/localVaultService';
 
-export default function SecureImage({ source, style, resizeMode = 'cover', ...props }) {
+export default function SecureImage({
+    source,
+    style,
+    resizeMode = 'cover',
+    mediaId = null,
+    showLoader = false,
+    ...props
+}) {
     const rawUri = typeof source === 'string' ? source : source?.uri;
     const [token, setToken] = useState(MediaUrlHelper.getToken());
     const [loading, setLoading] = useState(true);
@@ -20,7 +28,15 @@ export default function SecureImage({ source, style, resizeMode = 'cover', ...pr
         }
     }, [token]);
 
-    const resolvedUri = MediaUrlHelper.resolve(rawUri, token);
+    // Check if local file exists in private local sandbox vault for 0ms instant loading
+    let localUri = null;
+    if (mediaId) {
+        localUri = LocalVaultService.getLocalThumbUri(mediaId) || LocalVaultService.getLocalUri(mediaId);
+    } else if (rawUri && rawUri.startsWith('file://')) {
+        localUri = rawUri;
+    }
+
+    const resolvedUri = localUri || MediaUrlHelper.resolve(rawUri, token);
 
     if (!resolvedUri) {
         return <View style={[style, styles.placeholder]} />;
@@ -45,7 +61,7 @@ export default function SecureImage({ source, style, resizeMode = 'cover', ...pr
                 }}
                 style={StyleSheet.absoluteFill}
                 contentFit={resizeMode === 'contain' ? 'contain' : 'cover'}
-                transition={150}
+                transition={120}
                 cachePolicy="memory-disk"
                 onLoadEnd={() => setLoading(false)}
                 onError={(e) => {
@@ -54,7 +70,7 @@ export default function SecureImage({ source, style, resizeMode = 'cover', ...pr
                 }}
                 {...props}
             />
-            {loading && (
+            {showLoader && loading && (
                 <View style={styles.center}>
                     <ActivityIndicator size="small" color="#555558" />
                 </View>

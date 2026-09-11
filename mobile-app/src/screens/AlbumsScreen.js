@@ -325,7 +325,7 @@ export default function AlbumsScreen({ navigation }) {
                         >
                             <View style={styles.coverWrapper}>
                                 {item.cover_url ? (
-                                    <SecureImage source={item.cover_url} style={styles.coverImage} resizeMode="cover" />
+                                    <SecureImage source={item.cover_url} style={styles.coverImage} resizeMode="cover" showLoader={false} />
                                 ) : (
                                     <View style={styles.emptyCover}>
                                         <SFSymbol name="folder" size={38} color="#8E8E93" />

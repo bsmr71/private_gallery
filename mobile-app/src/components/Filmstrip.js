@@ -52,8 +52,10 @@ export default function Filmstrip({ items, activeIndex, onSelectIndex, onMinimiz
                         >
                             <SecureImage
                                 source={item.thumbnail_url || item.stream_url}
+                                mediaId={item.id}
                                 style={styles.thumbImage}
                                 resizeMode="cover"
+                                showLoader={false}
                             />
                             {item.type === 'video' && (
                                 <View style={styles.videoIndicator}>

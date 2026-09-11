@@ -84,7 +84,8 @@ class MediaApiController extends Controller
             });
         }
 
-        $perPage = min((int)$request->input('per_page', 30), 100);
+        $maxPerPage = $request->boolean('all') ? 2000 : 100;
+        $perPage = min((int)$request->input('per_page', $request->boolean('all') ? 1000 : 30), $maxPerPage);
         $paginated = $query->paginate($perPage);
 
         $items = collect($paginated->items())->map(function ($m) use ($request) {

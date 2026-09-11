@@ -491,8 +491,10 @@ export default function PhotoViewerModal({
                     ) : (
                         <SecureImage
                             source={activeLocalUri || activeItem.stream_url}
+                            mediaId={activeItem.id}
                             style={styles.mainImage}
                             resizeMode="contain"
+                            showLoader={true}
                         />
                     )}
                 </Animated.View>

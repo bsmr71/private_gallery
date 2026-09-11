@@ -80,6 +80,24 @@ export const LocalVaultService = {
     },
 
     /**
+     * Get local thumbnail file:// URI for an item.
+     * Returns string URI if cached locally, or null.
+     */
+    getLocalThumbUri(mediaId) {
+        if (!mediaId || SecurityService.isDecoyMode()) return null;
+        const entry = localFilesMap.get(String(mediaId));
+        return entry ? (entry.localThumbUri || entry.localUri || null) : null;
+    },
+
+    /**
+     * Get number of media stored locally in the vault
+     */
+    getLocalCount() {
+        if (SecurityService.isDecoyMode()) return 0;
+        return localFilesMap.size;
+    },
+
+    /**
      * Persist current in-memory map to AsyncStorage
      */
     async _persistIndex() {
@@ -271,6 +289,215 @@ export const LocalVaultService = {
         } catch (err) {
             console.error('[LocalVaultService] Clear vault error:', err);
             return false;
+        }
+    },
+
+    _downloadCancelled: false,
+    _isDownloadingAll: false,
+    _downloadProgress: {
+        current: 0,
+        total: 0,
+        percentage: 0,
+        activeFilename: '',
+    },
+
+    isDownloadAllRunning() {
+        return this._isDownloadingAll;
+    },
+
+    getDownloadProgress() {
+        return {
+            ...this._downloadProgress,
+            isRunning: this._isDownloadingAll,
+        };
+    },
+
+    cancelDownloadAll() {
+        this._downloadCancelled = true;
+    },
+
+    /**
+     * Download entire gallery, specific items, or album to private local vault for 100% offline instant access.
+     */
+    async downloadAllToLocal({ items = null, albumId = null, onProgress, onComplete, onError } = {}) {
+        if (this._isDownloadingAll) {
+            console.warn('[LocalVaultService] Download all already in progress');
+            return;
+        }
+
+        this._isDownloadingAll = true;
+        this._downloadCancelled = false;
+
+        try {
+            await this.init();
+
+            let targetItems = items;
+            if (!targetItems || targetItems.length === 0) {
+                const { ApiService } = require('./api');
+                const params = { all: 1, per_page: 2000 };
+                if (albumId) params.album_id = albumId;
+                const res = await ApiService.getMedia(params);
+                if (res && res.success && Array.isArray(res.data)) {
+                    targetItems = res.data;
+                } else {
+                    targetItems = [];
+                }
+            }
+
+            const total = targetItems.length;
+            if (total === 0) {
+                this._isDownloadingAll = false;
+                this._downloadProgress = { current: 0, total: 0, percentage: 100, activeFilename: '' };
+                onComplete && onComplete({ successCount: 0, total: 0, skippedCount: 0, cancelled: false });
+                return;
+            }
+
+            let completed = 0;
+            let skipped = 0;
+            let failed = 0;
+
+            const token = MediaUrlHelper.getToken();
+
+            // Filter out items already cached
+            const pending = targetItems.filter((it) => {
+                const idStr = String(it.id);
+                if (localFilesMap.has(idStr)) {
+                    skipped++;
+                    completed++;
+                    return false;
+                }
+                return true;
+            });
+
+            this._downloadProgress = {
+                current: completed,
+                total,
+                percentage: Math.round((completed / total) * 100),
+                activeFilename: pending.length > 0 ? 'Menyiapkan berkas...' : 'Semua sudah tersimpan',
+            };
+            onProgress && onProgress(this._downloadProgress);
+
+            if (pending.length === 0) {
+                this._isDownloadingAll = false;
+                onComplete && onComplete({ successCount: 0, total, skippedCount: skipped, failedCount: 0, cancelled: false });
+                return;
+            }
+
+            // Concurrency pool helper (concurrency = 3 workers)
+            const CONCURRENCY = 3;
+            let index = 0;
+
+            const downloadWorker = async () => {
+                while (!this._downloadCancelled) {
+                    let it = null;
+                    if (index < pending.length) {
+                        it = pending[index++];
+                    } else {
+                        break;
+                    }
+                    if (!it) break;
+
+                    const idStr = String(it.id);
+                    const isVideo = Boolean(
+                        (it.mime_type && it.mime_type.includes('video')) ||
+                        it.type === 'video' ||
+                        (it.original_filename && it.original_filename.match(/\.(mp4|mov|m4v)$/i))
+                    );
+                    const ext = isVideo ? 'mp4' : 'jpg';
+                    const filename = it.original_filename || it.title || `media_${idStr}.${ext}`;
+
+                    this._downloadProgress = {
+                        current: completed,
+                        total,
+                        percentage: Math.round((completed / total) * 100),
+                        activeFilename: filename,
+                    };
+                    onProgress && onProgress(this._downloadProgress);
+
+                    try {
+                        const rawFullUrl = it.download_url || it.stream_url;
+                        const rawThumbUrl = it.thumbnail_url;
+
+                        const fullDownloadUrl = MediaUrlHelper.resolve(rawFullUrl);
+                        const thumbDownloadUrl = rawThumbUrl ? MediaUrlHelper.resolve(rawThumbUrl) : null;
+
+                        const targetFullUri = `${VAULT_DIR}full_${idStr}.${ext}`;
+                        const targetThumbUri = `${VAULT_DIR}thumb_${idStr}.jpg`;
+
+                        // 1. Download thumbnail first for instant 60fps grid rendering
+                        if (thumbDownloadUrl) {
+                            try {
+                                await FileSystemLegacy.downloadAsync(thumbDownloadUrl, targetThumbUri, {
+                                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                                });
+                            } catch (thErr) {}
+                        }
+
+                        // 2. Download full original file
+                        if (fullDownloadUrl) {
+                            const res = await FileSystemLegacy.downloadAsync(fullDownloadUrl, targetFullUri, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            });
+
+                            if (res.status === 200) {
+                                const info = await FileSystemLegacy.getInfoAsync(targetFullUri);
+                                const thumbInfo = await FileSystemLegacy.getInfoAsync(targetThumbUri);
+
+                                const entry = {
+                                    mediaId: idStr,
+                                    localUri: targetFullUri,
+                                    localThumbUri: thumbInfo.exists ? targetThumbUri : targetFullUri,
+                                    filename,
+                                    size: info.size || 0,
+                                    mimeType: it.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                                    cachedAt: Date.now(),
+                                };
+
+                                localFilesMap.set(idStr, entry);
+
+                                // Periodic save every 5 items so progress is never lost
+                                if (localFilesMap.size % 5 === 0) {
+                                    this._persistIndex();
+                                }
+                            } else {
+                                failed++;
+                            }
+                        }
+                    } catch (itemErr) {
+                        console.warn(`[LocalVaultService] Failed downloading ${idStr}:`, itemErr);
+                        failed++;
+                    } finally {
+                        completed++;
+                        this._downloadProgress = {
+                            current: completed,
+                            total,
+                            percentage: Math.round((completed / total) * 100),
+                            activeFilename: filename,
+                        };
+                        onProgress && onProgress(this._downloadProgress);
+                    }
+                }
+            };
+
+            const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => downloadWorker());
+            await Promise.all(workers);
+
+            await this._persistIndex();
+
+            this._isDownloadingAll = false;
+            const cancelled = this._downloadCancelled;
+
+            onComplete && onComplete({
+                successCount: completed - skipped - failed,
+                total,
+                skippedCount: skipped,
+                failedCount: failed,
+                cancelled,
+            });
+        } catch (err) {
+            this._isDownloadingAll = false;
+            console.error('[LocalVaultService] Download all error:', err);
+            onError && onError(err);
         }
     },
 };
