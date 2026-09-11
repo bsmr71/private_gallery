@@ -36,6 +36,13 @@ export const LocalVaultService = {
                 await FileSystemLegacy.makeDirectoryAsync(VAULT_DIR, { intermediates: true });
             }
 
+            // Ensure .nomedia exists so Android system gallery will never index this private vault
+            const nomediaUri = `${VAULT_DIR}.nomedia`;
+            const nomediaInfo = await FileSystemLegacy.getInfoAsync(nomediaUri);
+            if (!nomediaInfo.exists) {
+                await FileSystemLegacy.writeAsStringAsync(nomediaUri, '');
+            }
+
             // 2. Load stored index from AsyncStorage
             const rawIndex = await AsyncStorage.getItem(INDEX_KEY);
             if (rawIndex) {
