@@ -219,7 +219,7 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
             );
         }
 
-        // --- 11. CHEVRON RIGHT / LEFT ---
+        // --- 11. CHEVRON RIGHT / LEFT / DOWN / UP ---
         case 'chevron.right': {
             return (
                 <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
@@ -231,6 +231,38 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
             return (
                 <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
                     <Path d="M15 19L8 12L15 5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'chevron.down': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M6 9L12 15L18 9" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'chevron.up': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M6 15L12 9L18 15" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'arrow.down.right.and.arrow.up.left':
+        case 'minimize': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M4 14H10V20M10 14L3 21" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M20 10H14V4M14 10L21 3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'arrow.up.left.and.arrow.down.right':
+        case 'maximize': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M10 4H4V10M4 4L11 11" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M14 20H20V14M20 20L13 13" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
                 </Svg>
             );
         }

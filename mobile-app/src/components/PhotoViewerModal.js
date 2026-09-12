@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -13,7 +13,14 @@ import {
     PanResponder,
     Platform,
     Animated,
+    Pressable,
+    LayoutAnimation,
+    UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../constants/theme';
 import Filmstrip from './Filmstrip';
@@ -68,6 +75,13 @@ export default function PhotoViewerModal({
     const [albumModalVisible, setAlbumModalVisible] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [filmstripMinimized, setFilmstripMinimized] = useState(false);
+
+    const toggleChrome = useCallback(() => {
+        try {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        } catch (e) {}
+        setChromeVisible((prev) => !prev);
+    }, []);
 
     // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
     const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -229,7 +243,7 @@ export default function PhotoViewerModal({
 
                 // 4. Tap handling (finger barely moved): Toggle cinema mode
                 if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-                    setChromeVisible((prev) => !prev);
+                    toggleChrome();
                 }
             },
             onPanResponderTerminate: () => {
@@ -457,12 +471,39 @@ export default function PhotoViewerModal({
                             </Text>
                         </View>
 
-                        <View style={styles.counterBadge}>
-                            <Text style={styles.counterText}>
-                                {currentIndex + 1} / {items.length}
-                            </Text>
+                        <View style={styles.topBarRight}>
+                            <View style={styles.counterBadge}>
+                                <Text style={styles.counterText}>
+                                    {currentIndex + 1} / {items.length}
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.minimizeHeaderBtn}
+                                onPress={toggleChrome}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityLabel="Minimalkan menu"
+                            >
+                                <SFSymbol name="arrow.down.right.and.arrow.up.left" size={13} color="#cbd5e1" />
+                            </TouchableOpacity>
                         </View>
                     </View>
+                )}
+
+                {/* Floating Restore Pill when chrome is minimized */}
+                {!chromeVisible && (
+                    <TouchableOpacity
+                        style={[
+                            styles.floatingRestoreBtn,
+                            { top: Math.max(insets.top, Platform.OS === 'ios' ? 48 : 36) },
+                        ]}
+                        onPress={toggleChrome}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        accessibilityLabel="Tampilkan menu"
+                    >
+                        <SFSymbol name="arrow.up.left.and.arrow.down.right" size={15} color="#ffffff" />
+                    </TouchableOpacity>
                 )}
 
                 {/* Floating Left / Right Navigation Chevrons */}
@@ -515,32 +556,37 @@ export default function PhotoViewerModal({
                     ]}
                     {...panResponder.panHandlers}
                 >
-                    {isCurrentVideo ? (
-                        <VideoErrorBoundary
-                            fallback={
-                                <SecureImage
-                                    source={activeItem.thumbnail_url || activeItem.stream_url}
-                                    style={styles.mainImage}
-                                    resizeMode="contain"
+                    <Pressable
+                        style={styles.viewportPressable}
+                        onPress={toggleChrome}
+                    >
+                        {isCurrentVideo ? (
+                            <VideoErrorBoundary
+                                fallback={
+                                    <SecureImage
+                                        source={activeItem.thumbnail_url || activeItem.stream_url}
+                                        style={styles.mainImage}
+                                        resizeMode="contain"
+                                    />
+                                }
+                            >
+                                <VideoPlayerView
+                                    key={activeItem.id}
+                                    item={activeItem}
+                                    isVisible={visible}
+                                    onToggleControls={toggleChrome}
                                 />
-                            }
-                        >
-                            <VideoPlayerView
-                                key={activeItem.id}
-                                item={activeItem}
-                                isVisible={visible}
-                                onToggleControls={() => setChromeVisible((prev) => !prev)}
+                            </VideoErrorBoundary>
+                        ) : (
+                            <SecureImage
+                                source={activeLocalUri || activeItem.stream_url}
+                                mediaId={activeItem.id}
+                                style={styles.mainImage}
+                                resizeMode="contain"
+                                showLoader={true}
                             />
-                        </VideoErrorBoundary>
-                    ) : (
-                        <SecureImage
-                            source={activeLocalUri || activeItem.stream_url}
-                            mediaId={activeItem.id}
-                            style={styles.mainImage}
-                            resizeMode="contain"
-                            showLoader={true}
-                        />
-                    )}
+                        )}
+                    </Pressable>
                 </Animated.View>
 
                 {/* Bottom Section (Filmstrip + Dock) */}
@@ -662,6 +708,38 @@ const styles = StyleSheet.create({
         color: '#cbd5e1',
         fontSize: 11,
         fontWeight: '600',
+    },
+    topBarRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    minimizeHeaderBtn: {
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    floatingRestoreBtn: {
+        position: 'absolute',
+        right: 16,
+        zIndex: 99,
+        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+    },
+    viewportPressable: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     viewport: {
         flex: 1,

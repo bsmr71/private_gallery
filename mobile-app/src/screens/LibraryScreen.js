@@ -556,118 +556,161 @@ export default function LibraryScreen({ route, navigation }) {
             {/* Header (Authentic Apple Photos Style) */}
             <View style={styles.header}>
                 {activeAlbum ? (
-                    <View style={styles.headerTopRow}>
-                        <TouchableOpacity
-                            style={styles.albumBackBtn}
-                            onPress={handleBackToAlbums}
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <SFSymbol name="chevron.left" size={18} color="#0A84FF" />
-                            <Text style={styles.albumBackText}>Album</Text>
-                        </TouchableOpacity>
+                    <View style={styles.headerAlbumWrap}>
+                        {/* Row 1: Back + Album Title + Select + Upload */}
+                        <View style={styles.headerTopRow}>
+                            <TouchableOpacity
+                                style={styles.albumBackBtn}
+                                onPress={handleBackToAlbums}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <SFSymbol name="chevron.left" size={18} color="#0A84FF" />
+                                <Text style={styles.albumBackText}>Album</Text>
+                            </TouchableOpacity>
 
-                        <View style={styles.albumHeaderCenter}>
-                            <Text style={styles.albumHeaderTitle} numberOfLines={1}>
-                                {activeAlbum.name}
-                            </Text>
-                            <Text style={styles.headerSubtitle}>
-                                {displayedItems.length} Media
-                            </Text>
+                            <View style={styles.albumHeaderCenter}>
+                                <Text style={styles.albumHeaderTitle} numberOfLines={1}>
+                                    {activeAlbum.name}
+                                </Text>
+                            </View>
+
+                            <View style={styles.headerRightActions}>
+                                {!isDecoy && mediaItems.length > 0 && (
+                                    <TouchableOpacity
+                                        style={styles.selectBtn}
+                                        onPress={() => {
+                                            setIsSelectMode(!isSelectMode);
+                                            setSelectedIds([]);
+                                        }}
+                                        activeOpacity={0.6}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Text style={styles.selectBtnText}>
+                                            {isSelectMode ? 'Selesai' : 'Pilih'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                <TouchableOpacity
+                                    style={styles.uploadPlusBtn}
+                                    onPress={handleUploadPick}
+                                    disabled={uploading}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    {uploading ? (
+                                        <ActivityIndicator size="small" color="#0A84FF" />
+                                    ) : (
+                                        <SFSymbol name="plus" size={17} color="#0A84FF" weight="semibold" />
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
-                        <View style={styles.headerRight}>
-                            <TouchableOpacity
-                                style={styles.albumDownloadHeaderBtn}
-                                onPress={() => setOfflineSyncModalVisible(true)}
-                                activeOpacity={0.7}
-                                accessibilityLabel="Simpan Album ke HP (Offline)"
-                            >
-                                <SFSymbol name="arrow.down.circle" size={19} color="#0A84FF" />
-                            </TouchableOpacity>
+                        {/* Row 2: Media count + Album utility pills */}
+                        <View style={styles.headerSubRow}>
+                            <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                {displayedItems.length} Media
+                            </Text>
 
-                            <TouchableOpacity
-                                style={styles.albumDownloadHeaderBtn}
-                                onPress={handleDownloadAlbum}
-                                disabled={albumDownloading}
-                                activeOpacity={0.7}
-                                accessibilityLabel="Unduh Seluruh Album (.zip)"
-                            >
-                                {albumDownloading ? (
-                                    <ActivityIndicator size="small" color="#0A84FF" />
-                                ) : (
-                                    <SFSymbol name="folder" size={18} color="#0A84FF" />
-                                )}
-                            </TouchableOpacity>
-
-                            {!isDecoy && mediaItems.length > 0 && (
+                            <View style={styles.headerUtilityCluster}>
                                 <TouchableOpacity
-                                    style={styles.selectBtn}
-                                    onPress={() => {
-                                        setIsSelectMode(!isSelectMode);
-                                        setSelectedIds([]);
-                                    }}
-                                    activeOpacity={0.6}
+                                    style={styles.albumActionPill}
+                                    onPress={() => setOfflineSyncModalVisible(true)}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityLabel="Simpan Album ke HP (Offline)"
                                 >
-                                    <Text style={styles.selectBtnText}>
-                                        {isSelectMode ? 'Selesai' : 'Pilih'}
-                                    </Text>
+                                    <SFSymbol name="arrow.down.circle" size={14} color="#0A84FF" />
+                                    <Text style={styles.albumActionText}>Offline</Text>
                                 </TouchableOpacity>
-                            )}
 
-                            <TouchableOpacity
-                                style={styles.uploadPlusBtn}
-                                onPress={handleUploadPick}
-                                disabled={uploading}
-                                activeOpacity={0.7}
-                            >
-                                {uploading ? (
-                                    <ActivityIndicator size="small" color="#0A84FF" />
-                                ) : (
-                                    <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
-                                )}
-                            </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.albumActionPill}
+                                    onPress={handleDownloadAlbum}
+                                    disabled={albumDownloading}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityLabel="Unduh Seluruh Album (.zip)"
+                                >
+                                    {albumDownloading ? (
+                                        <ActivityIndicator size="small" color="#0A84FF" />
+                                    ) : (
+                                        <>
+                                            <SFSymbol name="folder" size={14} color="#0A84FF" />
+                                            <Text style={styles.albumActionText}>Unduh ZIP</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
                 ) : (
-                    <View style={styles.headerTopRow}>
-                        <View>
-                            <Text style={styles.headerTitle}>Perpustakaan</Text>
-                            {stats && (
-                                <Text style={styles.headerSubtitle}>
-                                    {isDecoy
-                                        ? '0 Media • 0 Foto, 0 Video'
-                                        : `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`}
-                                </Text>
-                            )}
+                    <View style={styles.headerLibraryWrap}>
+                        {/* Row 1: Title + Select + Upload */}
+                        <View style={styles.headerTopRow}>
+                            <Text
+                                style={styles.headerTitle}
+                                numberOfLines={1}
+                            >
+                                Perpustakaan
+                            </Text>
+
+                            <View style={styles.headerRightActions}>
+                                {!isDecoy && mediaItems.length > 0 && (
+                                    <TouchableOpacity
+                                        style={styles.selectBtn}
+                                        onPress={() => {
+                                            setIsSelectMode(!isSelectMode);
+                                            setSelectedIds([]);
+                                        }}
+                                        activeOpacity={0.6}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Text style={styles.selectBtnText}>
+                                            {isSelectMode ? 'Selesai' : 'Pilih'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                <TouchableOpacity
+                                    style={styles.uploadPlusBtn}
+                                    onPress={handleUploadPick}
+                                    disabled={uploading}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    {uploading ? (
+                                        <ActivityIndicator size="small" color="#0A84FF" />
+                                    ) : (
+                                        <SFSymbol name="plus" size={17} color="#0A84FF" weight="semibold" />
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
-                        <View style={styles.headerRight}>
-                            {!isDecoy && mediaItems.length > 0 && (
-                                <TouchableOpacity
-                                    style={styles.selectBtn}
-                                    onPress={() => {
-                                        setIsSelectMode(!isSelectMode);
-                                        setSelectedIds([]);
-                                    }}
-                                    activeOpacity={0.6}
-                                >
-                                    <Text style={styles.selectBtnText}>
-                                        {isSelectMode ? 'Selesai' : 'Pilih'}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
+                        {/* Row 2: Subtitle + Utility Action Capsule */}
+                        <View style={styles.headerSubRow}>
+                            <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                {isDecoy
+                                    ? '0 Media • 0 Foto, 0 Video'
+                                    : stats
+                                        ? `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`
+                                        : `${mediaItems.length} Media`}
+                            </Text>
 
                             {!isDecoy && (
-                                <>
+                                <View style={styles.headerUtilityCluster}>
                                     {/* Offline Local Vault Button */}
                                     <TouchableOpacity
                                         style={styles.syncHeaderBtn}
                                         onPress={() => setOfflineSyncModalVisible(true)}
                                         activeOpacity={0.7}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                                         accessibilityLabel="Simpan ke HP (Offline Vault)"
                                     >
-                                        <SFSymbol name="arrow.down.circle" size={17} color="#0A84FF" weight="semibold" />
+                                        <SFSymbol name="arrow.down.circle" size={15} color="#0A84FF" weight="semibold" />
                                     </TouchableOpacity>
 
                                     {/* Security & Passcode Settings */}
@@ -675,8 +718,10 @@ export default function LibraryScreen({ route, navigation }) {
                                         style={styles.syncHeaderBtn}
                                         onPress={() => setSecurityModalVisible(true)}
                                         activeOpacity={0.7}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                        accessibilityLabel="Kunci & Keamanan"
                                     >
-                                        <SFSymbol name="lock" size={17} color="#0A84FF" weight="semibold" />
+                                        <SFSymbol name="lock" size={15} color="#0A84FF" weight="semibold" />
                                     </TouchableOpacity>
 
                                     {/* Vault Sync Button */}
@@ -684,24 +729,13 @@ export default function LibraryScreen({ route, navigation }) {
                                         style={styles.syncHeaderBtn}
                                         onPress={() => setSyncModalVisible(true)}
                                         activeOpacity={0.7}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                        accessibilityLabel="Sinkronkan Cloud"
                                     >
-                                        <SFSymbol name="arrow.clockwise" size={17} color="#0A84FF" weight="semibold" />
+                                        <SFSymbol name="arrow.clockwise" size={15} color="#0A84FF" weight="semibold" />
                                     </TouchableOpacity>
-                                </>
+                                </View>
                             )}
-
-                            <TouchableOpacity
-                                style={styles.uploadPlusBtn}
-                                onPress={handleUploadPick}
-                                disabled={uploading}
-                                activeOpacity={0.7}
-                            >
-                                {uploading ? (
-                                    <ActivityIndicator size="small" color="#0A84FF" />
-                                ) : (
-                                    <SFSymbol name="plus" size={18} color="#0A84FF" weight="semibold" />
-                                )}
-                            </TouchableOpacity>
                         </View>
                     </View>
                 )}
@@ -994,60 +1028,99 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        marginBottom: 2,
+    },
+    headerSubRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+        minHeight: 30,
+    },
+    headerLibraryWrap: {
+        width: '100%',
+    },
+    headerAlbumWrap: {
+        width: '100%',
     },
     headerTitle: {
-        fontSize: 32,
+        fontSize: SCREEN_WIDTH < 380 ? 25 : 28,
         fontWeight: '700',
         color: '#ffffff',
-        letterSpacing: -0.6,
+        letterSpacing: -0.5,
+        flex: 1,
+        marginRight: 8,
     },
     headerSubtitle: {
         fontSize: 12,
         color: '#8E8E93',
-        marginTop: 2,
         fontWeight: '400',
+        flex: 1,
+        marginRight: 8,
     },
-    headerRight: {
+    headerRightActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 14,
+        gap: 10,
+    },
+    headerUtilityCluster: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     selectBtn: {
-        paddingVertical: 6,
+        paddingVertical: 5,
         paddingHorizontal: 4,
     },
     selectBtnText: {
         color: '#0A84FF',
         fontWeight: '600',
-        fontSize: 17,
+        fontSize: 16,
         letterSpacing: -0.3,
     },
+    albumActionPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 12,
+        backgroundColor: 'rgba(10, 132, 255, 0.14)',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(10, 132, 255, 0.25)',
+    },
+    albumActionText: {
+        color: '#0A84FF',
+        fontSize: 11,
+        fontWeight: '600',
+    },
     albumDownloadHeaderBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         backgroundColor: 'rgba(10, 132, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 6,
     },
     uploadPlusBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         backgroundColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
     },
     syncHeaderBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
         backgroundColor: 'rgba(10, 132, 255, 0.14)',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(10, 132, 255, 0.25)',
     },
     syncBadge: {
         position: 'absolute',
