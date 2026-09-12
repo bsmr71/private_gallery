@@ -579,6 +579,7 @@ export default function PhotoViewerModal({
                                 style={styles.mainImage}
                                 resizeMode="contain"
                                 showLoader={true}
+                                preferFullResolution={true}
                             />
                         )}
                     </Pressable>

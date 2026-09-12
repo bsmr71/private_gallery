@@ -11,6 +11,7 @@ import { ApiService } from './src/services/api';
 import * as ScreenCapture from 'expo-screen-capture';
 import AppLockOverlay from './src/components/AppLockOverlay';
 import SFSymbol from './src/components/SFSymbol';
+import { LocalVaultService } from './src/services/localVaultService';
 
 // Suppress harmless development connection warnings so user screen remains clean
 LogBox.ignoreLogs([
@@ -129,6 +130,7 @@ export default function App() {
     useEffect(() => {
         // Enforce OS-level FLAG_SECURE: prevents Android task switcher snapshots and screen recording
         ScreenCapture.preventScreenCaptureAsync().catch(() => {});
+        LocalVaultService.init().catch(() => {});
         checkAuth();
     }, []);
 

@@ -5,6 +5,8 @@ import { MediaUrlHelper } from './mediaUrl';
 
 const VAULT_DIR = `${FileSystemLegacy.documentDirectory}vault_storage/`;
 const INDEX_KEY = '@vault_local_files_index';
+const CATALOG_KEY = '@vault_offline_catalog';
+const STATS_KEY = '@vault_offline_stats';
 
 // In-memory index cache for 0ms synchronous lookups: Map<mediaId, { localUri, filename, size, mimeType, cachedAt }>
 let localFilesMap = new Map();
@@ -118,6 +120,141 @@ export const LocalVaultService = {
     },
 
     /**
+     * Save/update the offline media catalog in AsyncStorage
+     */
+    async saveOfflineCatalog(items, stats = null) {
+        if (!Array.isArray(items) || items.length === 0) return;
+        try {
+            const existingRaw = await AsyncStorage.getItem(CATALOG_KEY);
+            let mergedMap = new Map();
+            if (existingRaw) {
+                try {
+                    const parsed = JSON.parse(existingRaw);
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach((it) => {
+                            if (it && it.id) mergedMap.set(String(it.id), it);
+                        });
+                    }
+                } catch (e) {}
+            }
+
+            items.forEach((it) => {
+                if (it && it.id) {
+                    mergedMap.set(String(it.id), { ...(mergedMap.get(String(it.id)) || {}), ...it });
+                }
+            });
+
+            const mergedList = Array.from(mergedMap.values());
+            await AsyncStorage.setItem(CATALOG_KEY, JSON.stringify(mergedList));
+
+            if (stats) {
+                await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+            }
+        } catch (err) {
+            console.warn('[LocalVaultService] Failed to save offline catalog:', err);
+        }
+    },
+
+    /**
+     * Retrieve offline media catalog from local storage for 0ms instant display without internet.
+     */
+    async getOfflineMediaCatalog({ albumId = null, filterTab = 'all' } = {}) {
+        await this.init();
+
+        let items = [];
+        try {
+            const rawCatalog = await AsyncStorage.getItem(CATALOG_KEY);
+            if (rawCatalog) {
+                const parsed = JSON.parse(rawCatalog);
+                if (Array.isArray(parsed)) {
+                    items = parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('[LocalVaultService] Error reading offline catalog:', e);
+        }
+
+        // If catalog is empty in AsyncStorage, fallback to constructing from localFilesMap
+        if (items.length === 0 && localFilesMap.size > 0) {
+            items = Array.from(localFilesMap.values()).map((entry) => {
+                const isVideo = Boolean(entry.mimeType?.includes('video'));
+                return {
+                    id: entry.mediaId,
+                    title: entry.filename || `Media #${entry.mediaId}`,
+                    type: isVideo ? 'video' : 'image',
+                    mime_type: entry.mimeType,
+                    thumbnail_url: entry.localThumbUri || entry.localUri,
+                    stream_url: entry.localUri,
+                    download_url: entry.localUri,
+                    is_favorite: entry.itemData?.is_favorite || false,
+                    created_at: entry.itemData?.created_at || new Date(entry.cachedAt || Date.now()).toISOString(),
+                    formatted_date: entry.itemData?.formatted_date || '',
+                    album_id: entry.itemData?.album_id || null,
+                    album: entry.itemData?.album || null,
+                    ...(entry.itemData || {}),
+                };
+            });
+        }
+
+        // Enrich items with local vault file URIs
+        const enriched = items.map((it) => {
+            const idStr = String(it.id);
+            const entry = localFilesMap.get(idStr);
+            if (entry) {
+                return {
+                    ...it,
+                    is_locally_cached: true,
+                    localUri: entry.localUri,
+                    localThumbUri: entry.localThumbUri || entry.localUri,
+                };
+            }
+            return it;
+        });
+
+        // Apply filters
+        let filtered = enriched;
+        if (albumId) {
+            filtered = filtered.filter((it) => String(it.album_id) === String(albumId));
+        }
+
+        if (filterTab === 'image') {
+            filtered = filtered.filter((it) => it.type === 'image');
+        } else if (filterTab === 'video') {
+            filtered = filtered.filter((it) => it.type === 'video');
+        } else if (filterTab === 'favorite') {
+            filtered = filtered.filter((it) => Boolean(it.is_favorite));
+        }
+
+        // Deterministic sort: id descending
+        filtered.sort((a, b) => {
+            const idA = Number(a.id) || 0;
+            const idB = Number(b.id) || 0;
+            return idB - idA;
+        });
+
+        return filtered;
+    },
+
+    /**
+     * Retrieve offline gallery stats
+     */
+    async getOfflineStats() {
+        try {
+            const raw = await AsyncStorage.getItem(STATS_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+
+        const localCount = this.getLocalCount();
+        return {
+            total: localCount,
+            images: localCount,
+            videos: 0,
+            favorites: 0,
+            albums: 0,
+        };
+    },
+
+    /**
      * Save an asset synced from phone into the private sandbox vault.
      * Copies or moves the file to VAULT_DIR.
      */
@@ -210,6 +347,7 @@ export const LocalVaultService = {
                     size: info.size || 0,
                     mimeType: mediaItem.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
                     cachedAt: Date.now(),
+                    itemData: mediaItem,
                 };
 
                 localFilesMap.set(idStr, entry);
@@ -365,6 +503,9 @@ export const LocalVaultService = {
                     }
                 }
                 targetItems = allFetched;
+                if (targetItems.length > 0) {
+                    await this.saveOfflineCatalog(targetItems);
+                }
             }
 
             const total = targetItems.length;
@@ -474,6 +615,7 @@ export const LocalVaultService = {
                                     size: info.size || 0,
                                     mimeType: it.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
                                     cachedAt: Date.now(),
+                                    itemData: it,
                                 };
 
                                 localFilesMap.set(idStr, entry);

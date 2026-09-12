@@ -51,6 +51,7 @@ export default function LibraryScreen({ route, navigation }) {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [stats, setStats] = useState(null);
+    const [isOfflineMode, setIsOfflineMode] = useState(false);
 
     // Active Album filter (from navigation params)
     const [activeAlbum, setActiveAlbum] = useState(
@@ -95,9 +96,10 @@ export default function LibraryScreen({ route, navigation }) {
         if (isFetchingRef.current) return;
         isFetchingRef.current = true;
 
+        const albumToUse = overrideAlbumId !== undefined ? overrideAlbumId : activeAlbumRef.current?.id;
+
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
-            const albumToUse = overrideAlbumId !== undefined ? overrideAlbumId : activeAlbumRef.current?.id;
             const params = { page: pageNum, per_page: 60 };
             if (albumToUse) {
                 params.album_id = albumToUse;
@@ -105,13 +107,17 @@ export default function LibraryScreen({ route, navigation }) {
             const res = await ApiService.getMedia(params);
 
             if (res && res.success && Array.isArray(res.data)) {
+                setIsOfflineMode(false);
                 if (pageNum === 1) {
                     setMediaItems(res.data);
+                    LocalVaultService.saveOfflineCatalog(res.data, res.stats).catch(() => {});
                 } else {
                     setMediaItems((prev) => {
                         const existingIds = new Set(prev.map((it) => it.id));
                         const uniqueNew = res.data.filter((it) => !existingIds.has(it.id));
-                        return [...prev, ...uniqueNew];
+                        const combined = [...prev, ...uniqueNew];
+                        LocalVaultService.saveOfflineCatalog(combined).catch(() => {});
+                        return combined;
                     });
                 }
                 const hasMorePages = Boolean(res.pagination && res.pagination.has_more);
@@ -122,13 +128,33 @@ export default function LibraryScreen({ route, navigation }) {
                 if (res.stats) setStats(res.stats);
             }
         } catch (e) {
-            console.warn('Load media error', e);
+            console.warn('Network unreachable, switching to offline vault mode:', e?.message || e);
+            setIsOfflineMode(true);
+            setHasMore(false);
+            hasMoreRef.current = false;
+
+            // Load full offline catalog from local storage so gallery remains 100% interactive
+            try {
+                const offlineItems = await LocalVaultService.getOfflineMediaCatalog({
+                    albumId: albumToUse,
+                    filterTab,
+                });
+                if (offlineItems && offlineItems.length > 0) {
+                    setMediaItems(offlineItems);
+                }
+                const offlineStats = await LocalVaultService.getOfflineStats();
+                if (offlineStats) {
+                    setStats(offlineStats);
+                }
+            } catch (offlineErr) {
+                console.warn('Offline fallback error:', offlineErr);
+            }
         } finally {
             isFetchingRef.current = false;
             setLoading(false);
             setRefreshing(false);
         }
-    }, []);
+    }, [filterTab]);
 
     // Automatic background vault synchronization
     const runAutoSync = useCallback(async () => {
@@ -224,6 +250,22 @@ export default function LibraryScreen({ route, navigation }) {
     }, [route?.params?.albumId, route?.params?.albumName, route?.params?.filterType, route?.params?.clearAlbum, fetchMedia]);
 
     useEffect(() => {
+        // 1. Immediately load local offline catalog (< 50ms) so user sees items without delay
+        LocalVaultService.getOfflineMediaCatalog({
+            albumId: activeAlbumRef.current?.id,
+            filterTab,
+        }).then((cachedItems) => {
+            if (cachedItems && cachedItems.length > 0) {
+                setMediaItems((prev) => (prev.length === 0 ? cachedItems : prev));
+                setLoading(false);
+            }
+        }).catch(() => {});
+
+        LocalVaultService.getOfflineStats().then((cachedStats) => {
+            if (cachedStats) setStats((prev) => prev || cachedStats);
+        }).catch(() => {});
+
+        // 2. Fetch fresh data from network in background
         fetchMedia(1);
         runAutoSync();
         LocalVaultService.init();
@@ -234,7 +276,7 @@ export default function LibraryScreen({ route, navigation }) {
         return () => {
             unsubVault && unsubVault();
         };
-    }, [fetchMedia, runAutoSync]);
+    }, [fetchMedia, runAutoSync, filterTab]);
 
     // Listen for app returning to foreground (after user puts photos in folder)
     useEffect(() => {
@@ -263,10 +305,10 @@ export default function LibraryScreen({ route, navigation }) {
     };
 
     const loadMore = useCallback(() => {
-        if (!isFetchingRef.current && hasMoreRef.current) {
+        if (!isFetchingRef.current && hasMoreRef.current && !isOfflineMode) {
             fetchMedia(pageRef.current + 1);
         }
-    }, [fetchMedia]);
+    }, [fetchMedia, isOfflineMode]);
 
     const handleItemPress = (item, index) => {
         if (isSelectMode) {
@@ -704,13 +746,20 @@ export default function LibraryScreen({ route, navigation }) {
 
                         {/* Row 2: Subtitle + Utility Action Capsule */}
                         <View style={styles.headerSubRow}>
-                            <Text style={styles.headerSubtitle} numberOfLines={1}>
-                                {isDecoy
-                                    ? '0 Media • 0 Foto, 0 Video'
-                                    : stats
-                                        ? `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`
-                                        : `${mediaItems.length} Media`}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                                <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                    {isDecoy
+                                        ? '0 Media • 0 Foto, 0 Video'
+                                        : stats
+                                            ? `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`
+                                            : `${mediaItems.length} Media`}
+                                </Text>
+                                {isOfflineMode && (
+                                    <View style={styles.offlineStatusBadge}>
+                                        <Text style={styles.offlineStatusText}>⚡ Offline</Text>
+                                    </View>
+                                )}
+                            </View>
 
                             {!isDecoy && (
                                 <View style={styles.headerUtilityCluster}>
@@ -868,22 +917,36 @@ export default function LibraryScreen({ route, navigation }) {
                     }
                     contentContainerStyle={styles.listContent}
                     ListFooterComponent={
-                        hasMore ? (
+                        hasMore && !isOfflineMode ? (
                             <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                                 <ActivityIndicator size="small" color="#0A84FF" />
+                            </View>
+                        ) : isOfflineMode && displayedItems.length > 0 ? (
+                            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                                <Text style={styles.offlineFooterText}>
+                                    ⚡ Mode Offline • {displayedItems.length} Foto & Video dari Memori HP
+                                </Text>
                             </View>
                         ) : null
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
-                            <SFSymbol name={activeAlbum ? 'folder' : 'photos'} size={54} color="#8E8E93" />
+                            <SFSymbol
+                                name={isOfflineMode ? 'bolt.slash' : (activeAlbum ? 'folder' : 'photos')}
+                                size={54}
+                                color="#8E8E93"
+                            />
                             <Text style={styles.emptyTitle}>
-                                {activeAlbum ? 'Album Masih Kosong' : 'Galeri Masih Kosong'}
+                                {isOfflineMode
+                                    ? 'Belum Ada Berkas Offline'
+                                    : (activeAlbum ? 'Album Masih Kosong' : 'Galeri Masih Kosong')}
                             </Text>
                             <Text style={styles.emptyDesc}>
-                                {activeAlbum
-                                    ? `Belum ada foto atau video di dalam album "${activeAlbum.name}". Ketuk tombol ＋ untuk mengunggah berkas ke album ini.`
-                                    : 'Ketuk tombol ＋ di kanan atas untuk mengunggah foto atau video.'}
+                                {isOfflineMode
+                                    ? 'Belum ada foto atau video yang diunduh ke cache aplikasi ini. Hubungkan internet untuk menyinkronkan berkas.'
+                                    : (activeAlbum
+                                        ? `Belum ada foto atau video di dalam album "${activeAlbum.name}". Ketuk tombol ＋ untuk mengunggah berkas ke album ini.`
+                                        : 'Ketuk tombol ＋ di kanan atas untuk mengunggah foto atau video.')}
                             </Text>
                         </View>
                     }
@@ -1406,5 +1469,24 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         letterSpacing: -0.2,
+    },
+    offlineStatusBadge: {
+        backgroundColor: 'rgba(48, 209, 88, 0.16)',
+        borderRadius: 6,
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        marginLeft: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(48, 209, 88, 0.35)',
+    },
+    offlineStatusText: {
+        color: '#30D158',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    offlineFooterText: {
+        color: '#8E8E93',
+        fontSize: 12,
+        fontWeight: '500',
     },
 });

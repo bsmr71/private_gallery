@@ -11,6 +11,7 @@ export default function SecureImage({
     resizeMode = 'cover',
     mediaId = null,
     showLoader = false,
+    preferFullResolution = false,
     ...props
 }) {
     const rawUri = typeof source === 'string' ? source : source?.uri;
@@ -31,7 +32,11 @@ export default function SecureImage({
     // Check if local file exists in private local sandbox vault for 0ms instant loading
     let localUri = null;
     if (mediaId) {
-        localUri = LocalVaultService.getLocalThumbUri(mediaId) || LocalVaultService.getLocalUri(mediaId);
+        if (preferFullResolution) {
+            localUri = LocalVaultService.getLocalUri(mediaId) || LocalVaultService.getLocalThumbUri(mediaId);
+        } else {
+            localUri = LocalVaultService.getLocalThumbUri(mediaId) || LocalVaultService.getLocalUri(mediaId);
+        }
     } else if (rawUri && rawUri.startsWith('file://')) {
         localUri = rawUri;
     }
