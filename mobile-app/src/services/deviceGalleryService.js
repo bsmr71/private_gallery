@@ -1,4 +1,3 @@
-import * as MediaLibrary from 'expo-media-library';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { LocalVaultService } from './localVaultService';
@@ -6,22 +5,10 @@ import { MediaUrlHelper } from './mediaUrl';
 
 export const DeviceGalleryService = {
     /**
-     * Request system permission to write into public device gallery (DCIM / Pictures).
-     */
-    async requestGalleryPermission() {
-        try {
-            const { status } = await MediaLibrary.requestPermissionsAsync();
-            return status === 'granted';
-        } catch (e) {
-            console.warn('[DeviceGalleryService] Permission request failed:', e);
-            return false;
-        }
-    },
-
-    /**
-     * Download and save a single media file directly into device's PUBLIC Gallery (Google Photos, Samsung Gallery, DCIM).
+     * Download and save a single media file to the user's phone storage / gallery via native share sheet.
+     * Uses expo-sharing which is already compiled into the native Android APK.
      * @param {Object} mediaItem - The media item object
-     * @returns {Promise<{ success: boolean, method: 'mediaLibrary'|'share'|'failed', message?: string }>}
+     * @returns {Promise<{ success: boolean, method: 'share'|'failed', message?: string }>}
      */
     async saveToDeviceGallery(mediaItem) {
         if (!mediaItem || !mediaItem.id) {
@@ -43,7 +30,6 @@ export const DeviceGalleryService = {
             let sourceFileUri = LocalVaultService.getLocalUri(mediaItem.id);
 
             // 2. If not in local vault, download from cloud to cacheDirectory
-            let isTempFile = false;
             if (!sourceFileUri) {
                 const rawUrl = mediaItem.download_url || mediaItem.stream_url;
                 const token = MediaUrlHelper.getToken();
@@ -58,44 +44,10 @@ export const DeviceGalleryService = {
                     throw new Error(`Unduhan gagal dengan status ${res.status}`);
                 }
                 sourceFileUri = res.uri;
-                isTempFile = true;
             }
 
-            // 3. Try direct save via expo-media-library (saves into Camera Roll / DCIM)
-            const hasPermission = await this.requestGalleryPermission();
-            if (hasPermission) {
-                try {
-                    const asset = await MediaLibrary.createAssetAsync(sourceFileUri);
-                    if (asset) {
-                        // Optionally add to specific album named 'Private Gallery'
-                        try {
-                            const album = await MediaLibrary.getAlbumAsync('Private Gallery');
-                            if (album == null) {
-                                await MediaLibrary.createAlbumAsync('Private Gallery', asset, false);
-                            } else {
-                                await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-                            }
-                        } catch (albumErr) {
-                            // Non-critical album grouping failure
-                        }
-
-                        // Clean up temporary file if created
-                        if (isTempFile) {
-                            FileSystemLegacy.deleteAsync(sourceFileUri, { idempotent: true }).catch(() => {});
-                        }
-
-                        return {
-                            success: true,
-                            method: 'mediaLibrary',
-                            message: `Tersimpan ke Galeri HP di album "Private Gallery"`,
-                        };
-                    }
-                } catch (mlErr) {
-                    console.warn('[DeviceGalleryService] createAssetAsync failed, falling back to Share sheet:', mlErr);
-                }
-            }
-
-            // 4. Fallback: Open system native Share Sheet so user can pick "Save Image / Save to Files"
+            // 3. Open Android system native Save/Share Sheet
+            // On Android, this displays "Simpan ke Galeri / Save Image / Google Photos / File Manager / WhatsApp"
             const isSharingAvailable = await Sharing.isAvailableAsync();
             if (isSharingAvailable) {
                 await Sharing.shareAsync(sourceFileUri, {
@@ -107,14 +59,14 @@ export const DeviceGalleryService = {
                 return {
                     success: true,
                     method: 'share',
-                    message: `Lembar penyimpanan Galeri HP dibuka`,
+                    message: 'Lembar simpan ke Galeri HP berhasil dibuka',
                 };
             }
 
             return {
                 success: false,
                 method: 'failed',
-                message: 'Tidak ada izin penyimpanan galeri atau aplikasi berbagi.',
+                message: 'Fitur penyimpanan / berbagi tidak didukung di perangkat ini.',
             };
         } catch (err) {
             console.error('[DeviceGalleryService] saveToDeviceGallery error:', err);
@@ -127,7 +79,7 @@ export const DeviceGalleryService = {
     },
 
     /**
-     * Download and save multiple media files directly into device's PUBLIC Gallery.
+     * Download and save multiple media files to device storage via native sharing.
      */
     async saveMultipleToDeviceGallery(items, { onProgress, onComplete, onError } = {}) {
         if (!items || items.length === 0) {
@@ -138,8 +90,6 @@ export const DeviceGalleryService = {
         const total = items.length;
         let successCount = 0;
         let failedCount = 0;
-
-        const hasPermission = await this.requestGalleryPermission();
 
         for (let i = 0; i < items.length; i++) {
             const it = items[i];
@@ -166,7 +116,6 @@ export const DeviceGalleryService = {
             successCount,
             failedCount,
             total,
-            hasPermission,
         });
     },
 };
