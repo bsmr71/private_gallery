@@ -18,6 +18,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { BlurView } from 'expo-blur';
 import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
+import { StorageService } from '../services/storage';
 import { SyncService } from '../services/syncService';
 import { SecurityService, useDecoyMode, useAppLocked } from '../services/securityService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
@@ -278,10 +279,30 @@ export default function LibraryScreen({ route, navigation }) {
         };
     }, [fetchMedia, runAutoSync, filterTab]);
 
+    const checkConnectivity = useCallback(async () => {
+        try {
+            const baseUrl = await StorageService.getApiUrl();
+            if (!baseUrl) return;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/auth/user`, {
+                method: 'HEAD',
+                signal: controller.signal,
+            }).catch(() => null);
+            clearTimeout(timer);
+            if (res && res.status < 500) {
+                setIsOfflineMode(false);
+                return;
+            }
+        } catch (e) {}
+        setIsOfflineMode(true);
+    }, []);
+
     // Listen for app returning to foreground (after user puts photos in folder)
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
+                checkConnectivity();
                 runAutoSync();
             }
         });
@@ -289,15 +310,16 @@ export default function LibraryScreen({ route, navigation }) {
         // Also check periodically while app is actively kept open
         const interval = setInterval(() => {
             if (AppState.currentState === 'active') {
+                checkConnectivity();
                 runAutoSync();
             }
-        }, 25000);
+        }, 20000);
 
         return () => {
             subscription.remove();
             clearInterval(interval);
         };
-    }, [runAutoSync]);
+    }, [checkConnectivity, runAutoSync]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -313,10 +335,22 @@ export default function LibraryScreen({ route, navigation }) {
     const handleItemPress = (item, index) => {
         if (isSelectMode) {
             toggleSelect(item.id);
-        } else {
-            setSelectedIdx(index);
-            setViewerVisible(true);
+            return;
         }
+
+        // When offline, prevent opening cloud-only files with clear notice
+        const hasLocal = LocalVaultService.hasLocalMedia(item.id);
+        if (isOfflineMode && !hasLocal) {
+            Alert.alert(
+                'Berkas Masih di Cloud ☁️',
+                `"${item.title || item.original_filename || 'Foto/video ini'}" belum tersimpan di memori cache HP dan memerlukan koneksi internet untuk dibuka.\n\nHubungkan ponsel ke internet (WiFi atau Data Seluler) untuk membuka atau menyimpannya ke cache offline.`,
+                [{ text: 'Mengerti', style: 'default' }]
+            );
+            return;
+        }
+
+        setSelectedIdx(index);
+        setViewerVisible(true);
     };
 
     const toggleSelect = (id) => {
@@ -754,11 +788,12 @@ export default function LibraryScreen({ route, navigation }) {
                                             ? `${stats.total} Media • ${stats.images} Foto, ${stats.videos} Video`
                                             : `${mediaItems.length} Media`}
                                 </Text>
-                                {isOfflineMode && (
-                                    <View style={styles.offlineStatusBadge}>
-                                        <Text style={styles.offlineStatusText}>⚡ Offline</Text>
-                                    </View>
-                                )}
+                                <View style={isOfflineMode ? styles.offlineStatusBadge : styles.onlineStatusBadge}>
+                                    <View style={[styles.statusDot, { backgroundColor: isOfflineMode ? '#FF9F0A' : '#30D158' }]} />
+                                    <Text style={[styles.statusBadgeText, { color: isOfflineMode ? '#FF9F0A' : '#30D158' }]}>
+                                        {isOfflineMode ? 'Offline' : 'Online'}
+                                    </Text>
+                                </View>
                             </View>
 
                             {!isDecoy && (
@@ -1470,17 +1505,35 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         letterSpacing: -0.2,
     },
-    offlineStatusBadge: {
-        backgroundColor: 'rgba(48, 209, 88, 0.16)',
-        borderRadius: 6,
+    onlineStatusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(48, 209, 88, 0.14)',
+        borderRadius: 12,
         paddingHorizontal: 7,
         paddingVertical: 2,
         marginLeft: 8,
-        borderWidth: 1,
+        borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'rgba(48, 209, 88, 0.35)',
     },
-    offlineStatusText: {
-        color: '#30D158',
+    offlineStatusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 159, 10, 0.14)',
+        borderRadius: 12,
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        marginLeft: 8,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255, 159, 10, 0.35)',
+    },
+    statusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginRight: 5,
+    },
+    statusBadgeText: {
         fontSize: 11,
         fontWeight: '600',
     },

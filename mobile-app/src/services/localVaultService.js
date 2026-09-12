@@ -161,43 +161,55 @@ export const LocalVaultService = {
     async getOfflineMediaCatalog({ albumId = null, filterTab = 'all' } = {}) {
         await this.init();
 
-        let items = [];
+        const itemsMap = new Map();
+
+        // 1. Load catalog from AsyncStorage if present
         try {
             const rawCatalog = await AsyncStorage.getItem(CATALOG_KEY);
             if (rawCatalog) {
                 const parsed = JSON.parse(rawCatalog);
                 if (Array.isArray(parsed)) {
-                    items = parsed;
+                    parsed.forEach((it) => {
+                        if (it && it.id) itemsMap.set(String(it.id), it);
+                    });
                 }
             }
         } catch (e) {
             console.warn('[LocalVaultService] Error reading offline catalog:', e);
         }
 
-        // If catalog is empty in AsyncStorage, fallback to constructing from localFilesMap
-        if (items.length === 0 && localFilesMap.size > 0) {
-            items = Array.from(localFilesMap.values()).map((entry) => {
-                const isVideo = Boolean(entry.mimeType?.includes('video'));
-                return {
-                    id: entry.mediaId,
-                    title: entry.filename || `Media #${entry.mediaId}`,
-                    type: isVideo ? 'video' : 'image',
-                    mime_type: entry.mimeType,
-                    thumbnail_url: entry.localThumbUri || entry.localUri,
-                    stream_url: entry.localUri,
-                    download_url: entry.localUri,
-                    is_favorite: entry.itemData?.is_favorite || false,
-                    created_at: entry.itemData?.created_at || new Date(entry.cachedAt || Date.now()).toISOString(),
-                    formatted_date: entry.itemData?.formatted_date || '',
-                    album_id: entry.itemData?.album_id || null,
-                    album: entry.itemData?.album || null,
-                    ...(entry.itemData || {}),
-                };
-            });
-        }
+        // 2. Merge all cached entries from localFilesMap so NO cached file is ever left out
+        localFilesMap.forEach((entry, idStr) => {
+            const existing = itemsMap.get(idStr) || {};
+            const isVideo = Boolean(
+                (entry.mimeType && entry.mimeType.includes('video')) ||
+                existing.type === 'video' ||
+                (entry.filename && entry.filename.match(/\.(mp4|mov|m4v)$/i))
+            );
 
-        // Enrich items with local vault file URIs
-        const enriched = items.map((it) => {
+            itemsMap.set(idStr, {
+                id: entry.mediaId || idStr,
+                title: entry.filename || existing.title || `Media #${idStr}`,
+                type: isVideo ? 'video' : 'image',
+                mime_type: entry.mimeType || existing.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                thumbnail_url: entry.localThumbUri || entry.localUri || existing.thumbnail_url,
+                stream_url: entry.localUri || existing.stream_url,
+                download_url: entry.localUri || existing.download_url,
+                is_favorite: entry.itemData?.is_favorite ?? existing.is_favorite ?? false,
+                created_at: entry.itemData?.created_at || existing.created_at || new Date(entry.cachedAt || Date.now()).toISOString(),
+                formatted_date: entry.itemData?.formatted_date || existing.formatted_date || '',
+                album_id: entry.itemData?.album_id ?? existing.album_id ?? null,
+                album: entry.itemData?.album || existing.album || null,
+                ...existing,
+                ...(entry.itemData || {}),
+                is_locally_cached: true,
+                localUri: entry.localUri,
+                localThumbUri: entry.localThumbUri || entry.localUri,
+            });
+        });
+
+        // 3. Mark each item's local cache status
+        let list = Array.from(itemsMap.values()).map((it) => {
             const idStr = String(it.id);
             const entry = localFilesMap.get(idStr);
             if (entry) {
@@ -208,31 +220,34 @@ export const LocalVaultService = {
                     localThumbUri: entry.localThumbUri || entry.localUri,
                 };
             }
-            return it;
+            return {
+                ...it,
+                is_locally_cached: false,
+            };
         });
 
-        // Apply filters
-        let filtered = enriched;
+        // 4. Apply album filter if requested
         if (albumId) {
-            filtered = filtered.filter((it) => String(it.album_id) === String(albumId));
+            list = list.filter((it) => String(it.album_id) === String(albumId));
         }
 
+        // 5. Apply tab filter (image, video, favorite)
         if (filterTab === 'image') {
-            filtered = filtered.filter((it) => it.type === 'image');
+            list = list.filter((it) => it.type === 'image');
         } else if (filterTab === 'video') {
-            filtered = filtered.filter((it) => it.type === 'video');
+            list = list.filter((it) => it.type === 'video');
         } else if (filterTab === 'favorite') {
-            filtered = filtered.filter((it) => Boolean(it.is_favorite));
+            list = list.filter((it) => Boolean(it.is_favorite));
         }
 
-        // Deterministic sort: id descending
-        filtered.sort((a, b) => {
+        // 6. Deterministic sort: id descending
+        list.sort((a, b) => {
             const idA = Number(a.id) || 0;
             const idB = Number(b.id) || 0;
             return idB - idA;
         });
 
-        return filtered;
+        return list;
     },
 
     /**
