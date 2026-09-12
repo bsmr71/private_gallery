@@ -15,12 +15,7 @@ import {
     Animated,
     Pressable,
     LayoutAnimation,
-    UIManager,
 } from 'react-native';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../constants/theme';
 import Filmstrip from './Filmstrip';
