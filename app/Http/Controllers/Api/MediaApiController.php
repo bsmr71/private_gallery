@@ -55,7 +55,7 @@ class MediaApiController extends Controller
         $hasLockedMedia = $this->hasLockedMedia();
         $hasLockedAlbums = $this->hasLockedAlbums();
 
-        $query = Media::with('album')->latest();
+        $query = Media::with('album')->latest()->orderBy('id', 'desc');
 
         if ($hasLockedMedia) {
             try {
@@ -84,8 +84,8 @@ class MediaApiController extends Controller
             });
         }
 
-        $maxPerPage = $request->boolean('all') ? 5000 : 100;
-        $perPage = min((int)$request->input('per_page', $request->boolean('all') ? 5000 : 30), $maxPerPage);
+        $requestedPerPage = (int)$request->input('per_page', ($request->boolean('all') || $request->has('all')) ? 5000 : 30);
+        $perPage = max(1, min($requestedPerPage, 5000));
         $paginated = $query->paginate($perPage);
 
         $items = collect($paginated->items())->map(function ($m) use ($request) {

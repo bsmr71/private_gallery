@@ -162,8 +162,11 @@ export default function LocalOfflineSyncModal({
                                 if (albumIdToUse) params.album_id = albumIdToUse;
                                 const res = await ApiService.getMedia(params);
                                 if (res && res.success && Array.isArray(res.data)) {
-                                    itemsToExport = itemsToExport.concat(res.data);
-                                    if (res.meta && res.meta.current_page < res.meta.last_page && res.data.length > 0) {
+                                    const pag = res.pagination || res.meta;
+                                    const hasNextPage = pag
+                                        ? (Boolean(pag.has_more) || pag.current_page < pag.last_page)
+                                        : false;
+                                    if (hasNextPage && res.data.length > 0) {
                                         currentPage++;
                                     } else {
                                         hasMore = false;

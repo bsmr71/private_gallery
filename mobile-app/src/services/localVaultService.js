@@ -351,7 +351,11 @@ export const LocalVaultService = {
                     const res = await ApiService.getMedia(params);
                     if (res && res.success && Array.isArray(res.data)) {
                         allFetched = allFetched.concat(res.data);
-                        if (res.meta && res.meta.current_page < res.meta.last_page && res.data.length > 0) {
+                        const pag = res.pagination || res.meta;
+                        const hasNextPage = pag
+                            ? (Boolean(pag.has_more) || pag.current_page < pag.last_page)
+                            : false;
+                        if (hasNextPage && res.data.length > 0) {
                             currentPage++;
                         } else {
                             hasMore = false;
