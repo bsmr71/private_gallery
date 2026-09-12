@@ -87,36 +87,44 @@ export default function LibraryScreen({ route, navigation }) {
     // Local Offline Vault Sync Modal state
     const [offlineSyncModalVisible, setOfflineSyncModalVisible] = useState(false);
 
-    // Fixed 3-column getItemLayout for instant 60 FPS scrolling without dynamic layout measurement
-    const getItemLayout = useCallback((data, index) => ({
-        length: ITEM_SIZE + ITEM_MARGIN,
-        offset: (ITEM_SIZE + ITEM_MARGIN) * Math.floor(index / COLUMN_COUNT),
-        index,
-    }), []);
+    const isFetchingRef = useRef(false);
+    const pageRef = useRef(1);
+    const hasMoreRef = useRef(true);
 
     const fetchMedia = useCallback(async (pageNum = 1, isRefresh = false, overrideAlbumId = undefined) => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
+
         try {
             if (pageNum === 1 && !isRefresh) setLoading(true);
             const albumToUse = overrideAlbumId !== undefined ? overrideAlbumId : activeAlbumRef.current?.id;
-            const params = { page: pageNum, per_page: 36 };
+            const params = { page: pageNum, per_page: 60 };
             if (albumToUse) {
                 params.album_id = albumToUse;
             }
             const res = await ApiService.getMedia(params);
 
-            if (res.success) {
+            if (res && res.success && Array.isArray(res.data)) {
                 if (pageNum === 1) {
                     setMediaItems(res.data);
                 } else {
-                    setMediaItems((prev) => [...prev, ...res.data]);
+                    setMediaItems((prev) => {
+                        const existingIds = new Set(prev.map((it) => it.id));
+                        const uniqueNew = res.data.filter((it) => !existingIds.has(it.id));
+                        return [...prev, ...uniqueNew];
+                    });
                 }
-                setHasMore(res.pagination.has_more);
+                const hasMorePages = Boolean(res.pagination && res.pagination.has_more);
+                setHasMore(hasMorePages);
+                hasMoreRef.current = hasMorePages;
                 setPage(pageNum);
+                pageRef.current = pageNum;
                 if (res.stats) setStats(res.stats);
             }
         } catch (e) {
             console.warn('Load media error', e);
         } finally {
+            isFetchingRef.current = false;
             setLoading(false);
             setRefreshing(false);
         }
@@ -145,7 +153,9 @@ export default function LibraryScreen({ route, navigation }) {
                             type: 'done',
                             message: `${res.successCount} foto baru terenkripsi ke Cloud`,
                         });
-                        fetchMedia(1, true);
+                        if (pageRef.current === 1) {
+                            fetchMedia(1, true);
+                        }
                         setTimeout(() => {
                             setAutoSyncStatus(null);
                         }, 3500);
@@ -181,7 +191,9 @@ export default function LibraryScreen({ route, navigation }) {
                     type: 'done',
                     message: `${syncState.successCount} foto baru terenkripsi ke Cloud`,
                 });
-                fetchMedia(1, true);
+                if (pageRef.current === 1) {
+                    fetchMedia(1, true);
+                }
                 setTimeout(() => setAutoSyncStatus(null), 3500);
             }
         });
@@ -250,11 +262,11 @@ export default function LibraryScreen({ route, navigation }) {
         fetchMedia(1, true);
     };
 
-    const loadMore = () => {
-        if (!loading && hasMore) {
-            fetchMedia(page + 1);
+    const loadMore = useCallback(() => {
+        if (!isFetchingRef.current && hasMoreRef.current) {
+            fetchMedia(pageRef.current + 1);
         }
-    };
+    }, [fetchMedia]);
 
     const handleItemPress = (item, index) => {
         if (isSelectMode) {
@@ -777,12 +789,11 @@ export default function LibraryScreen({ route, navigation }) {
                     keyExtractor={(item) => String(item.id)}
                     numColumns={COLUMN_COUNT}
                     extraData={{ selectedIds, isSelectMode, localVaultVer }}
-                    getItemLayout={getItemLayout}
-                    initialNumToRender={21}
-                    maxToRenderPerBatch={21}
-                    windowSize={7}
-                    removeClippedSubviews={Platform.OS === 'android'}
-                    updateCellsBatchingPeriod={30}
+                    initialNumToRender={24}
+                    maxToRenderPerBatch={24}
+                    windowSize={11}
+                    removeClippedSubviews={false}
+                    updateCellsBatchingPeriod={40}
                     renderItem={({ item, index }) => {
                         const isSelected = selectedIds.includes(item.id);
                         return (
@@ -847,7 +858,7 @@ export default function LibraryScreen({ route, navigation }) {
                         );
                     }}
                     onEndReached={loadMore}
-                    onEndReachedThreshold={0.5}
+                    onEndReachedThreshold={0.4}
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
@@ -856,6 +867,13 @@ export default function LibraryScreen({ route, navigation }) {
                         />
                     }
                     contentContainerStyle={styles.listContent}
+                    ListFooterComponent={
+                        hasMore ? (
+                            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color="#0A84FF" />
+                            </View>
+                        ) : null
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
                             <SFSymbol name={activeAlbum ? 'folder' : 'photos'} size={54} color="#8E8E93" />
