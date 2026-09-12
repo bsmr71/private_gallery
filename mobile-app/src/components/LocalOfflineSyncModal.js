@@ -113,10 +113,15 @@ export default function LocalOfflineSyncModal({
 
                                 if (res.cancelled) {
                                     Alert.alert('Unduhan Dibatalkan', 'Proses unduh ke cache aplikasi telah dihentikan.');
+                                } else if (res.successCount === 0 && res.skippedCount > 0) {
+                                    Alert.alert(
+                                        'Semua Berkas Sudah Lengkap! ⚡',
+                                        `Seluruh ${res.skippedCount} foto & video sudah tersimpan di memori cache aplikasi Anda sebelumnya.\n\nTidak ada berkas baru yang perlu diunduh. Galeri di aplikasi ini sudah 100% offline dan siap dibuka instan 0 detik tanpa loading!`
+                                    );
                                 } else {
                                     Alert.alert(
                                         'Unduhan Selesai ⚡',
-                                        `Berhasil menyimpan ${res.successCount} berkas ke cache aplikasi (${res.skippedCount} berkas sudah ada sebelumnya). Galeri di aplikasi ini kini dapat dibuka seketika tanpa loading dan 100% offline!`
+                                        `Berhasil mengunduh ${res.successCount} berkas baru ke cache aplikasi${res.skippedCount > 0 ? ` (${res.skippedCount} berkas sudah lengkap sebelumnya)` : ''}.\n\nGaleri di aplikasi ini kini dapat dibuka seketika tanpa loading dan 100% offline!`
                                     );
                                 }
                             },
@@ -148,10 +153,25 @@ export default function LocalOfflineSyncModal({
                         setExportingToDevice(true);
                         try {
                             const { ApiService } = require('../services/api');
-                            const params = { all: 1, per_page: 2000 };
-                            if (albumIdToUse) params.album_id = albumIdToUse;
-                            const res = await ApiService.getMedia(params);
-                            const itemsToExport = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                            let currentPage = 1;
+                            let itemsToExport = [];
+                            let hasMore = true;
+
+                            while (hasMore) {
+                                const params = { all: 1, per_page: 2000, page: currentPage };
+                                if (albumIdToUse) params.album_id = albumIdToUse;
+                                const res = await ApiService.getMedia(params);
+                                if (res && res.success && Array.isArray(res.data)) {
+                                    itemsToExport = itemsToExport.concat(res.data);
+                                    if (res.meta && res.meta.current_page < res.meta.last_page && res.data.length > 0) {
+                                        currentPage++;
+                                    } else {
+                                        hasMore = false;
+                                    }
+                                } else {
+                                    hasMore = false;
+                                }
+                            }
 
                             if (itemsToExport.length === 0) {
                                 Alert.alert('Informasi', 'Tidak ada media untuk diekspor.');

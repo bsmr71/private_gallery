@@ -341,14 +341,26 @@ export const LocalVaultService = {
             let targetItems = items;
             if (!targetItems || targetItems.length === 0) {
                 const { ApiService } = require('./api');
-                const params = { all: 1, per_page: 2000 };
-                if (albumId) params.album_id = albumId;
-                const res = await ApiService.getMedia(params);
-                if (res && res.success && Array.isArray(res.data)) {
-                    targetItems = res.data;
-                } else {
-                    targetItems = [];
+                let currentPage = 1;
+                let allFetched = [];
+                let hasMore = true;
+
+                while (hasMore && !this._downloadCancelled) {
+                    const params = { all: 1, per_page: 2000, page: currentPage };
+                    if (albumId) params.album_id = albumId;
+                    const res = await ApiService.getMedia(params);
+                    if (res && res.success && Array.isArray(res.data)) {
+                        allFetched = allFetched.concat(res.data);
+                        if (res.meta && res.meta.current_page < res.meta.last_page && res.data.length > 0) {
+                            currentPage++;
+                        } else {
+                            hasMore = false;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
                 }
+                targetItems = allFetched;
             }
 
             const total = targetItems.length;

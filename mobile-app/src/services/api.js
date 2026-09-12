@@ -77,6 +77,7 @@ export const ApiService = {
         if (params.album_id) qs.append('album_id', params.album_id);
         if (params.search) qs.append('search', params.search);
         if (params.per_page) qs.append('per_page', params.per_page);
+        if (params.all) qs.append('all', '1');
 
         const query = qs.toString() ? `?${qs.toString()}` : '';
         return this.request(`/media${query}`);
