@@ -1785,7 +1785,7 @@ async function loadDuplicatesData() {
                                 <span>${escapeHtml(group.filename)}</span>
                             </div>
                             <div class="dup-group-meta">
-                                ${group.formatted_size} per file • ${group.copy_count} salinan identik • Potensi hemat ${group.formatted_wasted}
+                                ${group.formatted_size} per file • ${group.copy_count} berkas identik • Potensi hemat ${group.formatted_wasted}
                             </div>
                         </div>
                         <button type="button" class="btn-merge-group" onclick="mergeDuplicateGroup('${groupKey}', ${keeperId}, ${JSON.stringify(duplicateIds)})">
@@ -1816,6 +1816,7 @@ async function loadDuplicatesData() {
                             ${isVid ? '<span style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;">VIDEO</span>' : ''}
                         </div>
                         <div class="dup-item-info">
+                            <span class="dup-item-filename" style="font-size:11.5px; font-weight:600; color:var(--text-primary, #fff); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; margin-bottom:2px;" title="${escapeHtml(item.original_filename || item.title)}">${escapeHtml(item.original_filename || item.title)}</span>
                             <span class="dup-item-date">${item.formatted_date || '-'}</span>
                             <span class="dup-item-album">${item.album_name ? '📁 ' + escapeHtml(item.album_name) : 'Semua Foto'}</span>
                             ${!isKeeper ? `

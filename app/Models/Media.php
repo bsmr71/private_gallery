@@ -120,4 +120,144 @@ class Media extends Model
         $bytes /= (1 << (10 * $pow));
         return round($bytes, $precision) . ' ' . $units[$pow];
     }
+
+    /**
+     * Get duplicate media clusters.
+     * Clusters are collections of Media items where count >= 2.
+     *
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, Media>>
+     */
+    public static function getDuplicateClusters(): \Illuminate\Support\Collection
+    {
+        // 1. Find all sizes (grouped by type) that appear more than once (size > 0)
+        $duplicateSizes = \Illuminate\Support\Facades\DB::table('media')
+            ->select('size', 'type')
+            ->where('size', '>', 0)
+            ->groupBy('size', 'type')
+            ->havingRaw('COUNT(*) > 1')
+            ->get();
+
+        // 2. Find all drive_file_ids that appear more than once
+        $duplicateDrives = \Illuminate\Support\Facades\DB::table('media')
+            ->select('drive_file_id')
+            ->whereNotNull('drive_file_id')
+            ->where('drive_file_id', '!=', '')
+            ->groupBy('drive_file_id')
+            ->havingRaw('COUNT(*) > 1')
+            ->get();
+
+        if ($duplicateSizes->isEmpty() && $duplicateDrives->isEmpty()) {
+            return collect();
+        }
+
+        // 3. Query all candidate media items
+        $query = static::with('album');
+        $hasWhere = false;
+
+        if ($duplicateSizes->isNotEmpty()) {
+            $query->where(function ($q) use ($duplicateSizes) {
+                foreach ($duplicateSizes as $ds) {
+                    $q->orWhere(function ($sub) use ($ds) {
+                        $sub->where('size', $ds->size)->where('type', $ds->type);
+                    });
+                }
+            });
+            $hasWhere = true;
+        }
+
+        if ($duplicateDrives->isNotEmpty()) {
+            $driveIds = $duplicateDrives->pluck('drive_file_id')->filter()->values();
+            if ($hasWhere) {
+                $query->orWhereIn('drive_file_id', $driveIds);
+            } else {
+                $query->whereIn('drive_file_id', $driveIds);
+            }
+        }
+
+        $allCandidates = $query->get();
+
+        // 4. Cluster using Disjoint-Set Union (DSU)
+        $parent = [];
+        $find = function ($i) use (&$parent, &$find) {
+            if (!isset($parent[$i])) {
+                $parent[$i] = $i;
+            }
+            if ($parent[$i] !== $i) {
+                $parent[$i] = $find($parent[$i]);
+            }
+            return $parent[$i];
+        };
+        $union = function ($i, $j) use (&$parent, &$find) {
+            $rootI = $find($i);
+            $rootJ = $find($j);
+            if ($rootI !== $rootJ) {
+                $parent[$rootI] = $rootJ;
+            }
+        };
+
+        $bySizeType = [];
+        $byDrive = [];
+
+        foreach ($allCandidates as $item) {
+            if ($item->size > 0) {
+                $stKey = $item->type . '_' . $item->size;
+                if (!isset($bySizeType[$stKey])) {
+                    $bySizeType[$stKey] = $item->id;
+                } else {
+                    $union($item->id, $bySizeType[$stKey]);
+                }
+            }
+
+            if (!empty($item->drive_file_id)) {
+                $dKey = $item->drive_file_id;
+                if (!isset($byDrive[$dKey])) {
+                    $byDrive[$dKey] = $item->id;
+                } else {
+                    $union($item->id, $byDrive[$dKey]);
+                }
+            }
+        }
+
+        $clusters = [];
+        foreach ($allCandidates as $item) {
+            $root = $find($item->id);
+            $clusters[$root][] = $item;
+        }
+
+        $result = collect();
+        foreach ($clusters as $clusterItems) {
+            if (count($clusterItems) >= 2) {
+                // Sort within cluster:
+                // 1. is_favorite DESC
+                // 2. has album_id DESC
+                // 3. created_at ASC
+                $sorted = collect($clusterItems)->sort(function ($a, $b) {
+                    if ($a->is_favorite !== $b->is_favorite) {
+                        return $b->is_favorite <=> $a->is_favorite;
+                    }
+                    $aHasAlbum = !empty($a->album_id);
+                    $bHasAlbum = !empty($b->album_id);
+                    if ($aHasAlbum !== $bHasAlbum) {
+                        return $bHasAlbum <=> $aHasAlbum;
+                    }
+                    return $a->created_at <=> $b->created_at;
+                })->values();
+
+                $result->push($sorted);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get total count of redundant duplicate copies across all clusters.
+     */
+    public static function getDuplicateCopiesCount(): int
+    {
+        $clusters = static::getDuplicateClusters();
+        return (int)$clusters->sum(function ($cluster) {
+            return max(0, $cluster->count() - 1);
+        });
+    }
 }

@@ -81,16 +81,6 @@ class MediaController extends Controller
                 $title = $request->title ?: pathinfo($originalName, PATHINFO_FILENAME);
                 $size = $file->getSize();
 
-                // Prevent duplicate upload if file with identical size and original filename already exists
-                $existingMedia = Media::where('size', $size)
-                    ->where('original_filename', $originalName)
-                    ->first();
-
-                if ($existingMedia) {
-                    $uploaded[] = $existingMedia;
-                    continue;
-                }
-
                 // Move uploaded file to safe local temp storage inside project
                 $tempDir = storage_path('app/temp_uploads');
                 if (!is_dir($tempDir)) {
@@ -184,7 +174,7 @@ class MediaController extends Controller
 
         if (!$cachedPath) {
             // Download from Drive and decrypt
-            $tempEncrypted = tempnam(sys_get_temp_dir(), 'drv_');
+            $tempEncrypted = @tempnam(sys_get_temp_dir(), 'drv_');
 
             try {
                 $this->driveService->download($media->drive_file_id, $tempEncrypted);
@@ -222,7 +212,7 @@ class MediaController extends Controller
         $cachedPath = $this->cacheService->getCachedPath($media);
 
         if (!$cachedPath) {
-            $tempEncrypted = tempnam(sys_get_temp_dir(), 'drv_');
+            $tempEncrypted = @tempnam(sys_get_temp_dir(), 'drv_');
 
             try {
                 $this->driveService->download($media->drive_file_id, $tempEncrypted);
@@ -261,7 +251,7 @@ class MediaController extends Controller
             if ($media->thumb_drive_id) {
                 // Download thumbnail from Drive
                 try {
-                    $tempEncrypted = tempnam(sys_get_temp_dir(), 'thb_');
+                    $tempEncrypted = @tempnam(sys_get_temp_dir(), 'thb_');
                     $this->driveService->download($media->thumb_drive_id, $tempEncrypted);
                     $decryptedPath = $this->encryptionService->decryptFile($tempEncrypted);
                     @unlink($tempEncrypted);
@@ -306,7 +296,7 @@ class MediaController extends Controller
                 $cachedPath = $this->cacheService->getCachedPath($media);
                 if (!$cachedPath) {
                     // Need to download and decrypt first
-                    $tempEncrypted = tempnam(sys_get_temp_dir(), 'drv_');
+                    $tempEncrypted = @tempnam(sys_get_temp_dir(), 'drv_');
                     try {
                         $this->driveService->download($media->drive_file_id, $tempEncrypted);
                         $decryptedPath = $this->encryptionService->decryptFile($tempEncrypted);
@@ -1329,7 +1319,7 @@ class MediaController extends Controller
 
             try {
                 if (!$cachedPath || !file_exists($cachedPath)) {
-                    $tempEncrypted = tempnam(sys_get_temp_dir(), 'drv_vid_');
+                    $tempEncrypted = @tempnam(sys_get_temp_dir(), 'drv_vid_');
                     $this->driveService->download($media->drive_file_id, $tempEncrypted);
                     $tempDecrypted = $this->encryptionService->decryptFile($tempEncrypted);
                     @unlink($tempEncrypted);

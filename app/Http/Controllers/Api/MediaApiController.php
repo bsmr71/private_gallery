@@ -613,30 +613,20 @@ class MediaApiController extends Controller
      */
     public function duplicates(Request $request): JsonResponse
     {
-        $duplicateGroups = \Illuminate\Support\Facades\DB::table('media')
-            ->select('size', 'original_filename', \Illuminate\Support\Facades\DB::raw('COUNT(*) as copy_count'))
-            ->groupBy('size', 'original_filename')
-            ->having('copy_count', '>', 1)
-            ->get();
+        $clusters = Media::getDuplicateClusters();
 
         $groups = [];
         $totalWastedBytes = 0;
         $totalDuplicateCopies = 0;
 
-        foreach ($duplicateGroups as $dg) {
-            $items = Media::with('album')
-                ->where('size', $dg->size)
-                ->where('original_filename', $dg->original_filename)
-                ->orderByDesc('is_favorite')
-                ->orderBy('created_at')
-                ->get();
-
-            if ($items->count() < 2) continue;
-
+        foreach ($clusters as $items) {
             $keeper = $items->first();
-            $wasted = ($items->count() - 1) * $dg->size;
+            $redundantItems = $items->slice(1);
+            $extraCount = $redundantItems->count();
+            $wasted = (int)$redundantItems->sum('size');
+
             $totalWastedBytes += $wasted;
-            $totalDuplicateCopies += ($items->count() - 1);
+            $totalDuplicateCopies += $extraCount;
 
             $formattedItems = $items->map(function ($m) use ($request, $keeper) {
                 $f = $this->formatMediaItem($m, $request);
@@ -645,10 +635,10 @@ class MediaApiController extends Controller
             });
 
             $groups[] = [
-                'group_key' => md5($dg->original_filename . '_' . $dg->size),
-                'filename' => $dg->original_filename,
-                'size' => $dg->size,
-                'formatted_size' => Media::formatBytes($dg->size),
+                'group_key' => md5('dup_' . $keeper->id . '_' . $keeper->size . '_' . $items->count()),
+                'filename' => $keeper->original_filename,
+                'size' => $keeper->size,
+                'formatted_size' => Media::formatBytes($keeper->size),
                 'wasted_bytes' => $wasted,
                 'formatted_wasted' => Media::formatBytes($wasted),
                 'copy_count' => $items->count(),
@@ -680,21 +670,9 @@ class MediaApiController extends Controller
         $freedBytes = 0;
 
         if ($all) {
-            $duplicateGroups = \Illuminate\Support\Facades\DB::table('media')
-                ->select('size', 'original_filename', \Illuminate\Support\Facades\DB::raw('COUNT(*) as copy_count'))
-                ->groupBy('size', 'original_filename')
-                ->having('copy_count', '>', 1)
-                ->get();
+            $clusters = Media::getDuplicateClusters();
 
-            foreach ($duplicateGroups as $dg) {
-                $items = Media::where('size', $dg->size)
-                    ->where('original_filename', $dg->original_filename)
-                    ->orderByDesc('is_favorite')
-                    ->orderBy('created_at')
-                    ->get();
-
-                if ($items->count() < 2) continue;
-
+            foreach ($clusters as $items) {
                 $redundant = $items->slice(1);
 
                 foreach ($redundant as $dup) {
@@ -754,10 +732,23 @@ class MediaApiController extends Controller
     {
         try {
             if ($media->drive_file_id) {
-                $this->driveService->delete($media->drive_file_id);
+                // Safety check: only delete from Google Drive if no other media record uses this file ID
+                $stillUsed = Media::where('drive_file_id', $media->drive_file_id)
+                    ->where('id', '!=', $media->id)
+                    ->exists();
+
+                if (!$stillUsed) {
+                    $this->driveService->delete($media->drive_file_id);
+                }
             }
             if ($media->thumb_drive_id) {
-                $this->driveService->delete($media->thumb_drive_id);
+                $thumbStillUsed = Media::where('thumb_drive_id', $media->thumb_drive_id)
+                    ->where('id', '!=', $media->id)
+                    ->exists();
+
+                if (!$thumbStillUsed) {
+                    $this->driveService->delete($media->thumb_drive_id);
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('Failed deleting duplicate Drive file: ' . $e->getMessage());
