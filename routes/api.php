@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AlbumApiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChunkUploadApiController;
 use App\Http\Controllers\Api\MediaApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +33,13 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
     Route::get('/media/{media}/thumbnail', [MediaApiController::class, 'thumbnail'])->name('api.media.thumbnail');
     Route::get('/media/{media}/download', [MediaApiController::class, 'download'])->name('api.media.download');
     Route::post('/media/upload', [MediaApiController::class, 'upload']);
+    Route::prefix('media/upload-chunk')->group(function () {
+        Route::post('/init', [ChunkUploadApiController::class, 'init']);
+        Route::post('/', [ChunkUploadApiController::class, 'uploadChunk']);
+        Route::get('/{uploadId}/status', [ChunkUploadApiController::class, 'status']);
+        Route::post('/complete', [ChunkUploadApiController::class, 'complete']);
+        Route::post('/cancel', [ChunkUploadApiController::class, 'cancel']);
+    });
     Route::post('/media/{media}/favorite', [MediaApiController::class, 'toggleFavorite']);
     Route::post('/media/{media}/rename', [MediaApiController::class, 'rename']);
     Route::post('/media/move', [MediaApiController::class, 'move']);

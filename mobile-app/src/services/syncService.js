@@ -7,6 +7,7 @@ import { ApiService } from './api';
 import { StorageService } from './storage';
 import { NativeSyncService } from './nativeSyncService';
 import { LocalVaultService } from './localVaultService';
+import { ChunkUploadService } from './chunkUploadService';
 
 const StorageAccessFramework =
     FileSystemLegacy?.StorageAccessFramework ||
@@ -342,22 +343,56 @@ export const SyncService = {
                     );
 
                     // Upload to cloud (AES-256 encrypted storage) with progress
-                    const uploadRes = await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
-                        const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / total) * 100));
-                        notifySync({
-                            percentage: overallPercent,
-                        });
-                        if (onProgress) {
-                            onProgress({
-                                current: i + 1,
-                                total,
+                    let uploadRes;
+                    const useChunk = ChunkUploadService.shouldUseChunkUpload(asset.fileSize, isVideo);
+
+                    if (useChunk) {
+                        console.log(`[SyncService] Menggunakan mesin chunk upload untuk: ${asset.filename}`);
+                        uploadRes = await ChunkUploadService.uploadLargeFile(
+                            {
+                                ...asset,
+                                thumbnailUri: extractedThumbUri,
+                            },
+                            {
+                                albumId: cloudAlbumId,
+                                title: asset.filename,
+                                isAbortedCheck: () => isSyncAborted,
+                                onProgress: (percent) => {
+                                    const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / total) * 100));
+                                    notifySync({
+                                        percentage: overallPercent,
+                                    });
+                                    if (onProgress) {
+                                        onProgress({
+                                            current: i + 1,
+                                            total,
+                                            percentage: overallPercent,
+                                            asset,
+                                            itemPercent: percent,
+                                            success: true,
+                                        });
+                                    }
+                                },
+                            }
+                        );
+                    } else {
+                        uploadRes = await ApiService.uploadMedia(filePayload, cloudAlbumId, asset.filename, (percent) => {
+                            const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / total) * 100));
+                            notifySync({
                                 percentage: overallPercent,
-                                asset,
-                                itemPercent: percent,
-                                success: true,
                             });
-                        }
-                    });
+                            if (onProgress) {
+                                onProgress({
+                                    current: i + 1,
+                                    total,
+                                    percentage: overallPercent,
+                                    asset,
+                                    itemPercent: percent,
+                                    success: true,
+                                });
+                            }
+                        });
+                    }
 
                     successCount++;
 
@@ -372,7 +407,7 @@ export const SyncService = {
                     }
 
                     // Preserve copy in private offline sandbox for 0.05s instant playback
-                    const uploadedMediaId = uploadRes?.uploaded?.[0]?.id;
+                    const uploadedMediaId = uploadRes?.uploaded?.[0]?.id || uploadRes?.media?.id;
                     const keepLocal = await StorageService.getKeepLocalVault();
                     if (uploadedMediaId && keepLocal) {
                         try {

@@ -12,6 +12,8 @@ import * as ScreenCapture from 'expo-screen-capture';
 import AppLockOverlay from './src/components/AppLockOverlay';
 import SFSymbol from './src/components/SFSymbol';
 import { LocalVaultService } from './src/services/localVaultService';
+import { BackgroundSyncService } from './src/services/backgroundSyncService';
+import { SyncService } from './src/services/syncService';
 
 // Suppress harmless development connection warnings so user screen remains clean
 LogBox.ignoreLogs([
@@ -195,6 +197,8 @@ export default function App() {
                 }
                 // Verify session with server and check for remote PIN reset
                 checkSecuritySync();
+                // Initialize background sync task with OS scheduler
+                BackgroundSyncService.init().catch(() => {});
             }
         } catch (e) {
             setIsAuthenticated(false);
@@ -203,7 +207,7 @@ export default function App() {
         }
     };
 
-    // Auto-Lock & Multitasking Privacy Shield lifecycle
+    // Auto-Lock & Multitasking Privacy Shield lifecycle & Background Sync
     useEffect(() => {
         if (!isAuthenticated) return;
 
@@ -211,6 +215,9 @@ export default function App() {
             if (nextAppState === 'inactive' || nextAppState === 'background') {
                 SecurityService.recordBackgroundTime();
                 setPrivacyShield(true);
+
+                // Immediately trigger sync in background when app is minimized or closed
+                SyncService.triggerAutoSyncIfPending().catch(() => {});
 
                 // Lock SYNCHRONOUSLY before app leaves screen so it is ALREADY locked in background!
                 if (SecurityService.isLockEnabledSync()) {
@@ -231,6 +238,9 @@ export default function App() {
 
                 // Check for remote PIN reset or remote session revoke
                 checkSecuritySync();
+
+                // Trigger sync check on returning to active app
+                SyncService.triggerAutoSyncIfPending().catch(() => {});
 
                 // Dismiss privacy shield safely after lock state settles
                 setTimeout(() => {

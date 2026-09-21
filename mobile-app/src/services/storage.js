@@ -182,5 +182,46 @@ export const StorageService = {
             await AsyncStorage.setItem('@vault_keep_local_vault', boolVal ? 'true' : 'false');
         } catch (e) {}
     },
+
+    // Background Sync setting (Allows syncing when app is closed / minimized)
+    async getBackgroundSyncEnabled() {
+        try {
+            const val = await AsyncStorage.getItem('@vault_background_sync_enabled');
+            return val !== 'false'; // Default enabled
+        } catch (e) {
+            return true;
+        }
+    },
+
+    async setBackgroundSyncEnabled(boolVal) {
+        try {
+            await AsyncStorage.setItem('@vault_background_sync_enabled', boolVal ? 'true' : 'false');
+        } catch (e) {}
+    },
+
+    // Active Chunk Upload Session Persistence (for resuming interrupted large uploads)
+    async getActiveChunkSession(fileUri) {
+        try {
+            const raw = await AsyncStorage.getItem(`@chunk_session_${encodeURIComponent(fileUri)}`);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setActiveChunkSession(fileUri, sessionData) {
+        try {
+            await AsyncStorage.setItem(
+                `@chunk_session_${encodeURIComponent(fileUri)}`,
+                JSON.stringify(sessionData)
+            );
+        } catch (e) {}
+    },
+
+    async clearActiveChunkSession(fileUri) {
+        try {
+            await AsyncStorage.removeItem(`@chunk_session_${encodeURIComponent(fileUri)}`);
+        } catch (e) {}
+    },
 };
 

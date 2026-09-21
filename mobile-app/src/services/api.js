@@ -291,6 +291,74 @@ export const ApiService = {
         }
     },
 
+    // Chunk Upload for Large Files
+    async initChunkUpload(payload) {
+        return this.request('/media/upload-chunk/init', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async uploadChunkPart(uploadId, chunkIndex, tempChunkUri) {
+        const baseUrl = await StorageService.getApiUrl();
+        const token = await StorageService.getToken();
+        const url = `${baseUrl.replace(/\/$/, '')}/media/upload-chunk`;
+
+        const headers = {
+            'Accept': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const uploadType = FileSystemLegacy?.FileSystemUploadType?.MULTIPART !== undefined
+            ? FileSystemLegacy.FileSystemUploadType.MULTIPART
+            : 1;
+
+        const response = await FileSystemLegacy.uploadAsync(url, tempChunkUri, {
+            httpMethod: 'POST',
+            uploadType: uploadType,
+            fieldName: 'chunk',
+            parameters: {
+                upload_id: String(uploadId),
+                chunk_index: String(chunkIndex),
+            },
+            headers,
+        });
+
+        if (response.status >= 200 && response.status < 300) {
+            try {
+                return JSON.parse(response.body);
+            } catch (e) {
+                return { success: true };
+            }
+        }
+
+        let parsed = null;
+        try {
+            parsed = JSON.parse(response.body);
+        } catch (e) {}
+        throw new Error(parsed?.message || `Gagal mengunggah potongan chunk ${chunkIndex} (HTTP ${response.status})`);
+    },
+
+    async getChunkStatus(uploadId) {
+        return this.request(`/media/upload-chunk/${encodeURIComponent(uploadId)}/status`);
+    },
+
+    async completeChunkUpload(payload) {
+        return this.request('/media/upload-chunk/complete', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async cancelChunkUpload(uploadId) {
+        return this.request('/media/upload-chunk/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId }),
+        });
+    },
+
     // Duplicates Management
     async getDuplicates() {
         return this.request('/media-duplicates');
