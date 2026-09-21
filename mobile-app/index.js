@@ -1,5 +1,6 @@
 import { registerRootComponent } from 'expo';
 import './src/services/backgroundSyncService';
+import './src/services/nativeSyncService';
 
 import App from './App';
 

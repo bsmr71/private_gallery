@@ -268,6 +268,7 @@ export const SyncService = {
         let deletedCount = 0;
         const total = assets.length;
         let lastError = null;
+        let consecutiveNetworkErrors = 0;
 
         notifySync({
             isSyncing: true,
@@ -283,7 +284,8 @@ export const SyncService = {
         // Keep Android process alive even when app is minimized
         await NativeSyncService.startForegroundSync(
             'Lumina: Sinkronisasi Brankas',
-            `Menyinkronkan ${total} berkas ke Cloud...`
+            `Menyinkronkan ${total} berkas ke Cloud...`,
+            total
         );
 
         try {
@@ -448,6 +450,7 @@ export const SyncService = {
                     }
 
                     const itemDonePercent = Math.round(((i + 1) / total) * 100);
+                    consecutiveNetworkErrors = 0;
                     notifySync({
                         current: i + 1,
                         total,
@@ -469,6 +472,34 @@ export const SyncService = {
                     lastError = err?.message || String(err);
                     console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
                     failCount++;
+
+                    // Check if error is network disconnection / background restriction
+                    const errMsg = (lastError || '').toLowerCase();
+                    const isNetworkErr =
+                        errMsg.includes('network request failed') ||
+                        errMsg.includes('koneksi terputus') ||
+                        errMsg.includes('timeout') ||
+                        errMsg.includes('aborted') ||
+                        errMsg.includes('failed to connect');
+
+                    if (isNetworkErr) {
+                        consecutiveNetworkErrors++;
+                        if (consecutiveNetworkErrors >= 3) {
+                            console.warn('[SyncService] 3 kegagalan jaringan berturut-turut. Sinkronisasi dijeda agar antrean tidak hangus.');
+                            notifySync({
+                                isSyncing: false,
+                                isPaused: true,
+                                pauseReason: 'Jaringan terputus saat di latar belakang',
+                                currentFilename: 'Jaringan terputus (dijeda)',
+                                successCount,
+                                failCount,
+                            });
+                            break;
+                        }
+                    } else {
+                        consecutiveNetworkErrors = 0;
+                    }
+
                     notifySync({
                         failCount,
                     });
@@ -488,12 +519,16 @@ export const SyncService = {
             isGlobalSyncRunning = false;
             notifySync({
                 isSyncing: false,
-                currentFilename: isSyncAborted ? 'Sinkronisasi Dibatalkan' : 'Sinkronisasi Selesai',
+                currentFilename: isSyncAborted ? 'Sinkronisasi Dibatalkan' : (failCount > 0 ? `Selesai (${successCount} sukses, ${failCount} gagal)` : 'Sinkronisasi Selesai'),
                 percentage: 100,
                 successCount,
                 failCount,
             });
-            await NativeSyncService.stopForegroundSync();
+            await NativeSyncService.stopForegroundSync({
+                successCount,
+                failCount,
+                total,
+            });
         }
 
         return {

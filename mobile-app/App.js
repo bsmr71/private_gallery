@@ -14,6 +14,7 @@ import SFSymbol from './src/components/SFSymbol';
 import { LocalVaultService } from './src/services/localVaultService';
 import { BackgroundSyncService } from './src/services/backgroundSyncService';
 import { SyncService } from './src/services/syncService';
+import SyncStatusBar from './src/components/SyncStatusBar';
 
 // Suppress harmless development connection warnings so user screen remains clean
 LogBox.ignoreLogs([
@@ -326,6 +327,9 @@ export default function App() {
                             <MainTabs onLogout={handleLogout} />
                         </NavigationContainer>
                     </View>
+
+                    {/* Global Status Bar Progress Bar & Island Pill */}
+                    {!isLocked && <SyncStatusBar />}
 
                     {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
                     {privacyShield && (

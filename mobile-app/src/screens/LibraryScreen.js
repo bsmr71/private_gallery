@@ -622,25 +622,6 @@ export default function LibraryScreen({ route, navigation }) {
 
     return (
         <View style={styles.container}>
-            {/* iOS Dynamic Island Style AutoSync Pill (Clickable to open VaultSyncModal) */}
-            {autoSyncStatus && (
-                <TouchableOpacity
-                    style={styles.autoSyncPillOuter}
-                    onPress={() => setSyncModalVisible(true)}
-                    activeOpacity={0.8}
-                >
-                    <BlurView tint="dark" intensity={85} style={StyleSheet.absoluteFill} />
-                    <View style={styles.autoSyncPillInner}>
-                        {autoSyncStatus.type === 'syncing' ? (
-                            <ActivityIndicator size="small" color="#0A84FF" style={{ marginRight: 8 }} />
-                        ) : (
-                            <SFSymbol name="checkmark" size={14} color="#30D158" style={{ marginRight: 8 }} />
-                        )}
-                        <Text style={styles.autoSyncPillText}>{autoSyncStatus.message}</Text>
-                    </View>
-                </TouchableOpacity>
-            )}
-
             {/* Header (Authentic Apple Photos Style) */}
             <View style={styles.header}>
                 {activeAlbum ? (
