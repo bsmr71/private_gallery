@@ -34,8 +34,9 @@ async function ensureSyncChannel() {
 
 export const NativeSyncService = {
     /**
-     * Start ongoing Android system notification with native progress bar and Foreground Service.
-     * This keeps the Android OS from killing the app or network sockets when minimized or screen is locked.
+     * Start ongoing Android system notification with native progress bar.
+     * Uses standard ongoing system notifications without Foreground Service
+     * to avoid Android 14 FGS restrictions and React Native New Architecture ANRs.
      */
     async startForegroundSync(title = 'Lumina: Sinkronisasi Brankas', message = 'Menyiapkan berkas...', total = 100) {
         if (!notifee || Platform.OS !== 'android') return;
@@ -48,13 +49,15 @@ export const NativeSyncService = {
                 await notifee.requestPermission();
             } catch (pErr) {}
 
+            lastNotificationUpdate = Date.now();
+            lastNotificationPercent = 0;
+
             await notifee.displayNotification({
                 id: SYNC_NOTIFICATION_ID,
                 title: title,
                 body: message,
                 android: {
                     channelId: SYNC_CHANNEL_ID,
-                    asForegroundService: true,
                     ongoing: true,
                     onlyAlertOnce: true,
                     autoCancel: false,
@@ -76,6 +79,7 @@ export const NativeSyncService = {
 
     /**
      * Update the native progress bar in Android system status bar & notification shade.
+     * Throttled to prevent Android NotificationManager spam and preserve 60fps performance.
      */
     async updateProgress(current, total, message = 'Menyinkronkan...') {
         if (!notifee || Platform.OS !== 'android') return;
@@ -86,6 +90,16 @@ export const NativeSyncService = {
             const cur = Number(current) || 0;
             const max = Math.max(1, Number(total) || 1);
             const percent = Math.min(100, Math.round((cur / max) * 100));
+            const now = Date.now();
+
+            // Throttle notification updates: at least 350ms between updates unless finishing
+            const isCompleted = cur >= max || percent >= 100;
+            if (!isCompleted && percent === lastNotificationPercent && (now - lastNotificationUpdate < 350)) {
+                return;
+            }
+
+            lastNotificationUpdate = now;
+            lastNotificationPercent = percent;
 
             await notifee.displayNotification({
                 id: SYNC_NOTIFICATION_ID,
@@ -93,7 +107,6 @@ export const NativeSyncService = {
                 body: `${message} • ${percent}%`,
                 android: {
                     channelId: SYNC_CHANNEL_ID,
-                    asForegroundService: true,
                     ongoing: true,
                     onlyAlertOnce: true,
                     autoCancel: false,
@@ -114,13 +127,19 @@ export const NativeSyncService = {
     },
 
     /**
-     * Stop foreground service and optionally post a brief completion notice.
+     * Stop ongoing sync notification and optionally post a brief completion notice.
      */
     async stopForegroundSync(summary = null) {
         if (!notifee || Platform.OS !== 'android') return;
 
         try {
-            await notifee.stopForegroundService();
+            // Cancel the ongoing progress notification
+            await notifee.cancelNotification(SYNC_NOTIFICATION_ID);
+
+            // Defensive cleanup in case any old foreground service was lingering
+            try {
+                await notifee.stopForegroundService();
+            } catch (ignoreErr) {}
 
             if (summary && (summary.successCount > 0 || summary.failCount > 0)) {
                 const isAllSuccess = (summary.failCount || 0) === 0;
@@ -141,24 +160,11 @@ export const NativeSyncService = {
                     },
                 });
             }
-
-            // Cancel the ongoing progress notification
-            await notifee.cancelNotification(SYNC_NOTIFICATION_ID);
         } catch (e) {
             console.warn('[NativeSyncService] stopForegroundSync error:', e);
         }
     },
 };
 
-// Register Android foreground service runner as early as possible
-if (notifee && Platform.OS === 'android') {
-    try {
-        notifee.registerForegroundService(() => {
-            return new Promise(() => {
-                // Kept active by notifee until stopForegroundService is invoked
-            });
-        });
-    } catch (e) {
-        console.warn('[NativeSyncService] registerForegroundService initialization warning:', e);
-    }
-}
+let lastNotificationUpdate = 0;
+let lastNotificationPercent = -1;

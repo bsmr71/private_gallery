@@ -218,7 +218,9 @@ export default function App() {
                 setPrivacyShield(true);
 
                 // Immediately trigger sync in background when app is minimized or closed
-                SyncService.triggerAutoSyncIfPending().catch(() => {});
+                if (nextAppState === 'background') {
+                    SyncService.triggerAutoSyncIfPending().catch(() => {});
+                }
 
                 // Lock SYNCHRONOUSLY before app leaves screen so it is ALREADY locked in background!
                 if (SecurityService.isLockEnabledSync()) {

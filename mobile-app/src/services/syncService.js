@@ -281,12 +281,14 @@ export const SyncService = {
             failCount: 0,
         });
 
-        // Keep Android process alive even when app is minimized
-        await NativeSyncService.startForegroundSync(
-            'Lumina: Sinkronisasi Brankas',
-            `Menyinkronkan ${total} berkas ke Cloud...`,
-            total
-        );
+        // Native progress bar in system notification panel
+        try {
+            await NativeSyncService.startForegroundSync(
+                'Lumina: Sinkronisasi Brankas',
+                `Menyinkronkan ${total} berkas ke Cloud...`,
+                total
+            );
+        } catch (notifErr) {}
 
         try {
             for (let i = 0; i < total; i++) {
@@ -338,11 +340,13 @@ export const SyncService = {
                         failCount,
                     });
 
-                    await NativeSyncService.updateProgress(
-                        i + 1,
-                        total,
-                        `Mengunggah ${asset.filename || 'berkas'} (${i + 1}/${total})...`
-                    );
+                    try {
+                        await NativeSyncService.updateProgress(
+                            i + 1,
+                            total,
+                            `Mengunggah ${asset.filename || 'berkas'} (${i + 1}/${total})...`
+                        );
+                    } catch (notifErr) {}
 
                     // Upload to cloud (AES-256 encrypted storage) with progress
                     let uploadRes;
@@ -524,11 +528,13 @@ export const SyncService = {
                 successCount,
                 failCount,
             });
-            await NativeSyncService.stopForegroundSync({
-                successCount,
-                failCount,
-                total,
-            });
+            try {
+                await NativeSyncService.stopForegroundSync({
+                    successCount,
+                    failCount,
+                    total,
+                });
+            } catch (notifErr) {}
         }
 
         return {
@@ -553,7 +559,7 @@ export const SyncService = {
     async triggerAutoSyncIfPending(callbacks = {}) {
         const { onStart, onProgress, onComplete, onError } = callbacks;
 
-        if (isGlobalSyncRunning) {
+        if (isGlobalSyncRunning || isAutoSyncScanning) {
             return null;
         }
 
@@ -567,6 +573,7 @@ export const SyncService = {
             return null;
         }
 
+        isAutoSyncScanning = true;
         try {
             const pending = await this.scanVaultFolder();
             if (!pending || pending.length === 0) {
@@ -588,11 +595,14 @@ export const SyncService = {
             console.error('[SyncService] AutoSync error:', err);
             onError && onError(err);
             return null;
+        } finally {
+            isAutoSyncScanning = false;
         }
     },
 };
 
 let isGlobalSyncRunning = false;
+let isAutoSyncScanning = false;
 let isSyncAborted = false;
 let currentSyncState = {
     isSyncing: false,
