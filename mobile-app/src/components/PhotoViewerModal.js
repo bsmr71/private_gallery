@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
     },
     mainImage: {
         width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT * 0.76,
+        height: SCREEN_HEIGHT * 0.70,
     },
     videoPlayOverlay: {
         ...StyleSheet.absoluteFillObject,

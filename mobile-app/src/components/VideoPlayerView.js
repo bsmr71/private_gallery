@@ -17,6 +17,7 @@ import SecureImage from './SecureImage';
 import SFSymbol from './SFSymbol';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.70);
 
 const formatTime = (seconds) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
@@ -36,10 +37,6 @@ export default function VideoPlayerView({
     onHideControls,
     onShowControls,
 }) {
-    const insets = useSafeAreaInsets();
-    const dockClearance = Math.max(insets.bottom, 12) + 84;
-    const topBarClearance = Math.max(insets.top, 24) + 52;
-
     const [loadError, setLoadError] = useState(null);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isBuffering, setIsBuffering] = useState(true);
@@ -366,7 +363,7 @@ export default function VideoPlayerView({
                     pointerEvents={chromeVisible ? 'box-none' : 'none'}
                 >
                     {/* Top Row: Quick Action Badges */}
-                    <View style={[styles.topControlsRow, { paddingTop: topBarClearance }]} pointerEvents="box-none">
+                    <View style={styles.topControlsRow} pointerEvents="box-none">
                         {/* Audio Mute/Unmute */}
                         <TouchableOpacity
                             style={[styles.glassPill, isMuted && styles.glassPillActive]}
@@ -449,7 +446,7 @@ export default function VideoPlayerView({
                     </View>
 
                     {/* Bottom Row: Scrubber Timeline Bar with Elapsed & Total Duration */}
-                    <View style={[styles.bottomControlsBar, { marginBottom: dockClearance }]}>
+                    <View style={styles.bottomControlsBar}>
                         <Text style={styles.timeLabel}>{formatTime(displayTime)}</Text>
 
                         {/* Interactive Scrub Bar */}
@@ -495,8 +492,8 @@ export default function VideoPlayerView({
 
 const styles = StyleSheet.create({
     container: {
-        width: '100%',
-        height: '100%',
+        width: SCREEN_WIDTH,
+        height: VIDEO_HEIGHT,
         backgroundColor: '#000000',
         alignItems: 'center',
         justifyContent: 'center',
@@ -510,6 +507,7 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'space-between',
         backgroundColor: 'rgba(0, 0, 0, 0.25)',
+        paddingVertical: 10,
     },
     topControlsRow: {
         flexDirection: 'row',
