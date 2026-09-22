@@ -419,6 +419,82 @@ export default function SFSymbol({ name, size = 24, color = '#ffffff', focused =
             );
         }
 
+        // --- 19. VIDEO PLAYBACK CONTROLS ---
+        case 'play':
+        case 'play.fill': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M7 5.2L18.5 12L7 18.8V5.2Z" fill={color} />
+                </Svg>
+            );
+        }
+        case 'pause':
+        case 'pause.fill': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Rect x="6.5" y="5" width="3.5" height="14" rx="1.5" fill={color} />
+                    <Rect x="14" y="5" width="3.5" height="14" rx="1.5" fill={color} />
+                </Svg>
+            );
+        }
+        case 'backward.fill':
+        case 'gobackward.10': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M11.5 6.5L3.5 12L11.5 17.5V6.5Z" fill={color} />
+                    <Path d="M20.5 6.5L12.5 12L20.5 17.5V6.5Z" fill={color} />
+                </Svg>
+            );
+        }
+        case 'forward.fill':
+        case 'goforward.10': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M3.5 6.5L11.5 12L3.5 17.5V6.5Z" fill={color} />
+                    <Path d="M12.5 6.5L20.5 12L12.5 17.5V6.5Z" fill={color} />
+                </Svg>
+            );
+        }
+        case 'speaker.wave.2.fill':
+        case 'volume': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M11 5L6 9H3C2.45 9 2 9.45 2 10V14C2 14.55 2.45 15 3 15H6L11 19V5Z" fill={color} />
+                    <Path d="M15 9C16 10 16.5 11 16.5 12C16.5 13 16 14 15 15" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                    <Path d="M18 6C20 8 21 10 21 12C21 14 20 16 18 18" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                </Svg>
+            );
+        }
+        case 'speaker.slash.fill':
+        case 'mute': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M11 5L6 9H3C2.45 9 2 9.45 2 10V14C2 14.55 2.45 15 3 15H6L11 19V5Z" fill={color} opacity={0.6} />
+                    <Path d="M21 3L3 21" stroke={color} strokeWidth={strokeWidth * 1.2} strokeLinecap="round" />
+                    <Path d="M16 10L20 14M20 10L16 14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+                </Svg>
+            );
+        }
+        case 'arrow.up.left.and.arrow.down.right':
+        case 'fullscreen': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M15 3H21V9M21 3L14 10M9 21H3V15M3 21L10 14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+        case 'repeat':
+        case 'loop': {
+            return (
+                <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+                    <Path d="M17 2L21 6L17 10" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M3 11V9C3 7.34 4.34 6 6 6H21" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M7 22L3 18L7 14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d="M21 13V15C21 16.66 19.66 18 18 18H3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+            );
+        }
+
         default:
             return null;
     }

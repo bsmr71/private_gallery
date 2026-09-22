@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     View,
     StyleSheet,
@@ -6,6 +6,8 @@ import {
     Text,
     TouchableOpacity,
     Dimensions,
+    TouchableWithoutFeedback,
+    Animated,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { MediaUrlHelper } from '../services/mediaUrl';
@@ -15,6 +17,16 @@ import SFSymbol from './SFSymbol';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+    const totalSecs = Math.floor(seconds);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
+const SPEEDS = [1.0, 1.25, 1.5, 2.0];
+
 export default function VideoPlayerView({
     item,
     isVisible = true,
@@ -23,6 +35,21 @@ export default function VideoPlayerView({
     const [loadError, setLoadError] = useState(null);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isBuffering, setIsBuffering] = useState(true);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [isMuted, setIsMuted] = useState(false);
+    const [playbackRate, setPlaybackRate] = useState(1.0);
+    const [contentFit, setContentFit] = useState('contain');
+
+    // Controls visibility and animation
+    const [controlsVisible, setControlsVisible] = useState(true);
+    const controlsOpacity = useRef(new Animated.Value(1)).current;
+    const hideTimeoutRef = useRef(null);
+
+    // Scrubber track width and dragging
+    const [scrubberWidth, setScrubberWidth] = useState(SCREEN_WIDTH - 140);
+    const [isScrubbing, setIsScrubbing] = useState(false);
+    const [scrubTime, setScrubTime] = useState(0);
 
     // Check if local file exists in Private Local Vault for 0.05s instant playback
     const localUri = useMemo(() => {
@@ -41,11 +68,8 @@ export default function VideoPlayerView({
     const videoSource = useMemo(() => {
         // 1. Prioritize Local Encrypted Vault (0.05s Instant Offline Playback, 0 Network Buffering)
         if (localUri) {
-            return {
-                uri: localUri,
-            };
+            return { uri: localUri };
         }
-
         // 2. Fallback to Cloud Streaming
         if (!streamUrl) return null;
         return {
@@ -61,50 +85,176 @@ export default function VideoPlayerView({
         }
     }, [localUri, item, isVisible]);
 
-    // Initialize expo-video player
+    // Initialize expo-video player with smooth loop and autoplay
     const player = useVideoPlayer(videoSource, (p) => {
         p.loop = true;
         p.play();
     });
 
+    // Auto-hide controls timer
+    const resetControlsTimeout = useCallback(() => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+        }
+        if (!controlsVisible) {
+            setControlsVisible(true);
+            Animated.timing(controlsOpacity, {
+                toValue: 1,
+                duration: 180,
+                useNativeDriver: true,
+            }).start();
+        }
+        if (isPlaying) {
+            hideTimeoutRef.current = setTimeout(() => {
+                Animated.timing(controlsOpacity, {
+                    toValue: 0,
+                    duration: 250,
+                    useNativeDriver: true,
+                }).start(() => setControlsVisible(false));
+            }, 3500);
+        }
+    }, [isPlaying, controlsVisible]);
+
     useEffect(() => {
         if (!player) return;
 
-        // Listen for playing status
+        // Playing change listener
         const subPlaying = player.addListener?.('playingChange', (event) => {
-            setIsPlaying(Boolean(event?.isPlaying));
+            const playing = Boolean(event?.isPlaying);
+            setIsPlaying(playing);
+            if (!playing) {
+                // Show controls when paused
+                setControlsVisible(true);
+                Animated.timing(controlsOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+                if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+            }
         });
 
-        // Listen for status/buffering changes
+        // Status change listener
         const subStatus = player.addListener?.('statusChange', (event) => {
             if (event?.status === 'loading') {
                 setIsBuffering(true);
             } else if (event?.status === 'readyToPlay') {
                 setIsBuffering(false);
                 setLoadError(null);
+                if (player.duration && player.duration > 0) {
+                    setDuration(player.duration);
+                }
             } else if (event?.status === 'error') {
                 setIsBuffering(false);
                 setLoadError(event?.error?.message || 'Gagal memutar video');
             }
         });
 
-        // Auto play if visible
+        // Time update listener
+        const subTime = player.addListener?.('timeUpdate', (event) => {
+            if (!isScrubbing) {
+                setCurrentTime(event?.currentTime || 0);
+            }
+            if (player.duration && player.duration > 0) {
+                setDuration(player.duration);
+            }
+        });
+
+        // Volume / Mute listener
+        const subMuted = player.addListener?.('mutedChange', (event) => {
+            setIsMuted(Boolean(event?.isMuted));
+        });
+
+        // Playback rate listener
+        const subRate = player.addListener?.('playbackRateChange', (event) => {
+            if (event?.playbackRate) {
+                setPlaybackRate(event.playbackRate);
+            }
+        });
+
+        // Initial sync
+        if (player.duration) setDuration(player.duration);
+        if (player.currentTime) setCurrentTime(player.currentTime);
+        if (player.muted !== undefined) setIsMuted(player.muted);
+
+        // Auto-play when visible
         if (isVisible) {
             player.play();
+            resetControlsTimeout();
         } else {
             player.pause();
         }
 
         return () => {
             try {
+                if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
                 player.pause();
                 subPlaying?.remove?.();
                 subStatus?.remove?.();
-            } catch (e) {
-                // cleanup safety
-            }
+                subTime?.remove?.();
+                subMuted?.remove?.();
+                subRate?.remove?.();
+            } catch (e) {}
         };
-    }, [player, isVisible]);
+    }, [player, isVisible, isScrubbing]);
+
+    const handleTapScreen = () => {
+        if (controlsVisible) {
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+            Animated.timing(controlsOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }).start(() => setControlsVisible(false));
+        } else {
+            resetControlsTimeout();
+        }
+        onToggleControls && onToggleControls();
+    };
+
+    const handleTogglePlay = () => {
+        if (!player) return;
+        if (isPlaying) {
+            player.pause();
+        } else {
+            player.play();
+        }
+        resetControlsTimeout();
+    };
+
+    const handleSkipBackward = () => {
+        if (!player) return;
+        const target = Math.max(0, (player.currentTime || 0) - 10);
+        player.currentTime = target;
+        setCurrentTime(target);
+        resetControlsTimeout();
+    };
+
+    const handleSkipForward = () => {
+        if (!player) return;
+        const target = Math.min(duration || 0, (player.currentTime || 0) + 10);
+        player.currentTime = target;
+        setCurrentTime(target);
+        resetControlsTimeout();
+    };
+
+    const handleToggleMute = () => {
+        if (!player) return;
+        const nextMuted = !isMuted;
+        player.muted = nextMuted;
+        setIsMuted(nextMuted);
+        resetControlsTimeout();
+    };
+
+    const handleToggleSpeed = () => {
+        if (!player) return;
+        const nextIdx = (SPEEDS.indexOf(playbackRate) + 1) % SPEEDS.length;
+        const nextRate = SPEEDS[nextIdx];
+        player.playbackRate = nextRate;
+        setPlaybackRate(nextRate);
+        resetControlsTimeout();
+    };
+
+    const handleToggleFit = () => {
+        setContentFit((prev) => (prev === 'contain' ? 'cover' : 'contain'));
+        resetControlsTimeout();
+    };
 
     const handleRetry = () => {
         setLoadError(null);
@@ -119,6 +269,36 @@ export default function VideoPlayerView({
         }
     };
 
+    // Scrubber drag / touch handlers
+    const calculateSeekTime = (nativeEvent) => {
+        const { locationX } = nativeEvent;
+        if (scrubberWidth <= 0 || !duration) return 0;
+        const ratio = Math.max(0, Math.min(locationX / scrubberWidth, 1));
+        return ratio * duration;
+    };
+
+    const handleScrubberGrant = (e) => {
+        setIsScrubbing(true);
+        const time = calculateSeekTime(e.nativeEvent);
+        setScrubTime(time);
+        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    };
+
+    const handleScrubberMove = (e) => {
+        const time = calculateSeekTime(e.nativeEvent);
+        setScrubTime(time);
+    };
+
+    const handleScrubberRelease = (e) => {
+        const time = calculateSeekTime(e.nativeEvent);
+        if (player) {
+            player.currentTime = time;
+            setCurrentTime(time);
+        }
+        setIsScrubbing(false);
+        resetControlsTimeout();
+    };
+
     if (!localUri && !streamUrl) {
         return (
             <View style={styles.errorContainer}>
@@ -128,19 +308,28 @@ export default function VideoPlayerView({
         );
     }
 
+    const displayTime = isScrubbing ? scrubTime : currentTime;
+    const progressRatio = duration > 0 ? Math.max(0, Math.min(displayTime / duration, 1)) : 0;
+    const progressPercent = `${progressRatio * 100}%`;
+
     return (
         <View style={styles.container}>
-            {/* Native Video View from expo-video */}
+            {/* Native Video View from expo-video without clunky default Android controls */}
             <VideoView
                 style={styles.videoView}
                 player={player}
-                nativeControls={true}
-                contentFit="contain"
+                nativeControls={false}
+                contentFit={contentFit}
                 allowsFullscreen={true}
                 surfaceType="textureView"
             />
 
-            {/* Buffering Indicator with Thumbnail Poster Backdrop */}
+            {/* Tap area to toggle player controls */}
+            <TouchableWithoutFeedback onPress={handleTapScreen}>
+                <View style={StyleSheet.absoluteFillObject} />
+            </TouchableWithoutFeedback>
+
+            {/* Buffering Indicator with Poster Backdrop */}
             {isBuffering && !loadError && (
                 <View style={styles.loadingOverlay} pointerEvents="none">
                     {Boolean(item?.thumbnail_url) && (
@@ -155,6 +344,124 @@ export default function VideoPlayerView({
                         <Text style={styles.loadingText}>Memuat Video...</Text>
                     </View>
                 </View>
+            )}
+
+            {/* Gorgeous Apple Photos-Style Controls Overlay */}
+            {controlsVisible && !isBuffering && !loadError && (
+                <Animated.View
+                    style={[styles.controlsOverlay, { opacity: controlsOpacity }]}
+                    pointerEvents="box-none"
+                >
+                    {/* Top Row: Quick Action Badges */}
+                    <View style={styles.topControlsRow} pointerEvents="box-none">
+                        {/* Audio Mute/Unmute */}
+                        <TouchableOpacity
+                            style={[styles.glassPill, isMuted && styles.glassPillActive]}
+                            onPress={handleToggleMute}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <SFSymbol
+                                name={isMuted ? 'speaker.slash.fill' : 'speaker.wave.2.fill'}
+                                size={15}
+                                color={isMuted ? '#FF9F0A' : '#ffffff'}
+                            />
+                            <Text style={[styles.glassPillText, isMuted && { color: '#FF9F0A' }]}>
+                                {isMuted ? 'Bisu' : 'Suara'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        {/* Right Top Buttons: Speed & Fit */}
+                        <View style={styles.topRightActions}>
+                            {/* Playback Speed */}
+                            <TouchableOpacity
+                                style={styles.glassPill}
+                                onPress={handleToggleSpeed}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                                <Text style={styles.speedText}>{playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 2)}x</Text>
+                            </TouchableOpacity>
+
+                            {/* Aspect Ratio / Fit */}
+                            <TouchableOpacity
+                                style={styles.glassPill}
+                                onPress={handleToggleFit}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                                <SFSymbol name="arrow.up.left.and.arrow.down.right" size={13} color="#ffffff" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Center Row: Rewind 10s, Big Center Play/Pause, Forward 10s */}
+                    <View style={styles.centerControlsRow} pointerEvents="box-none">
+                        {/* Skip Backward 10s */}
+                        <TouchableOpacity
+                            style={styles.skipBtn}
+                            onPress={handleSkipBackward}
+                            activeOpacity={0.75}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <SFSymbol name="gobackward.10" size={24} color="#ffffff" />
+                            <Text style={styles.skipSubtext}>-10s</Text>
+                        </TouchableOpacity>
+
+                        {/* Big Center Play/Pause */}
+                        <TouchableOpacity
+                            style={styles.bigPlayBtn}
+                            onPress={handleTogglePlay}
+                            activeOpacity={0.8}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        >
+                            <SFSymbol
+                                name={isPlaying ? 'pause.fill' : 'play.fill'}
+                                size={28}
+                                color="#ffffff"
+                                style={!isPlaying ? { marginLeft: 3 } : undefined}
+                            />
+                        </TouchableOpacity>
+
+                        {/* Skip Forward 10s */}
+                        <TouchableOpacity
+                            style={styles.skipBtn}
+                            onPress={handleSkipForward}
+                            activeOpacity={0.75}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <SFSymbol name="goforward.10" size={24} color="#ffffff" />
+                            <Text style={styles.skipSubtext}>+10s</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Bottom Row: Scrubber Timeline Bar with Elapsed & Total Duration */}
+                    <View style={styles.bottomControlsBar}>
+                        <Text style={styles.timeLabel}>{formatTime(displayTime)}</Text>
+
+                        {/* Interactive Scrub Bar */}
+                        <View
+                            style={styles.scrubberContainer}
+                            onLayout={(e) => setScrubberWidth(e.nativeEvent.layout.width)}
+                            onStartShouldSetResponder={() => true}
+                            onMoveShouldSetResponder={() => true}
+                            onResponderGrant={handleScrubberGrant}
+                            onResponderMove={handleScrubberMove}
+                            onResponderRelease={handleScrubberRelease}
+                        >
+                            {/* Background Track */}
+                            <View style={styles.scrubberTrack}>
+                                {/* Active Progress Track */}
+                                <View style={[styles.scrubberProgress, { width: progressPercent }]} />
+                            </View>
+
+                            {/* Scrubber Knob / Thumb */}
+                            <View style={[styles.scrubberKnob, { left: progressPercent }]} />
+                        </View>
+
+                        <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
+                    </View>
+                </Animated.View>
             )}
 
             {/* Error Overlay with Retry */}
@@ -176,7 +483,7 @@ export default function VideoPlayerView({
 const styles = StyleSheet.create({
     container: {
         width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT * 0.76,
+        height: SCREEN_HEIGHT * 0.8,
         backgroundColor: '#000000',
         alignItems: 'center',
         justifyContent: 'center',
@@ -185,6 +492,137 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         backgroundColor: '#000000',
+    },
+    controlsOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 16,
+        backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    },
+    topControlsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    topRightActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    glassPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 18,
+    },
+    glassPillActive: {
+        backgroundColor: 'rgba(255, 159, 10, 0.2)',
+        borderColor: 'rgba(255, 159, 10, 0.45)',
+    },
+    glassPillText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    speedText: {
+        color: '#0A84FF',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    centerControlsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 32,
+    },
+    bigPlayBtn: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(10, 132, 255, 0.9)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.35)',
+        shadowColor: '#0A84FF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    skipBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    skipSubtext: {
+        color: '#ffffff',
+        fontSize: 9,
+        fontWeight: '700',
+        marginTop: 1,
+        opacity: 0.9,
+    },
+    bottomControlsBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    timeLabel: {
+        color: '#ffffff',
+        fontSize: 11,
+        fontWeight: '600',
+        fontVariant: ['tabular-nums'],
+        minWidth: 38,
+        textAlign: 'center',
+    },
+    scrubberContainer: {
+        flex: 1,
+        height: 32,
+        justifyContent: 'center',
+    },
+    scrubberTrack: {
+        width: '100%',
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        borderRadius: 2,
+        overflow: 'hidden',
+    },
+    scrubberProgress: {
+        height: '100%',
+        backgroundColor: '#0A84FF',
+        borderRadius: 2,
+    },
+    scrubberKnob: {
+        position: 'absolute',
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: '#ffffff',
+        marginLeft: -7,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 3,
+        elevation: 4,
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
@@ -205,6 +643,16 @@ const styles = StyleSheet.create({
         fontSize: 13,
         marginTop: 10,
         fontWeight: '500',
+    },
+    errorContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+    },
+    errorText: {
+        color: '#FF9F0A',
+        fontSize: 14,
+        marginTop: 10,
     },
     errorOverlay: {
         ...StyleSheet.absoluteFillObject,

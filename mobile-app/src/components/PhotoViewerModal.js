@@ -116,6 +116,11 @@ export default function PhotoViewerModal({
             (activeItem.mime_type && activeItem.mime_type.includes('video')))
     );
 
+    const isCurrentVideoRef = useRef(isCurrentVideo);
+    useEffect(() => {
+        isCurrentVideoRef.current = isCurrentVideo;
+    }, [isCurrentVideo]);
+
     const activeLocalUri = activeItem ? LocalVaultService.getLocalUri(activeItem.id) : null;
 
     // Auto-cache full photo to local vault in background when viewing
@@ -126,7 +131,7 @@ export default function PhotoViewerModal({
     }, [visible, activeItem, activeLocalUri, isCurrentVideo]);
 
     // PanResponder for smooth sliding gestures:
-    // - Slide Left / Right: Navigate to Next / Prev item (for both photos and videos)
+    // - Slide Left / Right: Navigate to Next / Prev item (for photos)
     // - Slide Up / Down: Dismiss / Exit viewer (for both photos and videos)
     const panResponder = useRef(
         PanResponder.create({
@@ -134,13 +139,19 @@ export default function PhotoViewerModal({
             onStartShouldSetPanResponderCapture: () => false,
             onMoveShouldSetPanResponder: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
+                if (isCurrentVideoRef.current) {
+                    return Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(dx) * 1.8;
+                }
                 const isHorizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 0.8;
                 const isVertical = Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 0.8;
                 return isHorizontal || isVertical;
             },
             onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
-                // Capture gestures over child components (like native VideoView textureView)
+                // If viewing a video, do not capture horizontal gestures so scrubber works smoothly
+                if (isCurrentVideoRef.current) {
+                    return Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(dx) * 1.8;
+                }
                 const isHorizontal = Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 0.8;
                 const isVertical = Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 0.8;
                 return isHorizontal || isVertical;
@@ -551,11 +562,8 @@ export default function PhotoViewerModal({
                     ]}
                     {...panResponder.panHandlers}
                 >
-                    <Pressable
-                        style={styles.viewportPressable}
-                        onPress={toggleChrome}
-                    >
-                        {isCurrentVideo ? (
+                    {isCurrentVideo ? (
+                        <View style={styles.viewportPressable}>
                             <VideoErrorBoundary
                                 fallback={
                                     <SecureImage
@@ -572,7 +580,12 @@ export default function PhotoViewerModal({
                                     onToggleControls={toggleChrome}
                                 />
                             </VideoErrorBoundary>
-                        ) : (
+                        </View>
+                    ) : (
+                        <Pressable
+                            style={styles.viewportPressable}
+                            onPress={toggleChrome}
+                        >
                             <SecureImage
                                 source={activeLocalUri || activeItem.stream_url}
                                 mediaId={activeItem.id}
@@ -581,8 +594,8 @@ export default function PhotoViewerModal({
                                 showLoader={true}
                                 preferFullResolution={true}
                             />
-                        )}
-                    </Pressable>
+                        </Pressable>
+                    )}
                 </Animated.View>
 
                 {/* Bottom Section (Filmstrip + Dock) */}
