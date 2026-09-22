@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -12,6 +12,9 @@ import {
     Alert,
     Dimensions,
     ScrollView,
+    Animated,
+    PanResponder,
+    TouchableWithoutFeedback,
 } from 'react-native';
 import SFSymbol from './SFSymbol';
 import { SyncService } from '../services/syncService';
@@ -197,6 +200,52 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
         }
     };
 
+    const panY = useRef(new Animated.Value(0)).current;
+
+    const resetPosition = () => {
+        Animated.spring(panY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+        }).start();
+    };
+
+    const closeWithAnimation = () => {
+        Animated.timing(panY, {
+            toValue: 600,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(() => {
+            panY.setValue(0);
+            onClose && onClose();
+        });
+    };
+
+    useEffect(() => {
+        if (visible) {
+            panY.setValue(0);
+        }
+    }, [visible]);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+            onPanResponderMove: (_, gestureState) => {
+                if (gestureState.dy > 0) {
+                    panY.setValue(gestureState.dy);
+                }
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                if (gestureState.dy > 80 || gestureState.vy > 0.4) {
+                    closeWithAnimation();
+                } else {
+                    resetPosition();
+                }
+            },
+        })
+    ).current;
+
     if (!visible) return null;
 
     return (
@@ -204,27 +253,49 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
             visible={visible}
             animationType="slide"
             transparent
-            onRequestClose={onClose}
+            onRequestClose={closeWithAnimation}
         >
             <View style={styles.backdrop}>
-                <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
-                    {/* Grab Handle */}
-                    <View style={styles.handle} />
+                {/* Backdrop dismiss touch */}
+                <TouchableWithoutFeedback onPress={closeWithAnimation}>
+                    <View style={StyleSheet.absoluteFillObject} />
+                </TouchableWithoutFeedback>
 
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <View style={styles.headerTitleRow}>
-                            <SFSymbol name="lock.fill" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
-                            <Text style={styles.headerTitle}>Isolated Vault Sync</Text>
+                <Animated.View
+                    style={[
+                        styles.sheet,
+                        {
+                            paddingBottom: Math.max(insets.bottom, 20) + 12,
+                            transform: [{ translateY: panY }],
+                        },
+                    ]}
+                >
+                    {/* Draggable Area (Handle + Header) */}
+                    <View {...panResponder.panHandlers} style={styles.dragArea}>
+                        {/* Grab Handle */}
+                        <View style={styles.handle} />
+
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <View style={styles.headerTitleRow}>
+                                <SFSymbol name="lock.fill" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
+                                <View>
+                                    <Text style={styles.headerTitle}>Isolated Vault Sync</Text>
+                                    {syncing && (
+                                        <Text style={styles.syncingSubtext}>
+                                            Sinkronisasi tetap berjalan saat diminimize
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.closeBtn}
+                                onPress={closeWithAnimation}
+                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            >
+                                <SFSymbol name="xmark" size={14} color="#8E8E93" />
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                            style={styles.closeBtn}
-                            onPress={onClose}
-                            disabled={syncing}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <SFSymbol name="xmark" size={14} color="#8E8E93" />
-                        </TouchableOpacity>
                     </View>
 
                     <ScrollView
@@ -483,7 +554,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                             </TouchableOpacity>
                         )}
                     </ScrollView>
-                </View>
+                </Animated.View>
             </View>
 
             {/* Stealth Blackout Mode (Layar Hitam Senyap) */}
@@ -517,6 +588,16 @@ const styles = StyleSheet.create({
         maxHeight: '88%',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    dragArea: {
+        width: '100%',
+        paddingTop: 2,
+    },
+    syncingSubtext: {
+        color: '#30D158',
+        fontSize: 11,
+        fontWeight: '500',
+        marginTop: 2,
     },
     handle: {
         width: 36,
