@@ -144,7 +144,7 @@ export const ChunkUploadService = {
             // Duplicate detection: server found identical file
             if (initRes.is_duplicate) {
                 console.log(`[ChunkUploadService] File ${originalName} is duplicate, using existing ID.`);
-                await StorageService.clearActiveChunkSession(fileUri);
+                await StorageService.clearActiveChunkSession(originalFileUri);
                 return {
                     isDuplicate: true,
                     uploaded: initRes.media ? [initRes.media] : [],
@@ -154,7 +154,7 @@ export const ChunkUploadService = {
 
             uploadId = initRes.upload_id;
             uploadedChunks = new Set(initRes.uploaded_chunks || []);
-            await StorageService.setActiveChunkSession(fileUri, {
+            await StorageService.setActiveChunkSession(originalFileUri, {
                 uploadId,
                 filename: originalName,
                 totalSize,
