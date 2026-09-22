@@ -330,8 +330,8 @@ export default function App() {
                         </NavigationContainer>
                     </View>
 
-                    {/* Global Status Bar Progress Bar & Island Pill */}
-                    {!isLocked && <SyncStatusBar />}
+                    {/* Global Status Bar Progress Line Docked Above Tab Bar */}
+                    {!isLocked && <SyncStatusBar hidePill={true} />}
 
                     {/* Layer 3: Recent Apps / Multitasking Privacy Shield */}
                     {privacyShield && (

@@ -191,9 +191,23 @@ export const ApiService = {
 
             const type = fileAsset.mimeType || (isVideo ? (ext === 'mov' ? 'video/quicktime' : 'video/mp4') : (ext === 'png' ? 'image/png' : 'image/jpeg'));
 
-            // Normalize fileUri for React Native NetworkingModule:
-            // React Native's native OkHttp engine streams directly from content:// URIs
-            // via ContentResolver.openInputStream(), with zero disk overhead.
+            // Ensure Android file access:
+            // For content:// URIs (SAF or provider), copy to app cache first to obtain a genuine
+            // file:// path that React Native FormData and OkHttp handle without "Unsupported FormDataPart"
+            if (fileUri && fileUri.startsWith('content://')) {
+                const safeName = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                tempCacheUri = `${FileSystemLegacy.cacheDirectory}upload_stg_${Date.now()}_${safeName}`;
+                try {
+                    await FileSystemLegacy.copyAsync({
+                        from: fileUri,
+                        to: tempCacheUri,
+                    });
+                    fileUri = tempCacheUri;
+                } catch (copyErr) {
+                    console.warn('[ApiService] Failed to copy content URI to cache:', copyErr);
+                }
+            }
+
             let normalizedUri = fileUri;
             if (normalizedUri && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
                 normalizedUri = `file://${normalizedUri}`;

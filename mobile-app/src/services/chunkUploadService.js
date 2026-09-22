@@ -29,8 +29,11 @@ export const ChunkUploadService = {
             isAbortedCheck = null,
         } = options;
 
-        const fileUri = asset.uri;
-        let originalName = asset.filename || asset.fileName || fileUri.split('/').pop() || 'upload_file.mp4';
+        const originalFileUri = asset.uri;
+        let workingFileUri = asset.uri;
+        let tempCopiedUri = null;
+
+        let originalName = asset.filename || asset.fileName || originalFileUri.split('/').pop() || 'upload_file.mp4';
         try {
             originalName = decodeURIComponent(originalName).split('/').pop() || originalName;
         } catch (e) {
@@ -46,47 +49,64 @@ export const ChunkUploadService = {
             ['mp4', 'mov', 'm4v', '3gp', 'webm', 'mkv'].includes(ext)
         );
 
-        // 1. Get exact file size on device
-        let totalSize = asset.fileSize || asset.size || 0;
         try {
-            const info = await FileSystemLegacy.getInfoAsync(fileUri);
-            if (info && info.exists && info.size) {
-                totalSize = info.size;
-            }
-        } catch (e) {
-            console.warn('[ChunkUploadService] getInfoAsync error:', e);
-        }
-
-        if (!totalSize || totalSize <= 0) {
-            throw new Error(`Ukuran berkas ${originalName} tidak dapat dibaca dari perangkat.`);
-        }
-
-        const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
-        const mimeType = isVideo
-            ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
-            : (ext === 'png' ? 'image/png' : 'image/jpeg');
-
-        // 2. Extract client-side video thumbnail if needed
-        let thumbnailBase64 = asset.thumbnailBase64 || null;
-        if (!thumbnailBase64 && isVideo && VideoThumbnails?.getThumbnailAsync) {
-            try {
-                const thumbRes = await VideoThumbnails.getThumbnailAsync(fileUri, {
-                    time: 500,
-                    quality: 0.8,
-                });
-                if (thumbRes?.uri) {
-                    thumbnailBase64 = await FileSystemLegacy.readAsStringAsync(thumbRes.uri, {
-                        encoding: 'base64',
+            // Stage SAF content:// URI into real file in cache directory
+            // This enables getInfoAsync to read true file size and readAsStringAsync to slice chunks with position/length
+            if (workingFileUri && workingFileUri.startsWith('content://')) {
+                const safeName = originalName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                tempCopiedUri = `${FileSystemLegacy.cacheDirectory}chunk_src_${Date.now()}_${safeName}`;
+                try {
+                    await FileSystemLegacy.copyAsync({
+                        from: workingFileUri,
+                        to: tempCopiedUri,
                     });
-                    await FileSystemLegacy.deleteAsync(thumbRes.uri, { idempotent: true });
+                    workingFileUri = tempCopiedUri;
+                } catch (copyErr) {
+                    console.warn('[ChunkUploadService] Gagal menyalin content URI ke cache:', copyErr);
                 }
-            } catch (thumbErr) {
-                console.warn('[ChunkUploadService] Video thumbnail extraction warning:', thumbErr);
             }
-        }
 
-        // 3. Check for previous active session to resume
-        let savedSession = await StorageService.getActiveChunkSession(fileUri);
+            // 1. Get exact file size on device
+            let totalSize = asset.fileSize || asset.size || 0;
+            try {
+                const info = await FileSystemLegacy.getInfoAsync(workingFileUri);
+                if (info && info.exists && info.size) {
+                    totalSize = info.size;
+                }
+            } catch (e) {
+                console.warn('[ChunkUploadService] getInfoAsync error:', e);
+            }
+
+            if (!totalSize || totalSize <= 0) {
+                throw new Error(`Ukuran berkas ${originalName} tidak dapat dibaca dari perangkat.`);
+            }
+
+            const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+            const mimeType = isVideo
+                ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
+                : (ext === 'png' ? 'image/png' : 'image/jpeg');
+
+            // 2. Extract client-side video thumbnail if needed
+            let thumbnailBase64 = asset.thumbnailBase64 || null;
+            if (!thumbnailBase64 && isVideo && VideoThumbnails?.getThumbnailAsync) {
+                try {
+                    const thumbRes = await VideoThumbnails.getThumbnailAsync(workingFileUri, {
+                        time: 500,
+                        quality: 0.8,
+                    });
+                    if (thumbRes?.uri) {
+                        thumbnailBase64 = await FileSystemLegacy.readAsStringAsync(thumbRes.uri, {
+                            encoding: 'base64',
+                        });
+                        await FileSystemLegacy.deleteAsync(thumbRes.uri, { idempotent: true });
+                    }
+                } catch (thumbErr) {
+                    console.warn('[ChunkUploadService] Video thumbnail extraction warning:', thumbErr);
+                }
+            }
+
+            // 3. Check for previous active session to resume
+            let savedSession = await StorageService.getActiveChunkSession(originalFileUri);
         let uploadId = savedSession?.uploadId || null;
         let uploadedChunks = new Set(savedSession?.uploadedChunks || []);
 
@@ -163,7 +183,7 @@ export const ChunkUploadService = {
             // Read chunk slice into base64
             let chunkBase64;
             try {
-                chunkBase64 = await FileSystemLegacy.readAsStringAsync(fileUri, {
+                chunkBase64 = await FileSystemLegacy.readAsStringAsync(workingFileUri, {
                     encoding: 'base64',
                     position: offset,
                     length: length,
@@ -214,7 +234,7 @@ export const ChunkUploadService = {
             }
 
             uploadedChunks.add(chunkIndex);
-            await StorageService.setActiveChunkSession(fileUri, {
+            await StorageService.setActiveChunkSession(originalFileUri, {
                 uploadId,
                 filename: originalName,
                 totalSize,
@@ -237,10 +257,17 @@ export const ChunkUploadService = {
         });
 
         // Clean up session from AsyncStorage
-        await StorageService.clearActiveChunkSession(fileUri);
+        await StorageService.clearActiveChunkSession(originalFileUri);
         onProgress && onProgress(100);
 
         console.log(`[ChunkUploadService] Chunk upload complete for ${originalName}!`);
         return completeRes;
-    },
+    } finally {
+        if (tempCopiedUri) {
+            try {
+                await FileSystemLegacy.deleteAsync(tempCopiedUri, { idempotent: true });
+            } catch (delErr) {}
+        }
+    }
+},
 };

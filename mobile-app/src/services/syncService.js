@@ -268,7 +268,7 @@ export const SyncService = {
         let deletedCount = 0;
         const total = assets.length;
         let lastError = null;
-        let consecutiveNetworkErrors = 0;
+        let consecutiveErrors = 0;
 
         notifySync({
             isSyncing: true,
@@ -299,6 +299,7 @@ export const SyncService = {
 
                 const asset = assets[i];
                 let extractedThumbUri = null;
+                let tempLocalStagingUri = null;
 
                 try {
                     const ext = asset.filename ? asset.filename.split('.').pop().toLowerCase() : 'jpg';
@@ -307,10 +308,39 @@ export const SyncService = {
                         ? `video/${ext === 'mov' ? 'quicktime' : 'mp4'}`
                         : `image/${ext === 'png' ? 'png' : 'jpeg'}`;
 
+                    // Stage SAF content:// URI into local app cache to ensure full file access,
+                    // accurate size determination, and support by React Native FormData and chunk slicer
+                    let workingUri = asset.uri;
+                    if (asset.uri && asset.uri.startsWith('content://')) {
+                        const safeName = (asset.filename || `vault_${Date.now()}`).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                        tempLocalStagingUri = `${FileSystemLegacy.cacheDirectory}sync_stg_${Date.now()}_${safeName}`;
+                        try {
+                            await FileSystemLegacy.copyAsync({
+                                from: asset.uri,
+                                to: tempLocalStagingUri,
+                            });
+                            workingUri = tempLocalStagingUri;
+                        } catch (copyErr) {
+                            console.warn('[SyncService] Gagal menyalin SAF content URI ke cache:', copyErr);
+                            workingUri = asset.uri;
+                        }
+                    }
+
+                    // Read accurate file size on device
+                    let realFileSize = asset.fileSize || 0;
+                    if (workingUri.startsWith('file://')) {
+                        try {
+                            const info = await FileSystemLegacy.getInfoAsync(workingUri);
+                            if (info && info.exists && info.size) {
+                                realFileSize = info.size;
+                            }
+                        } catch (szErr) {}
+                    }
+
                     // Native Video Thumbnail extraction on device
                     if (isVideo && VideoThumbnails?.getThumbnailAsync) {
                         try {
-                            const thumbResult = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+                            const thumbResult = await VideoThumbnails.getThumbnailAsync(workingUri, {
                                 time: 500,
                                 quality: 0.85,
                             });
@@ -323,7 +353,7 @@ export const SyncService = {
                     }
 
                     const filePayload = {
-                        uri: asset.uri,
+                        uri: workingUri,
                         fileName: asset.filename || `vault_${Date.now()}.${ext}`,
                         mimeType: mimeType,
                         type: isVideo ? 'video' : 'image',
@@ -350,13 +380,15 @@ export const SyncService = {
 
                     // Upload to cloud (AES-256 encrypted storage) with progress
                     let uploadRes;
-                    const useChunk = ChunkUploadService.shouldUseChunkUpload(asset.fileSize, isVideo);
+                    const useChunk = ChunkUploadService.shouldUseChunkUpload(realFileSize, isVideo);
 
                     if (useChunk) {
-                        console.log(`[SyncService] Menggunakan mesin chunk upload untuk: ${asset.filename}`);
+                        console.log(`[SyncService] Menggunakan mesin chunk upload untuk: ${asset.filename} (${(realFileSize / (1024 * 1024)).toFixed(2)} MB)`);
                         uploadRes = await ChunkUploadService.uploadLargeFile(
                             {
                                 ...asset,
+                                uri: workingUri,
+                                fileSize: realFileSize,
                                 thumbnailUri: extractedThumbUri,
                             },
                             {
@@ -401,6 +433,7 @@ export const SyncService = {
                     }
 
                     successCount++;
+                    consecutiveErrors = 0;
 
                     // Mark synced IMMEDIATELY per-file so interrupted sync never repeats already uploaded items!
                     await StorageService.addSyncedAssetIds([asset.id]);
@@ -419,7 +452,7 @@ export const SyncService = {
                         try {
                             await LocalVaultService.saveSyncedAsset(
                                 uploadedMediaId,
-                                asset.uri,
+                                workingUri,
                                 asset.filename,
                                 mimeType
                             );
@@ -454,7 +487,6 @@ export const SyncService = {
                     }
 
                     const itemDonePercent = Math.round(((i + 1) / total) * 100);
-                    consecutiveNetworkErrors = 0;
                     notifySync({
                         current: i + 1,
                         total,
@@ -476,6 +508,7 @@ export const SyncService = {
                     lastError = err?.message || String(err);
                     console.warn(`[SyncService] Sync failed for ${asset.filename}:`, err);
                     failCount++;
+                    consecutiveErrors++;
 
                     // Check if error is network disconnection / background restriction
                     const errMsg = (lastError || '').toLowerCase();
@@ -486,22 +519,21 @@ export const SyncService = {
                         errMsg.includes('aborted') ||
                         errMsg.includes('failed to connect');
 
-                    if (isNetworkErr) {
-                        consecutiveNetworkErrors++;
-                        if (consecutiveNetworkErrors >= 3) {
-                            console.warn('[SyncService] 3 kegagalan jaringan berturut-turut. Sinkronisasi dijeda agar antrean tidak hangus.');
-                            notifySync({
-                                isSyncing: false,
-                                isPaused: true,
-                                pauseReason: 'Jaringan terputus saat di latar belakang',
-                                currentFilename: 'Jaringan terputus (dijeda)',
-                                successCount,
-                                failCount,
-                            });
-                            break;
-                        }
-                    } else {
-                        consecutiveNetworkErrors = 0;
+                    // If 3 consecutive failures occur, pause to prevent burning the queue blindly
+                    if (consecutiveErrors >= 3) {
+                        const pauseReason = isNetworkErr
+                            ? 'Jaringan terputus saat di latar belakang'
+                            : (lastError ? `Gagal: ${lastError.substring(0, 50)}` : 'Kendala koneksi ke server');
+                        console.warn(`[SyncService] 3 kegagalan berturut-turut (${pauseReason}). Sinkronisasi dijeda.`);
+                        notifySync({
+                            isSyncing: false,
+                            isPaused: true,
+                            pauseReason: pauseReason,
+                            currentFilename: 'Sinkronisasi dijeda',
+                            successCount,
+                            failCount,
+                        });
+                        break;
                     }
 
                     notifySync({
@@ -517,13 +549,28 @@ export const SyncService = {
                             error: err.message,
                         });
                     }
+                } finally {
+                    if (tempLocalStagingUri) {
+                        try {
+                            await FileSystemLegacy.deleteAsync(tempLocalStagingUri, { idempotent: true });
+                        } catch (e) {}
+                    }
                 }
             }
         } finally {
             isGlobalSyncRunning = false;
+            const isAllSuccess = failCount === 0;
+            const isTotalFail = failCount > 0 && successCount === 0;
+
             notifySync({
                 isSyncing: false,
-                currentFilename: isSyncAborted ? 'Sinkronisasi Dibatalkan' : (failCount > 0 ? `Selesai (${successCount} sukses, ${failCount} gagal)` : 'Sinkronisasi Selesai'),
+                currentFilename: isSyncAborted
+                    ? 'Sinkronisasi Dibatalkan'
+                    : isTotalFail
+                    ? `Gagal mengunggah ${failCount} berkas`
+                    : !isAllSuccess
+                    ? `Selesai Sebagian (${successCount} sukses, ${failCount} gagal)`
+                    : `Sinkronisasi Selesai (${successCount} berkas)`,
                 percentage: 100,
                 successCount,
                 failCount,

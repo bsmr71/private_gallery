@@ -15,7 +15,7 @@ import { SyncService } from '../services/syncService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export default function SyncStatusBar({ onOpenSyncModal }) {
+export default function SyncStatusBar({ onOpenSyncModal, hidePill = false }) {
     const insets = useSafeAreaInsets();
     const [syncState, setSyncState] = useState({
         isSyncing: false,
@@ -137,71 +137,73 @@ export default function SyncStatusBar({ onOpenSyncModal }) {
             </View>
 
             {/* 2. Apple Photos Docked Floating Pill (Safely Above Bottom Tab Buttons) */}
-            <View style={[styles.pillContainer, { bottom: bottomOffset }]} pointerEvents="box-none">
-                <TouchableOpacity
-                    style={styles.pillWrap}
-                    activeOpacity={0.85}
-                    onPress={() => onOpenSyncModal && onOpenSyncModal()}
-                >
-                <BlurView tint="dark" intensity={80} style={StyleSheet.absoluteFill} />
-                <View style={styles.pillContent}>
-                    {/* Icon */}
-                    <View style={styles.iconBox}>
-                        {isPaused ? (
-                            <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
-                        ) : isDone ? (
-                            hasFails && syncState.successCount === 0 ? (
-                                <SFSymbol name="xmark.circle" size={13} color="#FF453A" />
-                            ) : hasFails ? (
+            {!hidePill && (
+                <View style={[styles.pillContainer, { bottom: bottomOffset }]} pointerEvents="box-none">
+                    <TouchableOpacity
+                        style={styles.pillWrap}
+                        activeOpacity={0.85}
+                        onPress={() => onOpenSyncModal && onOpenSyncModal()}
+                    >
+                    <BlurView tint="dark" intensity={80} style={StyleSheet.absoluteFill} />
+                    <View style={styles.pillContent}>
+                        {/* Icon */}
+                        <View style={styles.iconBox}>
+                            {isPaused ? (
                                 <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
+                            ) : isDone ? (
+                                hasFails && syncState.successCount === 0 ? (
+                                    <SFSymbol name="xmark.circle" size={13} color="#FF453A" />
+                                ) : hasFails ? (
+                                    <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
+                                ) : (
+                                    <SFSymbol name="checkmark" size={13} color="#30D158" />
+                                )
                             ) : (
-                                <SFSymbol name="checkmark" size={13} color="#30D158" />
-                            )
-                        ) : (
-                            <SFSymbol name="arrow.triangle.2.circlepath" size={13} color="#0A84FF" />
-                        )}
-                    </View>
+                                <SFSymbol name="arrow.triangle.2.circlepath" size={13} color="#0A84FF" />
+                            )}
+                        </View>
 
-                    {/* Text Details & Mini Progress */}
-                    <View style={styles.textBox}>
-                        <Text style={styles.pillTitle} numberOfLines={1}>
-                            {isPaused
-                                ? (syncState.pauseReason || 'Jaringan terputus (dijeda)')
-                                : isDone
-                                ? (hasFails
-                                    ? `${syncState.successCount || 0} sukses, ${syncState.failCount} gagal/terlewat`
-                                    : `${syncState.successCount} berkas tersinkronkan ke Cloud`)
-                                : `${syncState.currentFilename || 'Menyinkronkan'} (${syncState.current}/${syncState.total})`}
-                        </Text>
-                        {!isDone && !isPaused && (
-                            <View style={styles.miniTrack}>
-                                <Animated.View
-                                    style={[
-                                        styles.miniFill,
-                                        { width: progressWidth },
-                                    ]}
-                                />
-                            </View>
-                        )}
-                    </View>
+                        {/* Text Details & Mini Progress */}
+                        <View style={styles.textBox}>
+                            <Text style={styles.pillTitle} numberOfLines={1}>
+                                {isPaused
+                                    ? (syncState.pauseReason || 'Jaringan terputus (dijeda)')
+                                    : isDone
+                                    ? (hasFails
+                                        ? `${syncState.successCount || 0} sukses, ${syncState.failCount} gagal/terlewat`
+                                        : `${syncState.successCount} berkas tersinkronkan ke Cloud`)
+                                    : `${syncState.currentFilename || 'Menyinkronkan'} (${syncState.current}/${syncState.total})`}
+                            </Text>
+                            {!isDone && !isPaused && (
+                                <View style={styles.miniTrack}>
+                                    <Animated.View
+                                        style={[
+                                            styles.miniFill,
+                                            { width: progressWidth },
+                                        ]}
+                                    />
+                                </View>
+                            )}
+                        </View>
 
-                    {/* Percentage / Status Badge */}
-                    <View style={[
-                        styles.badge,
-                        isDone && !hasFails && styles.badgeSuccess,
-                        (isPaused || (isDone && hasFails)) && styles.badgeWarning,
-                    ]}>
-                        <Text style={[
-                            styles.badgeText,
-                            isDone && !hasFails && styles.badgeTextSuccess,
-                            (isPaused || (isDone && hasFails)) && styles.badgeTextWarning,
+                        {/* Percentage / Status Badge */}
+                        <View style={[
+                            styles.badge,
+                            isDone && !hasFails && styles.badgeSuccess,
+                            (isPaused || (isDone && hasFails)) && styles.badgeWarning,
                         ]}>
-                            {isPaused ? 'Dijeda' : isDone ? (hasFails ? 'Selesai Sebagian' : 'Selesai') : `${syncState.percentage}%`}
-                        </Text>
+                            <Text style={[
+                                styles.badgeText,
+                                isDone && !hasFails && styles.badgeTextSuccess,
+                                (isPaused || (isDone && hasFails)) && styles.badgeTextWarning,
+                            ]}>
+                                {isPaused ? 'Dijeda' : isDone ? (hasFails ? 'Selesai Sebagian' : 'Selesai') : `${syncState.percentage}%`}
+                            </Text>
+                        </View>
                     </View>
-                </View>
-            </TouchableOpacity>
-        </View>
+                </TouchableOpacity>
+            </View>
+        )}
     </Animated.View>
 );
 }
@@ -210,6 +212,7 @@ const styles = StyleSheet.create({
 container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 99999,
+    elevation: 9999,
 },
 tabBarEdgeTrack: {
     position: 'absolute',

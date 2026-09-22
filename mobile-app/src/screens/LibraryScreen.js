@@ -12,6 +12,7 @@ import {
     RefreshControl,
     Platform,
     AppState,
+    Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -88,6 +89,77 @@ export default function LibraryScreen({ route, navigation }) {
 
     // Local Offline Vault Sync Modal state
     const [offlineSyncModalVisible, setOfflineSyncModalVisible] = useState(false);
+
+    // Real-time Sync Progress for Home Screen
+    const [syncState, setSyncState] = useState(SyncService.getCurrentProgress ? SyncService.getCurrentProgress() : {
+        isSyncing: false,
+        percentage: 0,
+        current: 0,
+        total: 0,
+        currentFilename: '',
+        successCount: 0,
+        failCount: 0,
+        isPaused: false,
+        pauseReason: '',
+    });
+    const [syncBarVisible, setSyncBarVisible] = useState(false);
+    const homeSyncAnim = useRef(new Animated.Value(0)).current;
+    const homeProgressAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const unsubscribe = SyncService.subscribe((state) => {
+            setSyncState(state);
+
+            if (state.isSyncing) {
+                setSyncBarVisible(true);
+                Animated.timing(homeSyncAnim, {
+                    toValue: 1,
+                    duration: 250,
+                    useNativeDriver: true,
+                }).start();
+                Animated.timing(homeProgressAnim, {
+                    toValue: Math.max(2, Math.min(100, state.percentage || 0)),
+                    duration: 300,
+                    useNativeDriver: false,
+                }).start();
+            } else if (state.isPaused) {
+                setSyncBarVisible(true);
+                Animated.timing(homeSyncAnim, {
+                    toValue: 1,
+                    duration: 250,
+                    useNativeDriver: true,
+                }).start();
+            } else if ((state.successCount > 0 || state.failCount > 0) && !state.isSyncing) {
+                Animated.timing(homeProgressAnim, {
+                    toValue: 100,
+                    duration: 200,
+                    useNativeDriver: false,
+                }).start();
+
+                if (state.successCount > 0) {
+                    fetchMedia(1, true);
+                }
+
+                const timer = setTimeout(() => {
+                    Animated.timing(homeSyncAnim, {
+                        toValue: 0,
+                        duration: 350,
+                        useNativeDriver: true,
+                    }).start(() => {
+                        setSyncBarVisible(false);
+                        homeProgressAnim.setValue(0);
+                    });
+                }, 5000);
+
+                return () => clearTimeout(timer);
+            } else {
+                setSyncBarVisible(false);
+                homeProgressAnim.setValue(0);
+            }
+        });
+
+        return unsubscribe;
+    }, [fetchMedia]);
 
     const isFetchingRef = useRef(false);
     const pageRef = useRef(1);
@@ -933,17 +1005,55 @@ export default function LibraryScreen({ route, navigation }) {
                     }
                     contentContainerStyle={styles.listContent}
                     ListFooterComponent={
-                        hasMore && !isOfflineMode ? (
-                            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                                <ActivityIndicator size="small" color="#0A84FF" />
-                            </View>
-                        ) : isOfflineMode && displayedItems.length > 0 ? (
-                            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                                <Text style={styles.offlineFooterText}>
-                                    ⚡ Mode Offline • {displayedItems.length} Foto & Video dari Memori HP
-                                </Text>
-                            </View>
-                        ) : null
+                        <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+                            {hasMore && !isOfflineMode ? (
+                                <ActivityIndicator size="small" color="#0A84FF" style={{ marginBottom: 12 }} />
+                            ) : null}
+
+                            {/* Apple Photos Style Gallery Summary */}
+                            <Text style={styles.appleFooterCountText}>
+                                {isOfflineMode
+                                    ? `⚡ Mode Offline • ${displayedItems.length} Foto & Video di HP`
+                                    : stats
+                                    ? `${stats.images || 0} Foto, ${stats.videos || 0} Video`
+                                    : `${displayedItems.length} Berkas`}
+                            </Text>
+
+                            {/* Sync Status Line & Mini Progress in Gallery Footer */}
+                            <TouchableOpacity
+                                activeOpacity={0.7}
+                                onPress={() => setSyncModalVisible(true)}
+                                style={styles.appleFooterSyncWrap}
+                            >
+                                {syncState.isSyncing ? (
+                                    <View style={{ alignItems: 'center', width: '85%' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                            <ActivityIndicator size="small" color="#0A84FF" style={{ marginRight: 6 }} />
+                                            <Text style={styles.appleFooterSyncText}>
+                                                Menyinkronkan dengan Cloud ({syncState.current}/{syncState.total}) • {syncState.percentage}%
+                                            </Text>
+                                        </View>
+                                        <View style={styles.appleFooterMiniTrack}>
+                                            <View style={[styles.appleFooterMiniFill, { width: `${Math.max(3, syncState.percentage || 0)}%` }]} />
+                                        </View>
+                                    </View>
+                                ) : syncState.isPaused ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <SFSymbol name="exclamationmark.triangle.fill" size={13} color="#FF9F0A" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.appleFooterSyncText, { color: '#FF9F0A' }]}>
+                                            Sinkronisasi dijeda • Ketuk untuk memeriksa
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <SFSymbol name="checkmark.cloud.fill" size={14} color="#30D158" style={{ marginRight: 6 }} />
+                                        <Text style={styles.appleFooterSyncText}>
+                                            Diperbarui Baru Saja • Tersimpan Aman di Cloud
+                                        </Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        </View>
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
@@ -1051,6 +1161,107 @@ export default function LibraryScreen({ route, navigation }) {
                         </TouchableOpacity>
                     </View>
                 </View>
+            )}
+
+            {/* Apple Photos Docked Bottom Progress Bar on Home */}
+            {syncBarVisible && (
+                <Animated.View
+                    style={[
+                        styles.homeSyncBarOuter,
+                        {
+                            bottom: isSelectMode ? (Math.max(insets.bottom, 16) + 120) : (Math.max(insets.bottom, 12) + 58),
+                            opacity: homeSyncAnim,
+                            transform: [
+                                {
+                                    translateY: homeSyncAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [18, 0],
+                                    }),
+                                },
+                            ],
+                        },
+                    ]}
+                    pointerEvents="box-none"
+                >
+                    <TouchableOpacity
+                        style={styles.homeSyncBarCard}
+                        activeOpacity={0.88}
+                        onPress={() => setSyncModalVisible(true)}
+                    >
+                        <BlurView tint="dark" intensity={90} style={StyleSheet.absoluteFill} />
+                        <View style={styles.homeSyncBarInner}>
+                            <View style={styles.homeSyncIconWrap}>
+                                {syncState.isPaused ? (
+                                    <SFSymbol name="exclamationmark.triangle.fill" size={17} color="#FF9F0A" />
+                                ) : !syncState.isSyncing && (syncState.successCount > 0 || syncState.failCount > 0) ? (
+                                    syncState.failCount > 0 && syncState.successCount === 0 ? (
+                                        <SFSymbol name="xmark.circle.fill" size={17} color="#FF453A" />
+                                    ) : syncState.failCount > 0 ? (
+                                        <SFSymbol name="exclamationmark.triangle.fill" size={17} color="#FF9F0A" />
+                                    ) : (
+                                        <SFSymbol name="checkmark.circle.fill" size={17} color="#30D158" />
+                                    )
+                                ) : (
+                                    <ActivityIndicator size="small" color="#0A84FF" />
+                                )}
+                            </View>
+
+                            <View style={styles.homeSyncInfo}>
+                                <View style={styles.homeSyncTitleRow}>
+                                    <Text style={styles.homeSyncTitle} numberOfLines={1}>
+                                        {syncState.isPaused
+                                            ? 'Sinkronisasi Dijeda'
+                                            : !syncState.isSyncing
+                                            ? (syncState.failCount > 0 && syncState.successCount === 0
+                                                ? `Gagal mengunggah ${syncState.failCount} berkas`
+                                                : syncState.failCount > 0
+                                                ? `${syncState.successCount || 0} sukses, ${syncState.failCount} gagal`
+                                                : `${syncState.successCount} berkas berhasil tersimpan`)
+                                            : `Menyinkronkan ke Cloud (${syncState.current}/${syncState.total})`}
+                                    </Text>
+                                    <Text style={[
+                                        styles.homeSyncPercentText,
+                                        syncState.isPaused && { color: '#FF9F0A' },
+                                        !syncState.isSyncing && syncState.successCount > 0 && { color: '#30D158' },
+                                    ]}>
+                                        {syncState.isPaused ? 'Dijeda' : !syncState.isSyncing ? 'Selesai' : `${syncState.percentage || 0}%`}
+                                    </Text>
+                                </View>
+
+                                {syncState.isSyncing && (
+                                    <Text style={styles.homeSyncSubtitle} numberOfLines={1}>
+                                        {syncState.currentFilename || 'Mengunggah berkas ke server...'}
+                                    </Text>
+                                )}
+
+                                <View style={styles.homeSyncTrack}>
+                                    <Animated.View
+                                        style={[
+                                            styles.homeSyncFill,
+                                            {
+                                                width: homeProgressAnim.interpolate({
+                                                    inputRange: [0, 100],
+                                                    outputRange: ['0%', '100%'],
+                                                }),
+                                                backgroundColor: syncState.isPaused
+                                                    ? '#FF9F0A'
+                                                    : (!syncState.isSyncing && syncState.failCount > 0 && syncState.successCount === 0)
+                                                    ? '#FF453A'
+                                                    : (!syncState.isSyncing && syncState.successCount > 0)
+                                                    ? '#30D158'
+                                                    : '#0A84FF',
+                                            },
+                                        ]}
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.homeSyncChevron}>
+                                <SFSymbol name="chevron.right" size={13} color="#8E8E93" />
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                </Animated.View>
             )}
 
             {/* Full-Screen Apple Photos Lightbox */}
@@ -1522,5 +1733,118 @@ const styles = StyleSheet.create({
         color: '#8E8E93',
         fontSize: 12,
         fontWeight: '500',
+    },
+    appleFooterCountText: {
+        color: '#ffffff',
+        fontSize: 15,
+        fontWeight: '600',
+        letterSpacing: -0.2,
+        marginBottom: 6,
+    },
+    appleFooterSyncWrap: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    appleFooterSyncText: {
+        color: '#8E8E93',
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    appleFooterMiniTrack: {
+        width: '100%',
+        maxWidth: 200,
+        height: 3,
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        borderRadius: 1.5,
+        overflow: 'hidden',
+    },
+    appleFooterMiniFill: {
+        height: '100%',
+        backgroundColor: '#0A84FF',
+        borderRadius: 1.5,
+    },
+    homeSyncBarOuter: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        zIndex: 9999,
+        elevation: 10,
+    },
+    homeSyncBarCard: {
+        width: '100%',
+        maxWidth: SCREEN_WIDTH - 24,
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.18)',
+        backgroundColor: Platform.OS === 'android' ? 'rgba(18, 18, 22, 0.95)' : 'transparent',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+    homeSyncBarInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+    },
+    homeSyncIconWrap: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 10,
+    },
+    homeSyncInfo: {
+        flex: 1,
+        marginRight: 8,
+    },
+    homeSyncTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 2,
+    },
+    homeSyncTitle: {
+        color: '#ffffff',
+        fontSize: 13,
+        fontWeight: '700',
+        letterSpacing: -0.2,
+        flex: 1,
+        marginRight: 6,
+    },
+    homeSyncPercentText: {
+        color: '#0A84FF',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    homeSyncSubtitle: {
+        color: '#8E8E93',
+        fontSize: 11,
+        fontWeight: '500',
+        marginBottom: 5,
+    },
+    homeSyncTrack: {
+        width: '100%',
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        borderRadius: 2,
+        overflow: 'hidden',
+    },
+    homeSyncFill: {
+        height: '100%',
+        borderRadius: 2,
+    },
+    homeSyncChevron: {
+        marginLeft: 4,
     },
 });
