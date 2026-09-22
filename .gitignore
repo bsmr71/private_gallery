@@ -18,6 +18,8 @@
 /node_modules
 /mobile-app/node_modules
 /mobile-app/.expo
+/mobile-app/android
+/mobile-app/ios
 /public/build
 /public/hot
 /public/storage

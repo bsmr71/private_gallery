@@ -563,7 +563,10 @@ export default function PhotoViewerModal({
                     {...panResponder.panHandlers}
                 >
                     {isCurrentVideo ? (
-                        <View style={styles.viewportPressable}>
+                        <Pressable
+                            style={styles.viewportPressable}
+                            onPress={toggleChrome}
+                        >
                             <VideoErrorBoundary
                                 fallback={
                                     <SecureImage
@@ -577,10 +580,13 @@ export default function PhotoViewerModal({
                                     key={activeItem.id}
                                     item={activeItem}
                                     isVisible={visible}
+                                    chromeVisible={chromeVisible}
                                     onToggleControls={toggleChrome}
+                                    onHideControls={() => setChromeVisible(false)}
+                                    onShowControls={() => setChromeVisible(true)}
                                 />
                             </VideoErrorBoundary>
-                        </View>
+                        </Pressable>
                     ) : (
                         <Pressable
                             style={styles.viewportPressable}
@@ -601,7 +607,7 @@ export default function PhotoViewerModal({
                 {/* Bottom Section (Filmstrip + Dock) */}
                 {chromeVisible && (
                     <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-                        {items && items.length > 1 && (
+                        {items && items.length > 1 && !isCurrentVideo && (
                             filmstripMinimized ? (
                                 <TouchableOpacity
                                     style={styles.restoreFilmstripPill}

@@ -6,9 +6,10 @@ import {
     Text,
     TouchableOpacity,
     Dimensions,
-    TouchableWithoutFeedback,
+    Pressable,
     Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { MediaUrlHelper } from '../services/mediaUrl';
 import { LocalVaultService } from '../services/localVaultService';
@@ -30,8 +31,15 @@ const SPEEDS = [1.0, 1.25, 1.5, 2.0];
 export default function VideoPlayerView({
     item,
     isVisible = true,
+    chromeVisible = true,
     onToggleControls,
+    onHideControls,
+    onShowControls,
 }) {
+    const insets = useSafeAreaInsets();
+    const dockClearance = Math.max(insets.bottom, 12) + 84;
+    const topBarClearance = Math.max(insets.top, 24) + 52;
+
     const [loadError, setLoadError] = useState(null);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isBuffering, setIsBuffering] = useState(true);
@@ -41,9 +49,8 @@ export default function VideoPlayerView({
     const [playbackRate, setPlaybackRate] = useState(1.0);
     const [contentFit, setContentFit] = useState('contain');
 
-    // Controls visibility and animation
-    const [controlsVisible, setControlsVisible] = useState(true);
-    const controlsOpacity = useRef(new Animated.Value(1)).current;
+    // Controls visibility and animation synchronized with viewer chrome
+    const controlsOpacity = useRef(new Animated.Value(chromeVisible ? 1 : 0)).current;
     const hideTimeoutRef = useRef(null);
 
     // Scrubber track width and dragging
@@ -91,29 +98,43 @@ export default function VideoPlayerView({
         p.play();
     });
 
-    // Auto-hide controls timer
-    const resetControlsTimeout = useCallback(() => {
-        if (hideTimeoutRef.current) {
-            clearTimeout(hideTimeoutRef.current);
-        }
-        if (!controlsVisible) {
-            setControlsVisible(true);
+    // Synchronize controlsOpacity with chromeVisible and handle auto-hide
+    useEffect(() => {
+        if (chromeVisible) {
             Animated.timing(controlsOpacity, {
                 toValue: 1,
                 duration: 180,
                 useNativeDriver: true,
             }).start();
+
+            if (isPlaying && !isScrubbing) {
+                if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+                hideTimeoutRef.current = setTimeout(() => {
+                    onHideControls && onHideControls();
+                }, 4500);
+            }
+        } else {
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+            Animated.timing(controlsOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }).start();
         }
-        if (isPlaying) {
+    }, [chromeVisible, isPlaying, isScrubbing, onHideControls]);
+
+    const resetControlsTimeout = useCallback(() => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+        }
+        if (!chromeVisible) {
+            onShowControls && onShowControls();
+        } else if (isPlaying && !isScrubbing) {
             hideTimeoutRef.current = setTimeout(() => {
-                Animated.timing(controlsOpacity, {
-                    toValue: 0,
-                    duration: 250,
-                    useNativeDriver: true,
-                }).start(() => setControlsVisible(false));
-            }, 3500);
+                onHideControls && onHideControls();
+            }, 4500);
         }
-    }, [isPlaying, controlsVisible]);
+    }, [chromeVisible, isPlaying, isScrubbing, onShowControls, onHideControls]);
 
     useEffect(() => {
         if (!player) return;
@@ -124,9 +145,8 @@ export default function VideoPlayerView({
             setIsPlaying(playing);
             if (!playing) {
                 // Show controls when paused
-                setControlsVisible(true);
-                Animated.timing(controlsOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
                 if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+                onShowControls && onShowControls();
             }
         });
 
@@ -195,16 +215,7 @@ export default function VideoPlayerView({
     }, [player, isVisible, isScrubbing]);
 
     const handleTapScreen = () => {
-        if (controlsVisible) {
-            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-            Animated.timing(controlsOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-            }).start(() => setControlsVisible(false));
-        } else {
-            resetControlsTimeout();
-        }
+        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
         onToggleControls && onToggleControls();
     };
 
@@ -324,10 +335,12 @@ export default function VideoPlayerView({
                 surfaceType="textureView"
             />
 
-            {/* Tap area to toggle player controls */}
-            <TouchableWithoutFeedback onPress={handleTapScreen}>
-                <View style={StyleSheet.absoluteFillObject} />
-            </TouchableWithoutFeedback>
+            {/* Full-bleed solid touch target over native TextureView to reliably toggle controls */}
+            <Pressable
+                style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.001)' }]}
+                onPress={handleTapScreen}
+                collapsable={false}
+            />
 
             {/* Buffering Indicator with Poster Backdrop */}
             {isBuffering && !loadError && (
@@ -347,13 +360,13 @@ export default function VideoPlayerView({
             )}
 
             {/* Gorgeous Apple Photos-Style Controls Overlay */}
-            {controlsVisible && !isBuffering && !loadError && (
+            {!isBuffering && !loadError && (
                 <Animated.View
                     style={[styles.controlsOverlay, { opacity: controlsOpacity }]}
-                    pointerEvents="box-none"
+                    pointerEvents={chromeVisible ? 'box-none' : 'none'}
                 >
                     {/* Top Row: Quick Action Badges */}
-                    <View style={styles.topControlsRow} pointerEvents="box-none">
+                    <View style={[styles.topControlsRow, { paddingTop: topBarClearance }]} pointerEvents="box-none">
                         {/* Audio Mute/Unmute */}
                         <TouchableOpacity
                             style={[styles.glassPill, isMuted && styles.glassPillActive]}
@@ -436,7 +449,7 @@ export default function VideoPlayerView({
                     </View>
 
                     {/* Bottom Row: Scrubber Timeline Bar with Elapsed & Total Duration */}
-                    <View style={styles.bottomControlsBar}>
+                    <View style={[styles.bottomControlsBar, { marginBottom: dockClearance }]}>
                         <Text style={styles.timeLabel}>{formatTime(displayTime)}</Text>
 
                         {/* Interactive Scrub Bar */}
@@ -450,13 +463,13 @@ export default function VideoPlayerView({
                             onResponderRelease={handleScrubberRelease}
                         >
                             {/* Background Track */}
-                            <View style={styles.scrubberTrack}>
+                            <View style={styles.scrubberTrack} pointerEvents="none">
                                 {/* Active Progress Track */}
-                                <View style={[styles.scrubberProgress, { width: progressPercent }]} />
+                                <View style={[styles.scrubberProgress, { width: progressPercent }]} pointerEvents="none" />
                             </View>
 
                             {/* Scrubber Knob / Thumb */}
-                            <View style={[styles.scrubberKnob, { left: progressPercent }]} />
+                            <View style={[styles.scrubberKnob, { left: progressPercent }]} pointerEvents="none" />
                         </View>
 
                         <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
@@ -482,8 +495,8 @@ export default function VideoPlayerView({
 
 const styles = StyleSheet.create({
     container: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT * 0.8,
+        width: '100%',
+        height: '100%',
         backgroundColor: '#000000',
         alignItems: 'center',
         justifyContent: 'center',
@@ -496,10 +509,7 @@ const styles = StyleSheet.create({
     controlsOverlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 16,
-        backgroundColor: 'rgba(0, 0, 0, 0.22)',
+        backgroundColor: 'rgba(0, 0, 0, 0.25)',
     },
     topControlsRow: {
         flexDirection: 'row',
@@ -579,12 +589,18 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: 'rgba(28, 28, 30, 0.75)',
-        paddingHorizontal: 14,
+        backgroundColor: 'rgba(24, 24, 28, 0.88)',
+        paddingHorizontal: 16,
         paddingVertical: 10,
-        borderRadius: 20,
+        borderRadius: 22,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.16)',
+        marginHorizontal: 14,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.45,
+        shadowRadius: 10,
+        elevation: 8,
     },
     timeLabel: {
         color: '#ffffff',

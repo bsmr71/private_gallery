@@ -1,10 +1,15 @@
 # EAS Build ignore
-node_modules/
-.expo/
-dist/
-web-build/
+node_modules
+node_modules/**
+.expo
+.expo/**
+dist
+dist/**
+web-build
+web-build/**
 expo-env.d.ts
-.kotlin/
+.kotlin
+.kotlin/**
 *.orig.*
 *.jks
 *.p8
@@ -19,10 +24,13 @@ yarn-error.*
 *.pem
 .env*.local
 *.tsbuildinfo
-/ios
-/android
+ios
+ios/**
+android
+android/**
 *.apk
-.claude/
+.claude
+.claude/**
 CLAUDE.md
 AGENTS.md
 *.log

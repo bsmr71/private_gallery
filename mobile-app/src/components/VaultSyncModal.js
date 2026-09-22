@@ -22,7 +22,7 @@ import { StorageService } from '../services/storage';
 import { LocalVaultService } from '../services/localVaultService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const THUMB_SIZE = (SCREEN_WIDTH - 72) / 4;
 
 export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
@@ -200,32 +200,53 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
         }
     };
 
-    const panY = useRef(new Animated.Value(0)).current;
+    const panY = useRef(new Animated.Value(SCREEN_HEIGHT * 0.4)).current;
+    const isClosingRef = useRef(false);
 
     const resetPosition = () => {
         Animated.spring(panY, {
             toValue: 0,
             useNativeDriver: true,
-            bounciness: 4,
+            damping: 24,
+            mass: 0.8,
+            stiffness: 220,
         }).start();
     };
 
-    const closeWithAnimation = () => {
+    const closeWithAnimation = (velocity = 0) => {
+        if (isClosingRef.current) return;
+        isClosingRef.current = true;
+
+        const duration = Math.max(140, Math.min(240, 250 - Math.abs(velocity) * 80));
         Animated.timing(panY, {
-            toValue: 600,
-            duration: 220,
+            toValue: SCREEN_HEIGHT,
+            duration: duration,
             useNativeDriver: true,
         }).start(() => {
-            panY.setValue(0);
             onClose && onClose();
+            isClosingRef.current = false;
         });
     };
 
     useEffect(() => {
         if (visible) {
-            panY.setValue(0);
+            isClosingRef.current = false;
+            panY.setValue(SCREEN_HEIGHT * 0.35);
+            Animated.spring(panY, {
+                toValue: 0,
+                useNativeDriver: true,
+                damping: 25,
+                mass: 0.8,
+                stiffness: 220,
+            }).start();
         }
     }, [visible]);
+
+    const backdropOpacity = panY.interpolate({
+        inputRange: [0, Math.min(SCREEN_HEIGHT * 0.4, 350)],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    });
 
     const panResponder = useRef(
         PanResponder.create({
@@ -237,8 +258,8 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                 }
             },
             onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > 80 || gestureState.vy > 0.4) {
-                    closeWithAnimation();
+                if (gestureState.dy > 65 || gestureState.vy > 0.35) {
+                    closeWithAnimation(gestureState.vy);
                 } else {
                     resetPosition();
                 }
@@ -251,13 +272,13 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     return (
         <Modal
             visible={visible}
-            animationType="slide"
+            animationType="fade"
             transparent
-            onRequestClose={closeWithAnimation}
+            onRequestClose={() => closeWithAnimation()}
         >
-            <View style={styles.backdrop}>
+            <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
                 {/* Backdrop dismiss touch */}
-                <TouchableWithoutFeedback onPress={closeWithAnimation}>
+                <TouchableWithoutFeedback onPress={() => closeWithAnimation()}>
                     <View style={StyleSheet.absoluteFillObject} />
                 </TouchableWithoutFeedback>
 
@@ -555,7 +576,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                         )}
                     </ScrollView>
                 </Animated.View>
-            </View>
+            </Animated.View>
 
             {/* Stealth Blackout Mode (Layar Hitam Senyap) */}
             <Modal visible={stealthMode} transparent={false} animationType="fade">
