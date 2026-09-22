@@ -563,10 +563,7 @@ export default function PhotoViewerModal({
                     {...panResponder.panHandlers}
                 >
                     {isCurrentVideo ? (
-                        <Pressable
-                            style={styles.viewportPressable}
-                            onPress={toggleChrome}
-                        >
+                        <View style={styles.viewportPressable}>
                             <VideoErrorBoundary
                                 fallback={
                                     <SecureImage
@@ -581,12 +578,13 @@ export default function PhotoViewerModal({
                                     item={activeItem}
                                     isVisible={visible}
                                     chromeVisible={chromeVisible}
+                                    insets={insets}
                                     onToggleControls={toggleChrome}
                                     onHideControls={() => setChromeVisible(false)}
                                     onShowControls={() => setChromeVisible(true)}
                                 />
                             </VideoErrorBoundary>
-                        </Pressable>
+                        </View>
                     ) : (
                         <Pressable
                             style={styles.viewportPressable}
@@ -764,7 +762,7 @@ const styles = StyleSheet.create({
     },
     mainImage: {
         width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT * 0.70,
+        height: '100%',
     },
     videoPlayOverlay: {
         ...StyleSheet.absoluteFillObject,
