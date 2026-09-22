@@ -194,7 +194,7 @@ export const ChunkUploadService = {
             }
 
             // Write temporary chunk file in cache directory
-            const tempChunkUri = `${FileSystemLegacy.cacheDirectory}chunk_${uploadId}_${chunkIndex}.tmp`;
+            const tempChunkUri = `${FileSystemLegacy.cacheDirectory}chunk_${uploadId}_${chunkIndex}.bin`;
             await FileSystemLegacy.writeAsStringAsync(tempChunkUri, chunkBase64, {
                 encoding: 'base64',
             });

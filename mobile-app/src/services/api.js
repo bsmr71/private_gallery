@@ -333,6 +333,7 @@ export const ApiService = {
             httpMethod: 'POST',
             uploadType: uploadType,
             fieldName: 'chunk',
+            mimeType: 'application/octet-stream',
             parameters: {
                 upload_id: String(uploadId),
                 chunk_index: String(chunkIndex),
