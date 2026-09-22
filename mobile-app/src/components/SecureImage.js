@@ -41,7 +41,12 @@ export default function SecureImage({
         localUri = rawUri;
     }
 
-    const resolvedUri = localUri || MediaUrlHelper.resolve(rawUri, token);
+    let resolvedUri = localUri || MediaUrlHelper.resolve(rawUri, token);
+
+    // If localUri happens to be a video file (.mp4/.mov), fallback to cloud thumbnail
+    if (resolvedUri && resolvedUri.split('?')[0].match(/\.(mp4|mov|m4v|3gp|webm)$/i)) {
+        resolvedUri = MediaUrlHelper.resolve(rawUri, token);
+    }
 
     if (!resolvedUri) {
         return <View style={[style, styles.placeholder]} />;

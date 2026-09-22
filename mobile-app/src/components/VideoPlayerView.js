@@ -8,6 +8,7 @@ import {
     Dimensions,
     Pressable,
     Animated,
+    Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -16,7 +17,7 @@ import { LocalVaultService } from '../services/localVaultService';
 import SecureImage from './SecureImage';
 import SFSymbol from './SFSymbol';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 
 const formatTime = (seconds) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
@@ -36,24 +37,33 @@ export default function VideoPlayerView({
     onToggleControls,
     onHideControls,
     onShowControls,
+    onMoreActions,
 }) {
     const contextInsets = useSafeAreaInsets();
     const insets = passedInsets || contextInsets;
     const safeTop = Math.max(insets?.top || 0, Platform.OS === 'ios' ? 48 : 36);
     const topBarClearance = safeTop + 54;
     const safeBottom = Math.max(insets?.bottom || 0, 16);
-    // AppleDock sits at ~99px to 115px from bottom.
-    // dockClearance ensures the scrubber bar floats cleanly above AppleDock with generous thumb room
-    const dockClearance = Math.max(safeBottom, 12) + 108;
+    // Dock is hidden in video mode (handled by PhotoViewerModal).
+    // Scrubber floats cleanly above the Android/iOS gesture bar / home navigation.
+    const dockClearance = safeBottom + 16;
 
     const [loadError, setLoadError] = useState(null);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isBuffering, setIsBuffering] = useState(true);
+    const [firstFrameRendered, setFirstFrameRendered] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isMuted, setIsMuted] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1.0);
     const [contentFit, setContentFit] = useState('contain');
+    const [hasPlayedOnce, setHasPlayedOnce] = useState(false);
+
+    // Reset firstFrameRendered whenever media item changes
+    useEffect(() => {
+        setFirstFrameRendered(false);
+        setHasPlayedOnce(false);
+    }, [item?.id]);
 
     // Controls visibility and animation synchronized with viewer chrome
     const controlsOpacity = useRef(new Animated.Value(chromeVisible ? 1 : 0)).current;
@@ -127,7 +137,7 @@ export default function VideoPlayerView({
                 useNativeDriver: true,
             }).start();
         }
-    }, [chromeVisible, isPlaying, isScrubbing, onHideControls]);
+    }, [chromeVisible, isPlaying, isScrubbing]);
 
     const resetControlsTimeout = useCallback(() => {
         if (hideTimeoutRef.current) {
@@ -147,8 +157,13 @@ export default function VideoPlayerView({
 
         // Playing change listener
         const subPlaying = player.addListener?.('playingChange', (event) => {
-            const playing = Boolean(event?.isPlaying);
+            const playing = Boolean(event?.isPlaying ?? event?.playing);
             setIsPlaying(playing);
+            if (playing) {
+                setIsBuffering(false);
+                setHasPlayedOnce(true);
+                setFirstFrameRendered(true);
+            }
             if (!playing) {
                 // Show controls when paused
                 if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -163,6 +178,8 @@ export default function VideoPlayerView({
             } else if (event?.status === 'readyToPlay') {
                 setIsBuffering(false);
                 setLoadError(null);
+                setHasPlayedOnce(true);
+                setFirstFrameRendered(true);
                 if (player.duration && player.duration > 0) {
                     setDuration(player.duration);
                 }
@@ -174,6 +191,9 @@ export default function VideoPlayerView({
 
         // Time update listener
         const subTime = player.addListener?.('timeUpdate', (event) => {
+            setIsBuffering(false);
+            setHasPlayedOnce(true);
+            setFirstFrameRendered(true);
             if (!isScrubbing) {
                 setCurrentTime(event?.currentTime || 0);
             }
@@ -195,6 +215,11 @@ export default function VideoPlayerView({
         });
 
         // Initial sync
+        if (player.status === 'readyToPlay' || player.playing) {
+            setIsBuffering(false);
+            setHasPlayedOnce(true);
+            setFirstFrameRendered(true);
+        }
         if (player.duration) setDuration(player.duration);
         if (player.currentTime) setCurrentTime(player.currentTime);
         if (player.muted !== undefined) setIsMuted(player.muted);
@@ -276,6 +301,7 @@ export default function VideoPlayerView({
     const handleRetry = () => {
         setLoadError(null);
         setIsBuffering(true);
+        setFirstFrameRendered(false);
         if (player) {
             try {
                 player.replay();
@@ -331,42 +357,52 @@ export default function VideoPlayerView({
 
     return (
         <View style={styles.container}>
-            {/* Native Video View from expo-video without clunky default Android controls */}
+            {/* Native Video View from expo-video using high-performance hardware surface */}
             <VideoView
                 style={styles.videoView}
                 player={player}
                 nativeControls={false}
                 contentFit={contentFit}
                 allowsFullscreen={true}
-                surfaceType="textureView"
+                surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                onFirstFrameRender={() => {
+                    setFirstFrameRendered(true);
+                    setHasPlayedOnce(true);
+                    setIsBuffering(false);
+                }}
             />
 
-            {/* Full-bleed solid touch target over native TextureView to reliably toggle controls */}
+            {/* Tap area over video to toggle controls */}
             <Pressable
-                style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.001)' }]}
+                style={StyleSheet.absoluteFill}
                 onPress={handleTapScreen}
                 collapsable={false}
             />
 
-            {/* Buffering Indicator with Poster Backdrop */}
-            {isBuffering && !loadError && (
-                <View style={styles.loadingOverlay} pointerEvents="none">
+            {/* Seamless Poster Image until video decoder produces its first frame */}
+            {!hasPlayedOnce && !firstFrameRendered && (
+                <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
                     {Boolean(item?.thumbnail_url) && (
                         <SecureImage
                             source={item.thumbnail_url}
+                            mediaId={item?.id}
                             style={StyleSheet.absoluteFillObject}
                             resizeMode="contain"
                         />
                     )}
-                    <View style={styles.bufferingBackdrop}>
-                        <ActivityIndicator size="large" color="#0A84FF" />
-                        <Text style={styles.loadingText}>Memuat Video...</Text>
-                    </View>
+                    {isBuffering && (
+                        <View style={styles.loadingOverlay}>
+                            <View style={styles.bufferingBackdrop}>
+                                <ActivityIndicator size="large" color="#0A84FF" />
+                                <Text style={styles.loadingText}>Memuat Video...</Text>
+                            </View>
+                        </View>
+                    )}
                 </View>
             )}
 
             {/* Gorgeous Apple Photos-Style Controls Overlay */}
-            {!isBuffering && !loadError && (
+            {!loadError && (
                 <Animated.View
                     style={[styles.controlsOverlay, { opacity: controlsOpacity }]}
                     pointerEvents={chromeVisible ? 'box-none' : 'none'}
@@ -390,8 +426,19 @@ export default function VideoPlayerView({
                             </Text>
                         </TouchableOpacity>
 
-                        {/* Right Top Buttons: Speed & Fit */}
+                        {/* Right: More Actions + Speed + Fit */}
                         <View style={styles.topRightActions}>
+                            {onMoreActions && (
+                                <TouchableOpacity
+                                    style={styles.glassPill}
+                                    onPress={() => { onMoreActions(); resetControlsTimeout(); }}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <SFSymbol name="ellipsis" size={15} color="#ffffff" />
+                                </TouchableOpacity>
+                            )}
+
                             {/* Playback Speed */}
                             <TouchableOpacity
                                 style={styles.glassPill}
@@ -434,12 +481,16 @@ export default function VideoPlayerView({
                             activeOpacity={0.8}
                             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                         >
-                            <SFSymbol
-                                name={isPlaying ? 'pause.fill' : 'play.fill'}
-                                size={28}
-                                color="#ffffff"
-                                style={!isPlaying ? { marginLeft: 3 } : undefined}
-                            />
+                            {isBuffering ? (
+                                <ActivityIndicator size="small" color="#ffffff" />
+                            ) : (
+                                <SFSymbol
+                                    name={isPlaying ? 'pause.fill' : 'play.fill'}
+                                    size={28}
+                                    color="#ffffff"
+                                    style={!isPlaying ? { marginLeft: 3 } : undefined}
+                                />
+                            )}
                         </TouchableOpacity>
 
                         {/* Skip Forward 10s */}
@@ -455,7 +506,7 @@ export default function VideoPlayerView({
                     </View>
 
                     {/* Bottom Row: Scrubber Timeline Bar with Elapsed & Total Duration */}
-                    <View style={[styles.bottomControlsBar, { marginBottom: dockClearance }]}>
+                    <View style={[styles.bottomControlsBar, { marginBottom: dockClearance }]} pointerEvents="box-none">
                         <Text style={styles.timeLabel}>{formatTime(displayTime)}</Text>
 
                         {/* Interactive Scrub Bar */}
@@ -502,27 +553,32 @@ export default function VideoPlayerView({
 const styles = StyleSheet.create({
     container: {
         width: SCREEN_WIDTH,
-        height: '100%',
+        height: SCREEN_HEIGHT,
         backgroundColor: '#000000',
-        alignItems: 'center',
-        justifyContent: 'center',
+        overflow: 'hidden',
     },
     videoView: {
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#000000',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
     },
     controlsOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(0, 0, 0, 0.25)',
+        backgroundColor: 'rgba(0, 0, 0, 0.28)',
     },
     topControlsRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        width: '100%',
         paddingHorizontal: 16,
+        zIndex: 20,
     },
     topRightActions: {
         flexDirection: 'row',
@@ -533,16 +589,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        backgroundColor: 'rgba(28, 28, 30, 0.78)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.18)',
         paddingHorizontal: 12,
         paddingVertical: 7,
         borderRadius: 18,
     },
     glassPillActive: {
-        backgroundColor: 'rgba(255, 159, 10, 0.2)',
-        borderColor: 'rgba(255, 159, 10, 0.45)',
+        backgroundColor: 'rgba(255, 159, 10, 0.22)',
+        borderColor: 'rgba(255, 159, 10, 0.5)',
     },
     glassPillText: {
         color: '#ffffff',
@@ -558,17 +614,18 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 32,
+        gap: 28,
+        zIndex: 20,
     },
     bigPlayBtn: {
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(10, 132, 255, 0.9)',
+        backgroundColor: 'rgba(10, 132, 255, 0.92)',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.35)',
+        borderColor: 'rgba(255, 255, 255, 0.4)',
         shadowColor: '#0A84FF',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.5,
@@ -579,11 +636,11 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(28, 28, 30, 0.75)',
+        backgroundColor: 'rgba(28, 28, 30, 0.78)',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.18)',
     },
     skipSubtext: {
         color: '#ffffff',
@@ -596,18 +653,19 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: 'rgba(24, 24, 28, 0.88)',
+        backgroundColor: 'rgba(24, 24, 28, 0.92)',
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 22,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.16)',
+        borderColor: 'rgba(255, 255, 255, 0.18)',
         marginHorizontal: 14,
         shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.45,
+        shadowOpacity: 0.5,
         shadowRadius: 10,
         elevation: 8,
+        zIndex: 20,
     },
     timeLabel: {
         color: '#ffffff',
@@ -649,23 +707,30 @@ const styles = StyleSheet.create({
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#000000',
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
         alignItems: 'center',
         justifyContent: 'center',
     },
     bufferingBackdrop: {
-        backgroundColor: 'rgba(0, 0, 0, 0.65)',
-        paddingHorizontal: 20,
-        paddingVertical: 14,
-        borderRadius: 14,
+        backgroundColor: 'rgba(20, 20, 24, 0.88)',
+        paddingHorizontal: 22,
+        paddingVertical: 16,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 6,
     },
     loadingText: {
         color: '#ffffff',
         fontSize: 13,
         marginTop: 10,
-        fontWeight: '500',
+        fontWeight: '600',
     },
     errorContainer: {
         alignItems: 'center',

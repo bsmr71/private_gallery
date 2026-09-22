@@ -34,7 +34,7 @@ import { MediaUrlHelper } from '../services/mediaUrl';
 import { LocalVaultService } from '../services/localVaultService';
 import { DeviceGalleryService } from '../services/deviceGalleryService';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 
 class VideoErrorBoundary extends React.Component {
     constructor(props) {
@@ -72,10 +72,26 @@ export default function PhotoViewerModal({
     const [filmstripMinimized, setFilmstripMinimized] = useState(false);
 
     const toggleChrome = useCallback(() => {
-        try {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        } catch (e) {}
         setChromeVisible((prev) => !prev);
+    }, []);
+
+    // Video-mode action menu (replaces the bottom dock during video playback)
+    const handleVideoActions = useCallback(() => {
+        const currentItem = itemsRef.current?.[currentIndexRef.current];
+        if (!currentItem) return;
+        Alert.alert(
+            'Aksi Video',
+            null,
+            [
+                { text: '📤 Bagikan', onPress: () => handleShare() },
+                { text: '💾 Unduh ke Perangkat', onPress: () => handleDownload() },
+                { text: currentItem.is_favorite ? '💔 Hapus Favorit' : '❤️ Tambah Favorit', onPress: () => handleToggleFavorite() },
+                { text: 'ℹ️ Info', onPress: () => setInfoVisible(true) },
+                { text: '📁 Pindah ke Album', onPress: () => setAlbumModalVisible(true) },
+                { text: '🗑️ Hapus', style: 'destructive', onPress: () => handleDelete() },
+                { text: 'Batal', style: 'cancel' },
+            ]
+        );
     }, []);
 
     // Animated 2D vector for smooth swipe gestures (slide X to browse, slide Y to dismiss)
@@ -105,6 +121,7 @@ export default function PhotoViewerModal({
             setInfoVisible(false);
             setAlbumModalVisible(false);
             setDownloading(false);
+            pan.setOffset({ x: 0, y: 0 });
             pan.setValue({ x: 0, y: 0 });
         }
     }, [visible, initialIndex]);
@@ -139,7 +156,9 @@ export default function PhotoViewerModal({
             onStartShouldSetPanResponderCapture: () => false,
             onMoveShouldSetPanResponder: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
-                if (isCurrentVideoRef.current) {
+                const pageY = evt?.nativeEvent?.pageY || 0;
+                // If viewing a video and touch is near the bottom scrubber, avoid capturing horizontal swipes
+                if (isCurrentVideoRef.current && pageY > SCREEN_HEIGHT - 220) {
                     return Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(dx) * 1.8;
                 }
                 const isHorizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 0.8;
@@ -148,8 +167,9 @@ export default function PhotoViewerModal({
             },
             onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
                 const { dx, dy } = gestureState;
-                // If viewing a video, do not capture horizontal gestures so scrubber works smoothly
-                if (isCurrentVideoRef.current) {
+                const pageY = evt?.nativeEvent?.pageY || 0;
+                // If viewing a video and touch is near the bottom scrubber, do not capture so scrubber works
+                if (isCurrentVideoRef.current && pageY > SCREEN_HEIGHT - 220) {
                     return Math.abs(dy) > 28 && Math.abs(dy) > Math.abs(dx) * 1.8;
                 }
                 const isHorizontal = Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 0.8;
@@ -157,10 +177,7 @@ export default function PhotoViewerModal({
                 return isHorizontal || isVertical;
             },
             onPanResponderGrant: () => {
-                pan.setOffset({
-                    x: pan.x._value || 0,
-                    y: pan.y._value || 0,
-                });
+                pan.setOffset({ x: 0, y: 0 });
                 pan.setValue({ x: 0, y: 0 });
             },
             onPanResponderMove: (evt, gestureState) => {
@@ -190,6 +207,7 @@ export default function PhotoViewerModal({
                         duration: 160,
                         useNativeDriver: true,
                     }).start(() => {
+                        pan.setOffset({ x: 0, y: 0 });
                         pan.setValue({ x: 0, y: 0 });
                         onCloseRef.current && onCloseRef.current();
                     });
@@ -435,6 +453,20 @@ export default function PhotoViewerModal({
         );
     };
 
+    const handleNavigatePrev = () => {
+        if (currentIndex > 0) {
+            pan.setValue({ x: 0, y: 0 });
+            setCurrentIndex((prev) => Math.max(0, prev - 1));
+        }
+    };
+
+    const handleNavigateNext = () => {
+        if (items && currentIndex < items.length - 1) {
+            pan.setValue({ x: 0, y: 0 });
+            setCurrentIndex((prev) => Math.min(items.length - 1, prev + 1));
+        }
+    };
+
     if (!visible || !activeItem) return null;
 
     const bgOpacity = pan.y.interpolate({
@@ -453,8 +485,56 @@ export default function PhotoViewerModal({
         >
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
             <Animated.View style={[styles.container, { opacity: bgOpacity }]}>
+                {/* 1. Center Image / Video Viewport with Smooth Gesture Translation (Rendered FIRST as background) */}
+                <Animated.View
+                    style={[
+                        styles.viewport,
+                        {
+                            transform: pan.getTranslateTransform(),
+                        },
+                    ]}
+                    {...panResponder.panHandlers}
+                >
+                    {isCurrentVideo ? (
+                        <VideoErrorBoundary
+                            fallback={
+                                <SecureImage
+                                    source={activeItem.thumbnail_url || activeItem.stream_url}
+                                    style={styles.mainImage}
+                                    resizeMode="contain"
+                                />
+                            }
+                        >
+                            <VideoPlayerView
+                                key={activeItem.id}
+                                item={activeItem}
+                                isVisible={visible}
+                                chromeVisible={chromeVisible}
+                                insets={insets}
+                                onToggleControls={toggleChrome}
+                                onHideControls={() => setChromeVisible(false)}
+                                onShowControls={() => setChromeVisible(true)}
+                                onMoreActions={handleVideoActions}
+                            />
+                        </VideoErrorBoundary>
+                    ) : (
+                        <Pressable
+                            style={styles.viewportPressable}
+                            onPress={toggleChrome}
+                        >
+                            <SecureImage
+                                source={activeLocalUri || activeItem.stream_url}
+                                mediaId={activeItem.id}
+                                style={styles.mainImage}
+                                resizeMode="contain"
+                                showLoader={true}
+                                preferFullResolution={true}
+                            />
+                        </Pressable>
+                    )}
+                </Animated.View>
 
-                {/* Top Bar (Apple Photos Header) */}
+                {/* 2. Top Bar (Apple Photos Header, Rendered on TOP) */}
                 {chromeVisible && (
                     <View style={[styles.topBar, { paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 48 : 36) }]}>
                         <BlurView tint="dark" intensity={70} style={StyleSheet.absoluteFill} />
@@ -496,7 +576,7 @@ export default function PhotoViewerModal({
                     </View>
                 )}
 
-                {/* Floating Restore Pill when chrome is minimized */}
+                {/* 3. Floating Restore Pill when chrome is minimized */}
                 {!chromeVisible && (
                     <TouchableOpacity
                         style={[
@@ -512,22 +592,14 @@ export default function PhotoViewerModal({
                     </TouchableOpacity>
                 )}
 
-                {/* Floating Left / Right Navigation Chevrons */}
+                {/* 4. Floating Left / Right Navigation Chevrons */}
                 {chromeVisible && currentIndex > 0 && (
                     <TouchableOpacity
                         style={styles.floatingNavLeft}
-                        onPress={() => {
-                            pan.setValue({ x: SCREEN_WIDTH * 0.25, y: 0 });
-                            setCurrentIndex((prev) => prev - 1);
-                            Animated.spring(pan, {
-                                toValue: { x: 0, y: 0 },
-                                friction: 8,
-                                tension: 65,
-                                useNativeDriver: true,
-                            }).start();
-                        }}
+                        onPress={handleNavigatePrev}
                         activeOpacity={0.7}
                         hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                        accessibilityLabel="Media sebelumnya"
                     >
                         <SFSymbol name="chevron.left" size={20} color="#ffffff" weight="bold" />
                     </TouchableOpacity>
@@ -535,75 +607,17 @@ export default function PhotoViewerModal({
                 {chromeVisible && currentIndex < items.length - 1 && (
                     <TouchableOpacity
                         style={styles.floatingNavRight}
-                        onPress={() => {
-                            pan.setValue({ x: -SCREEN_WIDTH * 0.25, y: 0 });
-                            setCurrentIndex((prev) => prev + 1);
-                            Animated.spring(pan, {
-                                toValue: { x: 0, y: 0 },
-                                friction: 8,
-                                tension: 65,
-                                useNativeDriver: true,
-                            }).start();
-                        }}
+                        onPress={handleNavigateNext}
                         activeOpacity={0.7}
                         hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                        accessibilityLabel="Media selanjutnya"
                     >
                         <SFSymbol name="chevron.right" size={20} color="#ffffff" weight="bold" />
                     </TouchableOpacity>
                 )}
 
-                {/* Center Image / Video Viewport with Smooth Gesture Translation */}
-                <Animated.View
-                    style={[
-                        styles.viewport,
-                        {
-                            transform: pan.getTranslateTransform(),
-                        },
-                    ]}
-                    {...panResponder.panHandlers}
-                >
-                    {isCurrentVideo ? (
-                        <View style={styles.viewportPressable}>
-                            <VideoErrorBoundary
-                                fallback={
-                                    <SecureImage
-                                        source={activeItem.thumbnail_url || activeItem.stream_url}
-                                        style={styles.mainImage}
-                                        resizeMode="contain"
-                                    />
-                                }
-                            >
-                                <VideoPlayerView
-                                    key={activeItem.id}
-                                    item={activeItem}
-                                    isVisible={visible}
-                                    chromeVisible={chromeVisible}
-                                    insets={insets}
-                                    onToggleControls={toggleChrome}
-                                    onHideControls={() => setChromeVisible(false)}
-                                    onShowControls={() => setChromeVisible(true)}
-                                />
-                            </VideoErrorBoundary>
-                        </View>
-                    ) : (
-                        <Pressable
-                            style={styles.viewportPressable}
-                            onPress={toggleChrome}
-                        >
-                            <SecureImage
-                                source={activeLocalUri || activeItem.stream_url}
-                                mediaId={activeItem.id}
-                                style={styles.mainImage}
-                                resizeMode="contain"
-                                showLoader={true}
-                                preferFullResolution={true}
-                            />
-                        </Pressable>
-                    )}
-                </Animated.View>
-
                 {/* Bottom Section (Filmstrip + Dock) */}
-                {chromeVisible && (
+                {chromeVisible && !isCurrentVideo && (
                     <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
                         {items && items.length > 1 && !isCurrentVideo && (
                             filmstripMinimized ? (
@@ -667,15 +681,17 @@ export default function PhotoViewerModal({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
         backgroundColor: '#000000',
-        justifyContent: 'space-between',
     },
     topBar: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        zIndex: 50,
+        zIndex: 100,
+        elevation: 10,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -712,7 +728,9 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     counterBadge: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
@@ -738,7 +756,8 @@ const styles = StyleSheet.create({
     floatingRestoreBtn: {
         position: 'absolute',
         right: 16,
-        zIndex: 99,
+        zIndex: 100,
+        elevation: 10,
         backgroundColor: 'rgba(28, 28, 30, 0.75)',
         width: 36,
         height: 36,
@@ -749,19 +768,20 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.25)',
     },
     viewportPressable: {
-        width: '100%',
-        height: '100%',
+        ...StyleSheet.absoluteFillObject,
         alignItems: 'center',
         justifyContent: 'center',
     },
     viewport: {
         flex: 1,
         width: SCREEN_WIDTH,
-        alignItems: 'center',
+        height: SCREEN_HEIGHT,
+        backgroundColor: '#000000',
         justifyContent: 'center',
+        alignItems: 'center',
     },
     mainImage: {
-        width: SCREEN_WIDTH,
+        width: '100%',
         height: '100%',
     },
     videoPlayOverlay: {
@@ -790,7 +810,8 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        zIndex: 50,
+        zIndex: 100,
+        elevation: 10,
         alignItems: 'center',
         paddingBottom: 15,
     },
@@ -813,32 +834,40 @@ const styles = StyleSheet.create({
     },
     floatingNavLeft: {
         position: 'absolute',
-        left: 12,
+        left: 14,
         top: '48%',
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(20, 20, 26, 0.65)',
+        backgroundColor: 'rgba(28, 28, 32, 0.78)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 55,
-        elevation: 8,
+        zIndex: 99,
+        elevation: 10,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.4,
+        shadowRadius: 6,
     },
     floatingNavRight: {
         position: 'absolute',
-        right: 12,
+        right: 14,
         top: '48%',
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(20, 20, 26, 0.65)',
+        backgroundColor: 'rgba(28, 28, 32, 0.78)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 55,
-        elevation: 8,
+        zIndex: 99,
+        elevation: 10,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.4,
+        shadowRadius: 6,
     },
 });

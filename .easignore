@@ -1,0 +1,18 @@
+# Root EAS ignore
+mobile-app/android
+mobile-app/android/**
+mobile-app/ios
+mobile-app/ios/**
+mobile-app/node_modules
+mobile-app/node_modules/**
+mobile-app/.expo
+mobile-app/.expo/**
+vendor
+vendor/**
+node_modules
+node_modules/**
+storage
+storage/**
+public/storage
+*.apk
+*.log

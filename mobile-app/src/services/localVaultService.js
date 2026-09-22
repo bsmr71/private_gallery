@@ -95,7 +95,15 @@ export const LocalVaultService = {
     getLocalThumbUri(mediaId) {
         if (!mediaId || SecurityService.isDecoyMode()) return null;
         const entry = localFilesMap.get(String(mediaId));
-        return entry ? (entry.localThumbUri || entry.localUri || null) : null;
+        if (!entry) return null;
+        if (entry.localThumbUri) return entry.localThumbUri;
+        // Never return video files as image thumbnail URIs
+        const isVideo = Boolean(
+            (entry.mimeType && entry.mimeType.includes('video')) ||
+            (entry.filename && entry.filename.match(/\.(mp4|mov|m4v|3gp|webm)$/i)) ||
+            (entry.localUri && entry.localUri.match(/\.(mp4|mov|m4v|3gp|webm)$/i))
+        );
+        return isVideo ? null : (entry.localUri || null);
     },
 
     /**
@@ -367,6 +375,7 @@ export const LocalVaultService = {
 
                 localFilesMap.set(idStr, entry);
                 await this._persistIndex();
+                notifyListeners();
                 console.log(`[LocalVaultService] Background cache completed for media ${idStr} (${Math.round((info.size || 0) / 1024)} KB)`);
             } else {
                 // Remove failed partial file
