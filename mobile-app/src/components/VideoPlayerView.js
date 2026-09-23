@@ -69,9 +69,13 @@ export default function VideoPlayerView({
     const controlsOpacity = useRef(new Animated.Value(chromeVisible ? 1 : 0)).current;
     const hideTimeoutRef = useRef(null);
 
-    // Scrubber track width and dragging
+    // Scrubber track width, measurements and dragging
     const [scrubberWidth, setScrubberWidth] = useState(SCREEN_WIDTH - 140);
+    const scrubberWidthRef = useRef(SCREEN_WIDTH - 140);
+    const scrubberRef = useRef(null);
+    const scrubberPageXRef = useRef(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const isScrubbingRef = useRef(false);
     const [scrubTime, setScrubTime] = useState(0);
 
     // Check if local file exists in Private Local Vault for 0.05s instant playback
@@ -108,9 +112,10 @@ export default function VideoPlayerView({
         }
     }, [localUri, item, isVisible]);
 
-    // Initialize expo-video player with smooth loop and autoplay
+    // Initialize expo-video player with smooth loop, autoplay and 0.25s time update interval
     const player = useVideoPlayer(videoSource, (p) => {
         p.loop = true;
+        p.timeUpdateEventInterval = 0.25;
         p.play();
     });
 
@@ -155,6 +160,9 @@ export default function VideoPlayerView({
     useEffect(() => {
         if (!player) return;
 
+        // Configure player to emit timeUpdate every 0.25 seconds
+        player.timeUpdateEventInterval = 0.25;
+
         // Playing change listener
         const subPlaying = player.addListener?.('playingChange', (event) => {
             const playing = Boolean(event?.isPlaying ?? event?.playing);
@@ -189,13 +197,23 @@ export default function VideoPlayerView({
             }
         });
 
+        // Source load listener
+        const subSourceLoad = player.addListener?.('sourceLoad', (event) => {
+            if (event?.duration && event.duration > 0) {
+                setDuration(event.duration);
+            }
+        });
+
         // Time update listener
         const subTime = player.addListener?.('timeUpdate', (event) => {
             setIsBuffering(false);
             setHasPlayedOnce(true);
             setFirstFrameRendered(true);
-            if (!isScrubbing) {
-                setCurrentTime(event?.currentTime || 0);
+            if (!isScrubbingRef.current) {
+                const cur = event?.currentTime;
+                if (typeof cur === 'number' && !isNaN(cur)) {
+                    setCurrentTime(cur);
+                }
             }
             if (player.duration && player.duration > 0) {
                 setDuration(player.duration);
@@ -238,12 +256,34 @@ export default function VideoPlayerView({
                 player.pause();
                 subPlaying?.remove?.();
                 subStatus?.remove?.();
+                subSourceLoad?.remove?.();
                 subTime?.remove?.();
                 subMuted?.remove?.();
                 subRate?.remove?.();
             } catch (e) {}
         };
-    }, [player, isVisible, isScrubbing]);
+    }, [player, isVisible]);
+
+    // Fallback ticker to ensure continuous progress bar advancement during playback
+    useEffect(() => {
+        if (!player || !isPlaying) return;
+
+        const interval = setInterval(() => {
+            if (isScrubbingRef.current) return;
+            try {
+                const cur = player.currentTime;
+                if (typeof cur === 'number' && !isNaN(cur)) {
+                    setCurrentTime(cur);
+                }
+                const dur = player.duration;
+                if (typeof dur === 'number' && dur > 0) {
+                    setDuration((prev) => (prev > 0 ? prev : dur));
+                }
+            } catch (e) {}
+        }, 250);
+
+        return () => clearInterval(interval);
+    }, [player, isPlaying]);
 
     const handleTapScreen = () => {
         if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -314,14 +354,25 @@ export default function VideoPlayerView({
 
     // Scrubber drag / touch handlers
     const calculateSeekTime = (nativeEvent) => {
-        const { locationX } = nativeEvent;
-        if (scrubberWidth <= 0 || !duration) return 0;
-        const ratio = Math.max(0, Math.min(locationX / scrubberWidth, 1));
+        if (!duration || duration <= 0) return 0;
+        const width = scrubberWidthRef.current || scrubberWidth;
+        if (width <= 0) return 0;
+
+        let offset = nativeEvent.locationX;
+        if (
+            typeof nativeEvent.pageX === 'number' &&
+            scrubberPageXRef.current &&
+            scrubberPageXRef.current > 0
+        ) {
+            offset = nativeEvent.pageX - scrubberPageXRef.current;
+        }
+        const ratio = Math.max(0, Math.min(offset / width, 1));
         return ratio * duration;
     };
 
     const handleScrubberGrant = (e) => {
         setIsScrubbing(true);
+        isScrubbingRef.current = true;
         const time = calculateSeekTime(e.nativeEvent);
         setScrubTime(time);
         if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -335,10 +386,13 @@ export default function VideoPlayerView({
     const handleScrubberRelease = (e) => {
         const time = calculateSeekTime(e.nativeEvent);
         if (player) {
-            player.currentTime = time;
+            try {
+                player.currentTime = time;
+            } catch (err) {}
             setCurrentTime(time);
         }
         setIsScrubbing(false);
+        isScrubbingRef.current = false;
         resetControlsTimeout();
     };
 
@@ -511,13 +565,25 @@ export default function VideoPlayerView({
 
                         {/* Interactive Scrub Bar */}
                         <View
+                            ref={scrubberRef}
                             style={styles.scrubberContainer}
-                            onLayout={(e) => setScrubberWidth(e.nativeEvent.layout.width)}
+                            onLayout={(e) => {
+                                const width = e.nativeEvent.layout.width;
+                                setScrubberWidth(width);
+                                scrubberWidthRef.current = width;
+                                scrubberRef.current?.measure((x, y, w, h, pageX) => {
+                                    if (typeof pageX === 'number') {
+                                        scrubberPageXRef.current = pageX;
+                                    }
+                                });
+                            }}
                             onStartShouldSetResponder={() => true}
                             onMoveShouldSetResponder={() => true}
                             onResponderGrant={handleScrubberGrant}
                             onResponderMove={handleScrubberMove}
                             onResponderRelease={handleScrubberRelease}
+                            onResponderTerminate={handleScrubberRelease}
+                            onResponderTerminationRequest={() => false}
                         >
                             {/* Background Track */}
                             <View style={styles.scrubberTrack} pointerEvents="none">

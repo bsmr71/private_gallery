@@ -1,14 +1,29 @@
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { LocalVaultService } from './localVaultService';
 import { MediaUrlHelper } from './mediaUrl';
 
 export const DeviceGalleryService = {
     /**
-     * Download and save a single media file to the user's phone storage / gallery via native share sheet.
-     * Uses expo-sharing which is already compiled into the native Android APK.
+     * Request MediaLibrary permissions for saving to public gallery.
+     */
+    async requestGalleryPermission() {
+        try {
+            const { status } = await MediaLibrary.requestPermissionsAsync();
+            return status === 'granted';
+        } catch (e) {
+            console.warn('[DeviceGalleryService] Permission request error:', e);
+            return false;
+        }
+    },
+
+    /**
+     * Download and save a single media file to the user's phone storage / public gallery.
+     * Uses expo-media-library/legacy to insert directly into Android MediaStore / iOS Camera Roll (Album: Private Gallery).
+     * Falls back to native Share Sheet if permission is denied.
      * @param {Object} mediaItem - The media item object
-     * @returns {Promise<{ success: boolean, method: 'share'|'failed', message?: string }>}
+     * @returns {Promise<{ success: boolean, method: 'mediaLibrary'|'share'|'failed', message?: string }>}
      */
     async saveToDeviceGallery(mediaItem) {
         if (!mediaItem || !mediaItem.id) {
@@ -46,8 +61,37 @@ export const DeviceGalleryService = {
                 sourceFileUri = res.uri;
             }
 
-            // 3. Open Android system native Save/Share Sheet
-            // On Android, this displays "Simpan ke Galeri / Save Image / Google Photos / File Manager / WhatsApp"
+            // 3. Save directly to Phone's Public MediaLibrary (Google Photos / Galeri HP)
+            try {
+                const hasPermission = await this.requestGalleryPermission();
+                if (hasPermission) {
+                    const formattedUri = sourceFileUri.startsWith('file:///')
+                        ? sourceFileUri
+                        : (sourceFileUri.startsWith('file://') ? sourceFileUri.replace('file://', 'file:///') : `file:///${sourceFileUri.replace(/^\/+/, '')}`);
+
+                    const asset = await MediaLibrary.createAssetAsync(formattedUri);
+                    try {
+                        const album = await MediaLibrary.getAlbumAsync('Private Gallery');
+                        if (album) {
+                            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+                        } else {
+                            await MediaLibrary.createAlbumAsync('Private Gallery', asset, false);
+                        }
+                    } catch (albumErr) {
+                        console.log('[DeviceGalleryService] Album add notice:', albumErr?.message);
+                    }
+
+                    return {
+                        success: true,
+                        method: 'mediaLibrary',
+                        message: 'Berkas berhasil disimpan ke Galeri HP (Album: Private Gallery)',
+                    };
+                }
+            } catch (mediaLibErr) {
+                console.warn('[DeviceGalleryService] MediaLibrary save error, falling back to Share:', mediaLibErr);
+            }
+
+            // 4. Fallback to Android native Share Sheet if permission is not granted or MediaLibrary fails
             const isSharingAvailable = await Sharing.isAvailableAsync();
             if (isSharingAvailable) {
                 await Sharing.shareAsync(sourceFileUri, {
@@ -66,7 +110,7 @@ export const DeviceGalleryService = {
             return {
                 success: false,
                 method: 'failed',
-                message: 'Fitur penyimpanan / berbagi tidak didukung di perangkat ini.',
+                message: 'Izin akses galeri ditolak dan fitur penyimpanan tidak didukung.',
             };
         } catch (err) {
             console.error('[DeviceGalleryService] saveToDeviceGallery error:', err);

@@ -522,12 +522,33 @@ export default function PhotoViewerModal({
                             style={styles.viewportPressable}
                             onPress={toggleChrome}
                         >
+                            {/* Base Layer: Instant crisp thumbnail (already in cache, 0ms, eliminates black blank screen) */}
+                            {Boolean(activeItem.thumbnail_url) && (
+                                <SecureImage
+                                    key={`thumb-${activeItem.id}`}
+                                    source={activeItem.thumbnail_url}
+                                    mediaId={null}
+                                    style={[styles.mainImage, styles.layerAbsolute]}
+                                    resizeMode="contain"
+                                    showLoader={false}
+                                    preferFullResolution={false}
+                                />
+                            )}
+
+                            {/* Top Layer: Full-resolution image (fades in smoothly over thumbnail) */}
                             <SecureImage
-                                source={activeLocalUri || activeItem.stream_url}
+                                key={`full-${activeItem.id}`}
+                                source={activeItem.stream_url || activeItem.thumbnail_url}
+                                fallbackSource={activeItem.thumbnail_url}
+                                placeholderSource={activeItem.thumbnail_url}
                                 mediaId={activeItem.id}
-                                style={styles.mainImage}
+                                style={[
+                                    styles.mainImage,
+                                    styles.layerAbsolute,
+                                    { backgroundColor: 'transparent' },
+                                ]}
                                 resizeMode="contain"
-                                showLoader={true}
+                                showLoader={false}
                                 preferFullResolution={true}
                             />
                         </Pressable>
@@ -768,9 +789,11 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.25)',
     },
     viewportPressable: {
-        ...StyleSheet.absoluteFillObject,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#000000',
     },
     viewport: {
         flex: 1,
@@ -781,8 +804,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     mainImage: {
-        width: '100%',
-        height: '100%',
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        backgroundColor: 'transparent',
+    },
+    layerAbsolute: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
     },
     videoPlayOverlay: {
         ...StyleSheet.absoluteFillObject,

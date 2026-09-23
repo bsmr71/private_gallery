@@ -1,6 +1,7 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
+import { isRunningInExpoGo } from 'expo';
 import { StorageService } from './storage';
 import { SyncService } from './syncService';
 
@@ -53,6 +54,12 @@ export const BackgroundSyncService = {
      */
     async register() {
         try {
+            // Expo Go does not include native Background Fetch module; only available in Development Build / Standalone APK
+            if (typeof isRunningInExpoGo === 'function' && isRunningInExpoGo()) {
+                console.log('[BackgroundSyncService] Background fetch is not available in Expo Go (available in Development Build / APK). Skipping registration.');
+                return false;
+            }
+
             const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_VAULT_SYNC_TASK);
             if (isRegistered) {
                 console.log('[BackgroundSyncService] Background task already registered.');
@@ -79,6 +86,10 @@ export const BackgroundSyncService = {
      */
     async unregister() {
         try {
+            if (typeof isRunningInExpoGo === 'function' && isRunningInExpoGo()) {
+                return true;
+            }
+
             const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_VAULT_SYNC_TASK);
             if (isRegistered) {
                 await BackgroundFetch.unregisterTaskAsync(BACKGROUND_VAULT_SYNC_TASK);
