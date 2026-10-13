@@ -188,4 +188,59 @@ class FileEncryptionService
         }
         return $iv;
     }
+
+    /**
+     * Encrypt small text or metadata JSON to base64 string with IV and GCM tag.
+     */
+    public function encryptString(string $plaintext): string
+    {
+        $iv = random_bytes(self::IV_LENGTH);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $plaintext,
+            self::CIPHER,
+            $this->key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            '',
+            self::TAG_LENGTH
+        );
+
+        if ($ciphertext === false) {
+            throw new \RuntimeException('String encryption failed');
+        }
+
+        return base64_encode($iv . $ciphertext . $tag);
+    }
+
+    /**
+     * Decrypt base64 string with IV and GCM tag back to plaintext.
+     */
+    public function decryptString(string $ciphertextBase64): string
+    {
+        $raw = base64_decode($ciphertextBase64);
+        if (strlen($raw) < self::IV_LENGTH + self::TAG_LENGTH) {
+            throw new \InvalidArgumentException('Ciphertext payload too short');
+        }
+
+        $iv = substr($raw, 0, self::IV_LENGTH);
+        $tag = substr($raw, -self::TAG_LENGTH);
+        $ciphertext = substr($raw, self::IV_LENGTH, strlen($raw) - self::IV_LENGTH - self::TAG_LENGTH);
+
+        $plaintext = openssl_decrypt(
+            $ciphertext,
+            self::CIPHER,
+            $this->key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag
+        );
+
+        if ($plaintext === false) {
+            throw new \RuntimeException('String decryption failed. Key is invalid or data corrupted.');
+        }
+
+        return $plaintext;
+    }
 }

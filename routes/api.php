@@ -69,4 +69,16 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
         Route::post('/lock-media', [\App\Http\Controllers\Api\SecureVaultController::class, 'lockMedia']);
         Route::post('/unlock-media', [\App\Http\Controllers\Api\SecureVaultController::class, 'unlockMedia']);
     });
+
+    // Direct Vault Sync from Google Drive
+    Route::post('/vault/sync-drive', function () {
+        \Illuminate\Support\Facades\Artisan::call('vault:sync-drive');
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        return response()->json([
+            'success' => true,
+            'message' => 'Sinkronisasi Google Drive selesai.',
+            'output' => $output,
+        ]);
+    });
 });
+

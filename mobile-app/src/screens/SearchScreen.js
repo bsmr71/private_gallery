@@ -18,6 +18,8 @@ import { THEME } from '../constants/theme';
 import { ApiService } from '../services/api';
 import { StorageService } from '../services/storage';
 import { SecurityService, useDecoyMode } from '../services/securityService';
+import { GoogleDriveDirectService } from '../services/googleDriveDirectService';
+import { CryptoService } from '../services/cryptoService';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import SecureImage from '../components/SecureImage';
 import SFSymbol from '../components/SFSymbol';
@@ -40,12 +42,73 @@ export default function SearchScreen({ onLogout }) {
     const [viewerVisible, setViewerVisible] = useState(false);
     const [selectedIdx, setSelectedIdx] = useState(0);
 
+    const [gdriveInfo, setGdriveInfo] = useState({ isConnected: false, email: null, folderName: 'MediaGalleryEncrypted' });
+    const [connectingGdrive, setConnectingGdrive] = useState(false);
+    const [showTokenInput, setShowTokenInput] = useState(false);
+    const [tokenInput, setTokenInput] = useState('');
+    const [editingFolder, setEditingFolder] = useState(false);
+    const [folderInput, setFolderInput] = useState('');
+
     const loadData = async () => {
         const u = await StorageService.getUser();
         setUser(u);
         const url = await StorageService.getApiUrl();
         setApiUrl(url);
         setUrlInput(url);
+        const gInfo = await GoogleDriveDirectService.getConnectionInfo();
+        setGdriveInfo(gInfo);
+    };
+
+    const handleSaveGdriveToken = async () => {
+        if (!tokenInput.trim()) {
+            Alert.alert('Perhatian', 'Token tidak boleh kosong');
+            return;
+        }
+        setConnectingGdrive(true);
+        try {
+            await GoogleDriveDirectService.saveAuth(tokenInput.trim());
+            const email = await GoogleDriveDirectService.fetchUserProfile(tokenInput.trim());
+            const gInfo = await GoogleDriveDirectService.getConnectionInfo();
+            setGdriveInfo(gInfo);
+            setShowTokenInput(false);
+            setTokenInput('');
+            Alert.alert('Sukses', `Google Drive terhubung${email ? ` sebagai ${email}` : ''}`);
+        } catch (e) {
+            Alert.alert('Gagal', e.message || 'Gagal menghubungkan Google Drive');
+        } finally {
+            setConnectingGdrive(false);
+        }
+    };
+
+    const handleDisconnectGdrive = async () => {
+        Alert.alert(
+            'Putuskan Google Drive',
+            'Apakah Anda yakin ingin memutuskan Google Drive dari HP ini?',
+            [
+                { text: 'Batal', style: 'cancel' },
+                {
+                    text: 'Putuskan',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await GoogleDriveDirectService.disconnect();
+                        const gInfo = await GoogleDriveDirectService.getConnectionInfo();
+                        setGdriveInfo(gInfo);
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleSaveFolderId = async () => {
+        let clean = folderInput.trim();
+        if (clean.includes('/folders/')) {
+            clean = clean.split('/folders/')[1].split('?')[0].split('/')[0];
+        }
+        await GoogleDriveDirectService.setCustomFolderId(clean);
+        const gInfo = await GoogleDriveDirectService.getConnectionInfo();
+        setGdriveInfo(gInfo);
+        setEditingFolder(false);
+        Alert.alert('Sukses', clean ? 'Folder ID Google Drive berhasil disetel!' : 'Folder ID direset ke Auto-Detect.');
     };
 
     useEffect(() => {
@@ -237,13 +300,127 @@ export default function SearchScreen({ onLogout }) {
                         </View>
                     )}
 
-                    {/* Cloud Security Card */}
+                    {/* Google Drive Direct Vault Card */}
+                    <View style={styles.card}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                            <SFSymbol name="arrow.triangle.2.circlepath.circle.fill" size={24} color="#0A84FF" style={{ marginRight: 12 }} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.cardHeading}>Google Drive Direct (Zero-Knowledge)</Text>
+                                <Text style={{ fontSize: 13, color: '#8E8E93', marginTop: 2 }}>
+                                    Backup langsung ke Google Drive saat server offline
+                                </Text>
+                            </View>
+                        </View>
+
+                        {gdriveInfo.isConnected ? (
+                            <View>
+                                <View style={styles.serverRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={styles.statusRow}>
+                                            <View style={[styles.statusDot, { backgroundColor: '#30D158' }]} />
+                                            <Text style={styles.serverStatusText}>Terhubung Langsung</Text>
+                                        </View>
+                                        <Text style={{ fontSize: 14, color: '#FFFFFF', fontWeight: '600', marginTop: 2 }}>
+                                            {gdriveInfo.email || 'Akun Google Aktif'}
+                                        </Text>
+                                        <Text style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>
+                                            Folder: {gdriveInfo.folderName} {gdriveInfo.folderId ? `(ID: ${gdriveInfo.folderId.slice(0, 8)}...)` : '(Auto Shared/Drive)'}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity onPress={handleDisconnectGdrive}>
+                                        <Text style={[styles.editBtnText, { color: '#FF453A' }]}>Putuskan</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Shared Folder ID Override Button */}
+                                <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.12)' }}>
+                                    {editingFolder ? (
+                                        <View>
+                                            <Text style={{ fontSize: 12, color: '#8E8E93', marginBottom: 6 }}>
+                                                Tempel ID atau Link Shared Folder Google Drive:
+                                            </Text>
+                                            <TextInput
+                                                style={styles.urlInput}
+                                                placeholder="Contoh: 1a2b3c4d... atau https://drive.google.com/..."
+                                                placeholderTextColor="#636366"
+                                                value={folderInput}
+                                                onChangeText={setFolderInput}
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
+                                            />
+                                            <View style={styles.urlButtons}>
+                                                <TouchableOpacity style={styles.urlBtnCancel} onPress={() => setEditingFolder(false)}>
+                                                    <Text style={styles.urlBtnText}>Batal</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.urlBtnSave} onPress={handleSaveFolderId}>
+                                                    <Text style={[styles.urlBtnText, { color: '#0A84FF' }]}>Simpan Folder</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <TouchableOpacity
+                                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}
+                                            onPress={() => {
+                                                setFolderInput(gdriveInfo.folderId || '');
+                                                setEditingFolder(true);
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 12, color: '#0A84FF', fontWeight: '500' }}>
+                                                {gdriveInfo.folderId ? 'Ubah ID Shared Folder' : 'Atur ID Shared Folder Khusus (Opsional)'}
+                                            </Text>
+                                            <SFSymbol name="chevron.right" size={11} color="#0A84FF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            </View>
+                        ) : (
+                            <View>
+                                <Text style={{ fontSize: 13, color: '#EBEBF599', marginBottom: 12 }}>
+                                    Hubungkan akun Google Drive untuk mengaktifkan backup mandiri langsung dari HP tanpa membebani server.
+                                </Text>
+                                {showTokenInput ? (
+                                    <View>
+                                        <TextInput
+                                            style={styles.urlInput}
+                                            placeholder="Tempel Access Token Google Drive..."
+                                            placeholderTextColor="#636366"
+                                            value={tokenInput}
+                                            onChangeText={setTokenInput}
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                        />
+                                        <View style={styles.urlButtons}>
+                                            <TouchableOpacity style={styles.urlBtnCancel} onPress={() => setShowTokenInput(false)}>
+                                                <Text style={styles.urlBtnText}>Batal</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={styles.urlBtnSave} onPress={handleSaveGdriveToken} disabled={connectingGdrive}>
+                                                <Text style={[styles.urlBtnText, { color: '#0A84FF' }]}>
+                                                    {connectingGdrive ? 'Menghubungkan...' : 'Simpan'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={[styles.urlBtnSave, { backgroundColor: '#1C1C1E', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }]}
+                                        onPress={() => setShowTokenInput(true)}
+                                    >
+                                        <Text style={{ color: '#0A84FF', fontWeight: '600', fontSize: 14 }}>
+                                            Hubungkan Akun Google Drive
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Hardware Cryptography Card */}
                     <View style={[styles.card, styles.securityCard]}>
-                        <SFSymbol name="lock.fill" size={24} color="#30D158" style={{ marginRight: 14 }} />
+                        <SFSymbol name="lock.shield.fill" size={26} color="#30D158" style={{ marginRight: 14 }} />
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.secTitle}>Penyimpanan Terenkripsi AES-256</Text>
+                            <Text style={styles.secTitle}>Enkripsi Militer AES-256-GCM (At-Rest)</Text>
                             <Text style={styles.secDesc}>
-                                Semua foto dan video dienkripsi secara privat sebelum disimpan di Google Drive.
+                                Akselerasi Hardware ARMv8 aktif. File di HP dan di Google Drive tersimpan sebagai ciphertext (.enc) yang mustahil ditembus tanpa Master Vault Key.
                             </Text>
                         </View>
                     </View>

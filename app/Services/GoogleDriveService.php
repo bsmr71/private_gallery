@@ -108,7 +108,8 @@ class GoogleDriveService
         // Check if folder already exists
         $response = $drive->files->listFiles([
             'q' => "name='{$folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            'spaces' => 'drive',
+            'supportsAllDrives' => true,
+            'includeItemsFromAllDrives' => true,
             'fields' => 'files(id, name)',
         ]);
 
@@ -122,7 +123,10 @@ class GoogleDriveService
             'mimeType' => 'application/vnd.google-apps.folder',
         ]);
 
-        $folder = $drive->files->create($folderMetadata, ['fields' => 'id']);
+        $folder = $drive->files->create($folderMetadata, [
+            'fields' => 'id',
+            'supportsAllDrives' => true,
+        ]);
         return $folder->getId();
     }
 
@@ -165,6 +169,7 @@ class GoogleDriveService
             'mimeType' => $mimeType,
             'uploadType' => 'multipart',
             'fields' => 'id',
+            'supportsAllDrives' => true,
         ]);
 
         Log::info('File uploaded to Google Drive', [
@@ -256,7 +261,7 @@ class GoogleDriveService
 
         $drive = $this->getDriveService();
 
-        $response = $drive->files->get($fileId, ['alt' => 'media']);
+        $response = $drive->files->get($fileId, ['alt' => 'media', 'supportsAllDrives' => true]);
         $content = $response->getBody()->getContents();
 
         file_put_contents($outputPath, $content);
@@ -280,7 +285,7 @@ class GoogleDriveService
         }
 
         $drive = $this->getDriveService();
-        $response = $drive->files->get($fileId, ['alt' => 'media']);
+        $response = $drive->files->get($fileId, ['alt' => 'media', 'supportsAllDrives' => true]);
 
         $stream = $response->getBody()->detach();
         if (!$stream) {
@@ -311,7 +316,7 @@ class GoogleDriveService
 
         try {
             $drive = $this->getDriveService();
-            $drive->files->delete($fileId);
+            $drive->files->delete($fileId, ['supportsAllDrives' => true]);
 
             Log::info('File deleted from Google Drive', ['drive_file_id' => $fileId]);
             return true;
@@ -336,6 +341,7 @@ class GoogleDriveService
             $drive = $this->getDriveService();
             return $drive->files->get($fileId, [
                 'fields' => 'id, name, size, mimeType, createdTime',
+                'supportsAllDrives' => true,
             ]);
         } catch (\Exception $e) {
             return null;
@@ -361,5 +367,57 @@ class GoogleDriveService
         } catch (\Exception $e) {
             return ['used' => 0, 'limit' => 0];
         }
+    }
+
+    /**
+     * List all files in the configured vault folder.
+     */
+    public function listFilesInFolder(?string $folderId = null): array
+    {
+        if (!$this->isConfigured()) {
+            $localDir = storage_path('app/mock_google_drive');
+            if (!is_dir($localDir)) return [];
+            $files = scandir($localDir);
+            $result = [];
+            foreach ($files as $f) {
+                if ($f === '.' || $f === '..') continue;
+                $result[] = [
+                    'id' => $f,
+                    'name' => $f,
+                    'size' => filesize($localDir . DIRECTORY_SEPARATOR . $f),
+                    'mimeType' => 'application/octet-stream',
+                    'createdTime' => date('c', filemtime($localDir . DIRECTORY_SEPARATOR . $f)),
+                ];
+            }
+            return $result;
+        }
+
+        $folderId = $folderId ?: $this->getFolderId();
+        $drive = $this->getDriveService();
+        $query = "'{$folderId}' in parents and trashed = false";
+        $optParams = [
+            'q' => $query,
+            'fields' => 'nextPageToken, files(id, name, size, mimeType, createdTime)',
+            'pageSize' => 500,
+            'supportsAllDrives' => true,
+            'includeItemsFromAllDrives' => true,
+        ];
+
+        $allFiles = [];
+        do {
+            $response = $drive->files->listFiles($optParams);
+            foreach ($response->getFiles() as $file) {
+                $allFiles[] = [
+                    'id' => $file->getId(),
+                    'name' => $file->getName(),
+                    'size' => (int)$file->getSize(),
+                    'mimeType' => $file->getMimeType(),
+                    'createdTime' => $file->getCreatedTime(),
+                ];
+            }
+            $optParams['pageToken'] = $response->getNextPageToken();
+        } while (!empty($optParams['pageToken']));
+
+        return $allFiles;
     }
 }

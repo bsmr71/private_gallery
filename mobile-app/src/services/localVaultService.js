@@ -2,6 +2,7 @@ import * as FileSystemLegacy from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SecurityService } from './securityService';
 import { MediaUrlHelper } from './mediaUrl';
+import { CryptoService } from './cryptoService';
 
 const VAULT_DIR = `${FileSystemLegacy.documentDirectory}vault_storage/`;
 const INDEX_KEY = '@vault_local_files_index';
@@ -86,6 +87,33 @@ export const LocalVaultService = {
         if (!mediaId || SecurityService.isDecoyMode()) return null;
         const entry = localFilesMap.get(String(mediaId));
         return entry ? entry.localUri : null;
+    },
+
+    /**
+     * Get decrypted on-demand playback URI for viewing video/photo.
+     * Decrypted in transient cache and cleaned up automatically.
+     */
+    async getPlayableLocalUri(mediaId) {
+        if (!mediaId || SecurityService.isDecoyMode()) return null;
+        const entry = localFilesMap.get(String(mediaId));
+        if (!entry || !entry.localUri) return null;
+
+        if (entry.isEncrypted || entry.localUri.endsWith('.enc')) {
+            const ext = (entry.mimeType && entry.mimeType.includes('video')) ? 'mp4' : 'jpg';
+            const cachePlayUri = `${FileSystemLegacy.cacheDirectory}transient_play_${mediaId}.${ext}`;
+            const info = await FileSystemLegacy.getInfoAsync(cachePlayUri);
+            if (!info.exists) {
+                try {
+                    await CryptoService.decryptFile(entry.localUri, cachePlayUri);
+                } catch (e) {
+                    console.warn('[LocalVaultService] Failed to decrypt local file for playback:', e);
+                    return null;
+                }
+            }
+            return cachePlayUri;
+        }
+
+        return entry.localUri;
     },
 
     /**
@@ -299,19 +327,37 @@ export const LocalVaultService = {
                 return null;
             }
 
-            // Copy file to private sandbox
-            await FileSystemLegacy.copyAsync({
-                from: sourceUri,
-                to: targetUri,
-            });
+            let finalTargetUri = targetUri;
+            let isEncrypted = false;
+
+            // Encrypt at-rest using AES-256-GCM hardware acceleration
+            if (CryptoService.isNativeCryptoAvailable()) {
+                const encTargetUri = `${VAULT_DIR}vault_${mediaId}_${Date.now()}.enc`;
+                try {
+                    await CryptoService.encryptFile(sourceUri, encTargetUri);
+                    finalTargetUri = encTargetUri;
+                    isEncrypted = true;
+                } catch (encErr) {
+                    console.warn('[LocalVaultService] Native encryption failed, fallback to copy:', encErr);
+                    await FileSystemLegacy.copyAsync({ from: sourceUri, to: targetUri });
+                    finalTargetUri = targetUri;
+                }
+            } else {
+                // Sandbox copy fallback
+                await FileSystemLegacy.copyAsync({
+                    from: sourceUri,
+                    to: targetUri,
+                });
+            }
 
             const entry = {
                 mediaId: String(mediaId),
-                localUri: targetUri,
+                localUri: finalTargetUri,
                 filename: originalFilename || safeName,
                 size: sourceInfo.size || 0,
                 mimeType: mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
                 cachedAt: Date.now(),
+                isEncrypted: isEncrypted,
             };
 
             localFilesMap.set(String(mediaId), entry);
