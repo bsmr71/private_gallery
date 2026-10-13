@@ -51,7 +51,12 @@ export const LocalVaultService = {
             if (rawIndex) {
                 const parsed = JSON.parse(rawIndex);
                 if (Array.isArray(parsed)) {
-                    localFilesMap = new Map(parsed.map((item) => [String(item.mediaId), item]));
+                    // Filter out corrupt / 0-byte entries from previous failed downloads
+                    const validEntries = parsed.filter((item) => !item.size || item.size >= 512);
+                    localFilesMap = new Map(validEntries.map((item) => [String(item.mediaId), item]));
+                    if (validEntries.length !== parsed.length) {
+                        await this._persistIndex();
+                    }
                 }
             }
 
@@ -86,7 +91,8 @@ export const LocalVaultService = {
     getLocalUri(mediaId) {
         if (!mediaId || SecurityService.isDecoyMode()) return null;
         const entry = localFilesMap.get(String(mediaId));
-        return entry ? entry.localUri : null;
+        if (!entry || (entry.size !== undefined && entry.size < 512)) return null;
+        return entry.localUri || null;
     },
 
     /**
@@ -409,6 +415,14 @@ export const LocalVaultService = {
 
             if (downloadRes.status === 200) {
                 const info = await FileSystemLegacy.getInfoAsync(targetUri);
+                if (!info.exists || (info.size !== undefined && info.size < 512)) {
+                    console.warn(`[LocalVaultService] Downloaded media ${idStr} is invalid or empty (${info.size} bytes). Discarding.`);
+                    try {
+                        await FileSystemLegacy.deleteAsync(targetUri, { idempotent: true });
+                    } catch (e) {}
+                    return;
+                }
+
                 const entry = {
                     mediaId: idStr,
                     localUri: targetUri,

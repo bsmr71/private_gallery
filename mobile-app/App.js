@@ -20,6 +20,8 @@ import SyncStatusBar from './src/components/SyncStatusBar';
 LogBox.ignoreLogs([
     'Cannot connect to Expo CLI',
     'Unsupported FormDataPart',
+    'Background Fetch',
+    '`Background Fetch`',
 ]);
 
 import LibraryScreen from './src/screens/LibraryScreen';
