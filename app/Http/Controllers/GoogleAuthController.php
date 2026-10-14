@@ -175,6 +175,9 @@ class GoogleAuthController extends Controller
             $about = $drive->about->get(['fields' => 'user, storageQuota']);
             $userEmail = $about->getUser() ? $about->getUser()->getEmailAddress() : 'Unknown';
             $displayName = $about->getUser() ? $about->getUser()->getDisplayName() : 'Google User';
+            if ($userEmail && $userEmail !== 'Unknown') {
+                \App\Models\Setting::set('google_account_email', $userEmail);
+            }
 
             // 2. Test Folder access if configured
             $folderId = \App\Models\Setting::get('google_folder_id') ?: config('services.google_drive.folder_id');
@@ -300,6 +303,14 @@ class GoogleAuthController extends Controller
                 \App\Models\Setting::set('google_refresh_token', $refreshToken);
                 $this->updateEnv(['GOOGLE_DRIVE_REFRESH_TOKEN' => $refreshToken]);
 
+                try {
+                    $drive = new GoogleDrive($client);
+                    $about = $drive->about->get(['fields' => 'user']);
+                    if ($about->getUser() && $about->getUser()->getEmailAddress()) {
+                        \App\Models\Setting::set('google_account_email', $about->getUser()->getEmailAddress());
+                    }
+                } catch (\Throwable $e) {}
+
                 $returnUrl = $request->state ?: route('admin.settings');
                 $sep = str_contains($returnUrl, '?') ? '&' : '?';
                 return redirect()->away($returnUrl . $sep . 'connected=1')
@@ -359,4 +370,19 @@ class GoogleAuthController extends Controller
 
         return route('admin.google.callback');
     }
+
+    /**
+     * Trigger vault:sync-drive to import manifests uploaded directly to Google Drive.
+     */
+    public function syncDrive()
+    {
+        try {
+            \Illuminate\Support\Facades\Artisan::call('vault:sync-drive');
+            $output = \Illuminate\Support\Facades\Artisan::output();
+            return redirect()->back()->with('success', 'Sinkronisasi Google Drive selesai: ' . trim($output));
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('error', 'Gagal sinkronisasi Google Drive: ' . $e->getMessage());
+        }
+    }
 }
+

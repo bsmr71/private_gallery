@@ -31,6 +31,7 @@ import VaultSyncModal from '../components/VaultSyncModal';
 import SecuritySettingsModal from '../components/SecuritySettingsModal';
 import AlbumPickerModal from '../components/AlbumPickerModal';
 import LocalOfflineSyncModal from '../components/LocalOfflineSyncModal';
+import UploadMediaModal from '../components/UploadMediaModal';
 import { DeviceGalleryService } from '../services/deviceGalleryService';
 import { NativeSyncService } from '../services/nativeSyncService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -74,6 +75,7 @@ export default function LibraryScreen({ route, navigation }) {
     const [isSelectMode, setIsSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [uploadModalVisible, setUploadModalVisible] = useState(false);
     const [filterTab, setFilterTab] = useState('all');
 
     // Vault Sync state
@@ -450,67 +452,8 @@ export default function LibraryScreen({ route, navigation }) {
         navigation?.navigate('Albums');
     };
 
-    const handleUploadPick = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Izin Ditolak', 'Aplikasi memerlukan izin untuk mengakses galeri Anda.');
-            return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images', 'videos'],
-            allowsMultipleSelection: true,
-            quality: 0.9,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            setUploading(true);
-            const total = result.assets.length;
-            await NativeSyncService.startForegroundSync(
-                'Lumina: Mengunggah Berkas',
-                `Mengunggah ${total} berkas ke Cloud...`
-            );
-
-            try {
-                for (let i = 0; i < total; i++) {
-                    const asset = result.assets[i];
-                    const isVideo = asset.type === 'video' || (asset.uri && (asset.uri.endsWith('.mp4') || asset.uri.endsWith('.mov') || asset.uri.endsWith('.m4v')));
-
-                    if (isVideo && VideoThumbnails?.getThumbnailAsync) {
-                        try {
-                            const thumbResult = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-                                time: 500,
-                                quality: 0.85,
-                            });
-                            if (thumbResult?.uri) {
-                                asset.thumbnailUri = thumbResult.uri;
-                            }
-                        } catch (vtErr) {
-                            console.warn('[LibraryScreen] Video thumbnail extract warning:', vtErr);
-                        }
-                    }
-
-                    await NativeSyncService.updateProgress(
-                        i + 1,
-                        total,
-                        `Mengunggah berkas ${i + 1}/${total}...`
-                    );
-                    await ApiService.uploadMedia(asset, activeAlbum?.id);
-                }
-                Alert.alert(
-                    'Berhasil',
-                    activeAlbum
-                        ? `${total} berkas berhasil diunggah ke album "${activeAlbum.name}".`
-                        : `${total} berkas berhasil dienkripsi dan diunggah ke Google Drive.`
-                );
-                fetchMedia(1, true);
-            } catch (err) {
-                Alert.alert('Gagal Unggah', err.message || 'Terjadi kendala saat mengunggah');
-            } finally {
-                await NativeSyncService.stopForegroundSync();
-                setUploading(false);
-            }
-        }
+    const handleUploadPick = () => {
+        setUploadModalVisible(true);
     };
 
     const handleBatchDelete = () => {
@@ -1301,6 +1244,16 @@ export default function LibraryScreen({ route, navigation }) {
                 onSuccess={() => {
                     setSelectedIds([]);
                     setIsSelectMode(false);
+                    fetchMedia(1, true);
+                }}
+            />
+
+            {/* Web-Style Upload Media Modal (WebP HD Conversion) */}
+            <UploadMediaModal
+                visible={uploadModalVisible}
+                currentAlbum={activeAlbum}
+                onClose={() => setUploadModalVisible(false)}
+                onSuccess={() => {
                     fetchMedia(1, true);
                 }}
             />

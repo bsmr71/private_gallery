@@ -78,39 +78,65 @@ export default function VideoPlayerView({
     const isScrubbingRef = useRef(false);
     const [scrubTime, setScrubTime] = useState(0);
 
-    // Check if local file exists in Private Local Vault for 0.05s instant playback
-    const localUri = useMemo(() => {
-        if (!item?.id) return null;
-        return LocalVaultService.getLocalUri(item.id);
+    // Asynchronously resolve playable local URI (decrypts encrypted vault .enc if needed)
+    const [localPlayableUri, setLocalPlayableUri] = useState(null);
+    const usingLocalRef = useRef(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        const checkLocal = async () => {
+            if (!item?.id) {
+                if (isMounted) setLocalPlayableUri(null);
+                return;
+            }
+            try {
+                const playable = await LocalVaultService.getPlayableLocalUri(item.id);
+                if (isMounted) {
+                    setLocalPlayableUri(playable);
+                    usingLocalRef.current = Boolean(playable);
+                }
+            } catch (e) {
+                if (isMounted) setLocalPlayableUri(null);
+            }
+        };
+        checkLocal();
+        return () => { isMounted = false; };
     }, [item?.id]);
 
     // Resolve authenticated streaming URL with token
     const streamUrl = useMemo(() => {
-        if (!item || !item.stream_url) return null;
-        return MediaUrlHelper.resolve(item.stream_url);
-    }, [item?.stream_url]);
+        if (!item) return null;
+        let raw = item.stream_url;
+        // If stream_url accidentally contains a local .enc path or is missing, use standard API stream route
+        if (!raw || raw.startsWith('file://') || raw.includes('.enc')) {
+            raw = `/api/media/${item.id}/stream`;
+        }
+        return MediaUrlHelper.resolve(raw);
+    }, [item?.id, item?.stream_url]);
 
     const token = MediaUrlHelper.getToken();
 
     const videoSource = useMemo(() => {
-        // 1. Prioritize Local Encrypted Vault (0.05s Instant Offline Playback, 0 Network Buffering)
-        if (localUri) {
-            return { uri: localUri };
-        }
-        // 2. Fallback to Cloud Streaming
-        if (!streamUrl) return null;
+        // 1. Prioritize verified / decrypted local playable URI
+        const targetUri = localPlayableUri || streamUrl;
+        if (!targetUri) return null;
+
+        const isLocal = targetUri.startsWith('file://') || targetUri.startsWith('content://');
+        usingLocalRef.current = isLocal;
+
         return {
-            uri: streamUrl,
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            uri: targetUri,
+            headers: (!isLocal && token) ? { Authorization: `Bearer ${token}` } : {},
+            contentType: 'progressive',
         };
-    }, [localUri, streamUrl, token]);
+    }, [localPlayableUri, streamUrl, token]);
 
     // Auto-cache to local vault in background when streaming from cloud
     useEffect(() => {
-        if (!localUri && item && isVisible) {
+        if (!localPlayableUri && item && isVisible) {
             LocalVaultService.cacheMediaFromCloud(item);
         }
-    }, [localUri, item, isVisible]);
+    }, [localPlayableUri, item, isVisible]);
 
     // Initialize expo-video player with smooth loop, autoplay and 0.25s time update interval
     const player = useVideoPlayer(videoSource, (p) => {
@@ -192,6 +218,27 @@ export default function VideoPlayerView({
                     setDuration(player.duration);
                 }
             } else if (event?.status === 'error') {
+                console.warn('[VideoPlayerView] Playback error encountered:', event?.error);
+                // If playback failed on a local file, evict the bad/corrupt local cache and immediately fallback to cloud streaming
+                if (usingLocalRef.current && streamUrl) {
+                    console.log('[VideoPlayerView] Corrupt or unreadable local cache. Evicting and falling back to cloud streaming...');
+                    usingLocalRef.current = false;
+                    setLocalPlayableUri(null);
+                    if (item?.id) {
+                        LocalVaultService.removeLocalMedia(item.id).catch(() => {});
+                    }
+                    if (player?.replaceAsync) {
+                        player.replaceAsync({
+                            uri: streamUrl,
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            contentType: 'progressive',
+                        }).then(() => {
+                            player.play();
+                        }).catch(() => {});
+                        return;
+                    }
+                }
+
                 setIsBuffering(false);
                 setLoadError(event?.error?.message || 'Gagal memutar video');
             }
@@ -338,16 +385,35 @@ export default function VideoPlayerView({
         resetControlsTimeout();
     };
 
-    const handleRetry = () => {
+    const handleRetry = async () => {
         setLoadError(null);
         setIsBuffering(true);
         setFirstFrameRendered(false);
-        if (player) {
+
+        // Evict bad local cache on retry
+        if (item?.id) {
+            await LocalVaultService.removeLocalMedia(item.id).catch(() => {});
+        }
+        setLocalPlayableUri(null);
+        usingLocalRef.current = false;
+
+        if (player && streamUrl) {
             try {
+                if (player.replaceAsync) {
+                    await player.replaceAsync({
+                        uri: streamUrl,
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        contentType: 'progressive',
+                    });
+                }
                 player.replay();
                 player.play();
             } catch (e) {
-                console.warn('Retry error:', e);
+                console.warn('[VideoPlayerView] Retry error:', e);
+                try {
+                    player.replay();
+                    player.play();
+                } catch (err2) {}
             }
         }
     };

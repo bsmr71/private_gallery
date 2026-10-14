@@ -67,9 +67,18 @@ class VaultSyncDriveCommand extends Command
                     continue;
                 }
 
-                // Decrypt manifest using Master Vault Key
-                $jsonStr = $encryptionService->decryptString(trim($encryptedContent));
-                $metaData = json_decode($jsonStr, true);
+                // Try decrypting manifest using Master Vault Key first, fallback to direct JSON
+                $metaData = null;
+                try {
+                    $jsonStr = $encryptionService->decryptString(trim($encryptedContent));
+                    $metaData = json_decode($jsonStr, true);
+                } catch (\Throwable $e) {
+                    $metaData = null;
+                }
+
+                if (!is_array($metaData)) {
+                    $metaData = json_decode($encryptedContent, true);
+                }
 
                 if (!is_array($metaData)) {
                     $this->warn("Format manifest invalid pada {$metaName}");

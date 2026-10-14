@@ -10,7 +10,14 @@
             <h1 class="page-title" style="margin-bottom: 6px;">Pengaturan &amp; Keamanan Sistem</h1>
             <p class="page-subtitle" style="margin: 0;">Konfigurasi penyimpanan cloud Google Drive, autentikasi 2FA, dan enkripsi data database</p>
         </div>
-        <div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <form action="{{ route('admin.settings.sync-drive') }}" method="POST" style="margin: 0;">
+                @csrf
+                <button type="submit" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Sinkronkan dari Google Drive
+                </button>
+            </form>
             <form action="{{ route('admin.settings.test') }}" method="POST" style="margin: 0;">
                 @csrf
                 <button type="submit" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500;">

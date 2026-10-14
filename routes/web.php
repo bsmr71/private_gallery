@@ -86,6 +86,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/settings', [GoogleAuthController::class, 'settings'])->name('settings');
     Route::post('/settings', [GoogleAuthController::class, 'saveSettings'])->name('settings.save');
     Route::post('/settings/test', [GoogleAuthController::class, 'testConnection'])->name('settings.test');
+    Route::post('/settings/sync-drive', [GoogleAuthController::class, 'syncDrive'])->name('settings.sync-drive');
     Route::get('/google/connect', [GoogleAuthController::class, 'connect'])->name('google.connect');
     Route::get('/google/callback', [GoogleAuthController::class, 'callback'])->name('google.callback');
 

@@ -86,12 +86,16 @@ export const LocalVaultService = {
 
     /**
      * Get playable local file:// URI for an item.
-     * Returns string URI if present, or null if only on cloud.
+     * Returns string URI if present (and unencrypted), or null if only on cloud or encrypted.
      */
     getLocalUri(mediaId) {
         if (!mediaId || SecurityService.isDecoyMode()) return null;
         const entry = localFilesMap.get(String(mediaId));
         if (!entry || (entry.size !== undefined && entry.size < 512)) return null;
+        // Never return raw encrypted .enc files directly for raw media playback or image components
+        if (entry.isEncrypted || (entry.localUri && entry.localUri.endsWith('.enc'))) {
+            return null;
+        }
         return entry.localUri || null;
     },
 
@@ -107,19 +111,55 @@ export const LocalVaultService = {
         if (entry.isEncrypted || entry.localUri.endsWith('.enc')) {
             const ext = (entry.mimeType && entry.mimeType.includes('video')) ? 'mp4' : 'jpg';
             const cachePlayUri = `${FileSystemLegacy.cacheDirectory}transient_play_${mediaId}.${ext}`;
-            const info = await FileSystemLegacy.getInfoAsync(cachePlayUri);
-            if (!info.exists) {
-                try {
+            try {
+                const info = await FileSystemLegacy.getInfoAsync(cachePlayUri);
+                if (!info.exists || (info.size !== undefined && info.size < 512)) {
                     await CryptoService.decryptFile(entry.localUri, cachePlayUri);
-                } catch (e) {
-                    console.warn('[LocalVaultService] Failed to decrypt local file for playback:', e);
-                    return null;
                 }
+                const verified = await FileSystemLegacy.getInfoAsync(cachePlayUri);
+                if (verified.exists && verified.size >= 512) {
+                    return cachePlayUri;
+                }
+            } catch (e) {
+                console.warn('[LocalVaultService] Failed to decrypt local file for playback:', e);
+                return null;
             }
-            return cachePlayUri;
+            return null;
+        }
+
+        // Verify unencrypted file exists on disk and is non-empty
+        try {
+            const info = await FileSystemLegacy.getInfoAsync(entry.localUri);
+            if (!info.exists || (info.size !== undefined && info.size < 512)) {
+                return null;
+            }
+        } catch (e) {
+            return null;
         }
 
         return entry.localUri;
+    },
+
+    /**
+     * Remove item from local vault (in case of corrupt cache or deletion)
+     */
+    async removeLocalMedia(mediaId) {
+        if (!mediaId) return;
+        const idStr = String(mediaId);
+        const entry = localFilesMap.get(idStr);
+        if (entry) {
+            try {
+                if (entry.localUri) {
+                    await FileSystemLegacy.deleteAsync(entry.localUri, { idempotent: true });
+                }
+                if (entry.localThumbUri && entry.localThumbUri !== entry.localUri) {
+                    await FileSystemLegacy.deleteAsync(entry.localThumbUri, { idempotent: true });
+                }
+            } catch (e) {}
+            localFilesMap.delete(idStr);
+            await this._persistIndex();
+            notifyListeners();
+        }
     },
 
     /**
@@ -234,9 +274,9 @@ export const LocalVaultService = {
                 title: entry.filename || existing.title || `Media #${idStr}`,
                 type: isVideo ? 'video' : 'image',
                 mime_type: entry.mimeType || existing.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
-                thumbnail_url: entry.localThumbUri || entry.localUri || existing.thumbnail_url,
-                stream_url: entry.localUri || existing.stream_url,
-                download_url: entry.localUri || existing.download_url,
+                thumbnail_url: entry.localThumbUri || (!entry.isEncrypted && entry.localUri ? entry.localUri : null) || existing.thumbnail_url,
+                stream_url: (!entry.isEncrypted && entry.localUri && !entry.localUri.endsWith('.enc')) ? entry.localUri : existing.stream_url,
+                download_url: (!entry.isEncrypted && entry.localUri && !entry.localUri.endsWith('.enc')) ? entry.localUri : existing.download_url,
                 is_favorite: entry.itemData?.is_favorite ?? existing.is_favorite ?? false,
                 created_at: entry.itemData?.created_at || existing.created_at || new Date(entry.cachedAt || Date.now()).toISOString(),
                 formatted_date: entry.itemData?.formatted_date || existing.formatted_date || '',

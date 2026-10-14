@@ -628,61 +628,23 @@ class MediaController extends Controller
      * Serve file with HTTP Range headers for smooth video streaming.
      * This is what makes video playback smooth like YouTube.
      */
-    private function serveFileWithRangeSupport(string $filePath, string $mimeType, string $fileName): Response|BinaryFileResponse|StreamedResponse
+    private function serveFileWithRangeSupport(string $filePath, string $mimeType, string $fileName): BinaryFileResponse
     {
-        $fileSize = filesize($filePath);
-        $request = request();
-
-        // Check for Range header
-        $range = $request->header('Range');
-
-        if ($range) {
-            // Parse range header
-            preg_match('/bytes=(\d+)-(\d*)/', $range, $matches);
-            $start = (int)$matches[1];
-            $end = !empty($matches[2]) ? (int)$matches[2] : $fileSize - 1;
-
-            if ($start > $end || $start >= $fileSize) {
-                return response('', 416, [
-                    'Content-Range' => "bytes */$fileSize",
-                ]);
-            }
-
-            $length = $end - $start + 1;
-
-            $response = new StreamedResponse(function () use ($filePath, $start, $length) {
-                $handle = fopen($filePath, 'rb');
-                fseek($handle, $start);
-                $remaining = $length;
-                $bufferSize = 8192;
-
-                while ($remaining > 0 && !feof($handle)) {
-                    $readSize = min($bufferSize, $remaining);
-                    echo fread($handle, $readSize);
-                    $remaining -= $readSize;
-                    flush();
-                }
-
-                fclose($handle);
-            }, 206);
-
-            $response->headers->set('Content-Type', $mimeType);
-            $response->headers->set('Content-Length', $length);
-            $response->headers->set('Content-Range', "bytes $start-$end/$fileSize");
-            $response->headers->set('Accept-Ranges', 'bytes');
-            $response->headers->set('Cache-Control', 'public, max-age=3600');
-
-            return $response;
+        if (!file_exists($filePath) || filesize($filePath) === 0) {
+            abort(404, 'File not found');
         }
 
-        // No range request — serve full file
-        return response()->file($filePath, [
-            'Content-Type' => $mimeType,
-            'Content-Length' => $fileSize,
+        $response = response()->file($filePath, [
+            'Content-Type' => $mimeType ?: 'video/mp4',
             'Accept-Ranges' => 'bytes',
             'Cache-Control' => 'public, max-age=3600',
             'Content-Disposition' => 'inline; filename="' . $fileName . '"',
         ]);
+
+        $response->setAutoEtag();
+        $response->setAutoLastModified();
+
+        return $response;
     }
 
     /**

@@ -80,5 +80,36 @@ Route::middleware(\App\Http\Middleware\AuthenticateApiToken::class)->group(funct
             'output' => $output,
         ]);
     });
+
+    // Provide Google Drive access token & folder info for direct mobile upload
+    Route::get('/vault/drive-token', function (\App\Services\GoogleDriveService $driveService) {
+        try {
+            $token = $driveService->getAccessToken();
+            $folderId = $driveService->resolveFolderId();
+            $clientId = \App\Models\Setting::get('google_client_id') ?: config('services.google_drive.client_id');
+            $clientSecret = \App\Models\Setting::get('google_client_secret') ?: config('services.google_drive.client_secret');
+            $refreshToken = \App\Models\Setting::get('google_refresh_token') ?: config('services.google_drive.refresh_token');
+            $accountEmail = \App\Models\Setting::get('google_account_email');
+            $adminEmail = \App\Models\Setting::get('google_admin_email')
+                ?: $accountEmail
+                ?: config('services.google_drive.admin_email', 'ombismar@gmail.com');
+
+            return response()->json([
+                'success' => true,
+                'access_token' => $token,
+                'folder_id' => $folderId,
+                'client_id' => $clientId,
+                'client_secret' => $clientSecret,
+                'refresh_token' => $refreshToken,
+                'account_email' => $accountEmail,
+                'admin_email' => $adminEmail,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    });
 });
 

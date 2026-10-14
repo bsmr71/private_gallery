@@ -14,6 +14,7 @@ import SFSymbol from './src/components/SFSymbol';
 import { LocalVaultService } from './src/services/localVaultService';
 import { BackgroundSyncService } from './src/services/backgroundSyncService';
 import { SyncService } from './src/services/syncService';
+import { GoogleDriveDirectService } from './src/services/googleDriveDirectService';
 import SyncStatusBar from './src/components/SyncStatusBar';
 
 // Suppress harmless development connection warnings so user screen remains clean
@@ -26,6 +27,7 @@ LogBox.ignoreLogs([
 
 import LibraryScreen from './src/screens/LibraryScreen';
 import AlbumsScreen from './src/screens/AlbumsScreen';
+import UploadScreen from './src/screens/UploadScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -85,6 +87,7 @@ function MainTabs({ onLogout }) {
                     let symbolName = 'photos';
                     if (route.name === 'Library') symbolName = 'photos';
                     else if (route.name === 'Albums') symbolName = 'albums';
+                    else if (route.name === 'Upload') symbolName = 'cloud.arrow.up';
                     else if (route.name === 'Favorites') symbolName = 'heart';
                     else if (route.name === 'Search') symbolName = 'search';
 
@@ -108,6 +111,11 @@ function MainTabs({ onLogout }) {
                 name="Albums"
                 component={AlbumsScreen}
                 options={{ tabBarLabel: 'Album' }}
+            />
+            <Tab.Screen
+                name="Upload"
+                component={UploadScreen}
+                options={{ tabBarLabel: 'Unggah' }}
             />
             <Tab.Screen
                 name="Favorites"
@@ -200,6 +208,8 @@ export default function App() {
                 }
                 // Verify session with server and check for remote PIN reset
                 checkSecuritySync();
+                // Proactively cache Google Drive credentials for offline direct upload
+                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
                 // Initialize background sync task with OS scheduler
                 BackgroundSyncService.init().catch(() => {});
             }
@@ -247,6 +257,9 @@ export default function App() {
                 // Trigger sync check on returning to active app
                 SyncService.triggerAutoSyncIfPending().catch(() => {});
 
+                // Refresh Google Drive credentials cache
+                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
+
                 // Dismiss privacy shield safely after lock state settles
                 setTimeout(() => {
                     setPrivacyShield(false);
@@ -284,6 +297,8 @@ export default function App() {
 
     const handleLoginSuccess = async () => {
         setIsAuthenticated(true);
+        // Cache Google Drive credentials immediately after login
+        GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
         const lockEn = await SecurityService.isLockEnabled();
         if (lockEn) {
             setIsLocked(true);

@@ -78,6 +78,27 @@ class GoogleDriveService
     }
 
     /**
+     * Get active OAuth access token for direct mobile upload.
+     */
+    public function getAccessToken(): ?string
+    {
+        $client = $this->getClient();
+        $token = $client->getAccessToken();
+        if (!$token || $client->isAccessTokenExpired()) {
+            $token = $client->fetchAccessTokenWithRefreshToken();
+        }
+        return is_array($token) ? ($token['access_token'] ?? null) : null;
+    }
+
+    /**
+     * Public helper to resolve target Google Drive vault folder ID.
+     */
+    public function resolveFolderId(): string
+    {
+        return $this->getFolderId();
+    }
+
+    /**
      * Get Google Drive service instance.
      */
     private function getDriveService(): GoogleDrive
