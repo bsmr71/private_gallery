@@ -91,6 +91,7 @@ export default function LibraryScreen({ route, navigation }) {
 
     // Local Offline Vault Sync Modal state
     const [offlineSyncModalVisible, setOfflineSyncModalVisible] = useState(false);
+    const [offlineAutoSync, setOfflineAutoSync] = useState(null);
 
     // Real-time Sync Progress for Home Screen
     const [syncState, setSyncState] = useState(SyncService.getCurrentProgress ? SyncService.getCurrentProgress() : {
@@ -186,12 +187,14 @@ export default function LibraryScreen({ route, navigation }) {
                 if (pageNum === 1) {
                     setMediaItems(res.data);
                     LocalVaultService.saveOfflineCatalog(res.data, res.stats).catch(() => {});
+                    LocalVaultService.autoSyncGalleryToLocal(res.data);
                 } else {
                     setMediaItems((prev) => {
                         const existingIds = new Set(prev.map((it) => it.id));
                         const uniqueNew = res.data.filter((it) => !existingIds.has(it.id));
                         const combined = [...prev, ...uniqueNew];
                         LocalVaultService.saveOfflineCatalog(combined).catch(() => {});
+                        LocalVaultService.autoSyncGalleryToLocal(combined);
                         return combined;
                     });
                 }
@@ -348,8 +351,15 @@ export default function LibraryScreen({ route, navigation }) {
         const unsubVault = LocalVaultService.subscribe(() => {
             setLocalVaultVer((v) => v + 1);
         });
+        const unsubAutoSync = LocalVaultService.subscribeAutoSync((status) => {
+            setOfflineAutoSync(status);
+            if (status.isComplete) {
+                setLocalVaultVer((v) => v + 1);
+            }
+        });
         return () => {
             unsubVault && unsubVault();
+            unsubAutoSync && unsubAutoSync();
         };
     }, [fetchMedia, runAutoSync, filterTab]);
 
@@ -412,15 +422,18 @@ export default function LibraryScreen({ route, navigation }) {
             return;
         }
 
-        // When offline, prevent opening cloud-only files with clear notice
-        const hasLocal = LocalVaultService.hasLocalMedia(item.id);
+        // When offline, check local availability using smart resolution
+        const hasLocal = LocalVaultService.hasLocalMedia(item);
         if (isOfflineMode && !hasLocal) {
-            Alert.alert(
-                'Berkas Masih di Cloud ☁️',
-                `"${item.title || item.original_filename || 'Foto/video ini'}" belum tersimpan di memori cache HP dan memerlukan koneksi internet untuk dibuka.\n\nHubungkan ponsel ke internet (WiFi atau Data Seluler) untuk membuka atau menyimpannya ke cache offline.`,
-                [{ text: 'Mengerti', style: 'default' }]
-            );
-            return;
+            const isVideo = item.type === 'video' || item.mime_type?.includes('video');
+            if (isVideo && !LocalVaultService.getLocalUri(item)) {
+                Alert.alert(
+                    'Video Belum Tersimpan Offline',
+                    `"${item.title || item.original_filename || 'Video ini'}" belum selesai diunduh ke memori HP.\n\nHubungkan ponsel ke internet untuk memutar atau menyimpannya.`,
+                    [{ text: 'Tutup', style: 'default' }]
+                );
+                return;
+            }
         }
 
         setSelectedIdx(index);
@@ -909,7 +922,7 @@ export default function LibraryScreen({ route, navigation }) {
                                 {isSelected && <View style={styles.selectedOverlay} />}
 
                                 {/* Cloud indicator for items not yet stored in local vault */}
-                                {!LocalVaultService.hasLocalMedia(item.id) && !isSelectMode && (
+                                {!LocalVaultService.hasLocalMedia(item) && !isSelectMode && (
                                     <View style={styles.cloudBadge}>
                                         <SFSymbol name="icloud" size={11} color="rgba(255, 255, 255, 0.85)" />
                                     </View>
@@ -963,6 +976,20 @@ export default function LibraryScreen({ route, navigation }) {
                             </Text>
 
                             {/* Sync Status Line & Mini Progress in Gallery Footer */}
+                            {offlineAutoSync?.isSyncing ? (
+                                <View style={{ alignItems: 'center', width: '85%', marginBottom: 12 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <ActivityIndicator size="small" color="#30D158" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.appleFooterSyncText, { color: '#30D158' }]}>
+                                            Menyimpan ke HP untuk Offline ({offlineAutoSync.current}/{offlineAutoSync.total}) • {offlineAutoSync.percentage}%
+                                        </Text>
+                                    </View>
+                                    <View style={styles.appleFooterMiniTrack}>
+                                        <View style={[styles.appleFooterMiniFill, { backgroundColor: '#30D158', width: `${Math.max(3, offlineAutoSync.percentage || 0)}%` }]} />
+                                    </View>
+                                </View>
+                            ) : null}
+
                             <TouchableOpacity
                                 activeOpacity={0.7}
                                 onPress={() => setSyncModalVisible(true)}

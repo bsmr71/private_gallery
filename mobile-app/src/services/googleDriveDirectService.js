@@ -508,7 +508,8 @@ export const GoogleDriveDirectService = {
                 driveFileId,
                 fileAsset.uri,
                 originalName,
-                mimeType
+                mimeType,
+                { driveFileId, filename: originalName, itemData: manifest }
             );
         } catch (vErr) {
             console.warn('[GoogleDriveDirect] Local vault save warning:', vErr);

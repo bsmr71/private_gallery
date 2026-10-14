@@ -84,14 +84,14 @@ export default function VideoPlayerView({
         if (item?.localUri && !item.localUri.includes('.enc')) {
             return item.localUri;
         }
-        return LocalVaultService.getLocalUri(item.id);
+        return LocalVaultService.getLocalUri(item);
     });
     const usingLocalRef = useRef(Boolean(localPlayableUri));
 
     useEffect(() => {
         let isMounted = true;
         const checkLocal = async () => {
-            if (!item?.id) {
+            if (!item) {
                 if (isMounted) setLocalPlayableUri(null);
                 return;
             }
@@ -103,7 +103,7 @@ export default function VideoPlayerView({
                     }
                     return;
                 }
-                const playable = await LocalVaultService.getPlayableLocalUri(item.id);
+                const playable = await LocalVaultService.getPlayableLocalUri(item);
                 if (isMounted) {
                     setLocalPlayableUri(playable);
                     usingLocalRef.current = Boolean(playable);

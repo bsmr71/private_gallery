@@ -176,7 +176,7 @@ export default function PhotoViewerModal({
         isCurrentVideoRef.current = isCurrentVideo;
     }, [isCurrentVideo]);
 
-    const activeLocalUri = activeItem ? LocalVaultService.getLocalUri(activeItem.id) : null;
+    const activeLocalUri = activeItem ? (LocalVaultService.getLocalUri(activeItem) || (activeItem.localUri && !activeItem.localUri.includes('.enc') ? activeItem.localUri : null)) : null;
 
     // Auto-cache full photo to local vault in background when viewing
     useEffect(() => {

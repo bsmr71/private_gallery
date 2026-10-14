@@ -77,20 +77,90 @@ export const LocalVaultService = {
     },
 
     /**
+    /**
+     * Smart internal lookup: finds cached entry by database ID, drive_file_id, or original filename.
+     * Automatically establishes self-healing links so future lookups are O(1) 0ms.
+     */
+    _resolveEntry(mediaIdOrItem) {
+        if (!mediaIdOrItem || SecurityService.isDecoyMode()) return null;
+
+        if (typeof mediaIdOrItem === 'string' || typeof mediaIdOrItem === 'number') {
+            const idStr = String(mediaIdOrItem);
+            const direct = localFilesMap.get(idStr);
+            if (direct) return direct;
+
+            // Search by driveFileId or filename
+            for (const item of localFilesMap.values()) {
+                if (
+                    item.driveFileId === idStr ||
+                    item.filename === idStr ||
+                    item.itemData?.original_filename === idStr
+                ) {
+                    return item;
+                }
+            }
+            return null;
+        }
+
+        const item = mediaIdOrItem;
+        const idStr = item.id !== undefined && item.id !== null ? String(item.id) : null;
+        if (idStr && localFilesMap.has(idStr)) {
+            return localFilesMap.get(idStr);
+        }
+
+        const driveId = item.drive_file_id || item.google_drive_file_id || item.file_id;
+        if (driveId) {
+            const driveIdStr = String(driveId);
+            if (localFilesMap.has(driveIdStr)) {
+                const entry = localFilesMap.get(driveIdStr);
+                if (idStr && !localFilesMap.has(idStr)) {
+                    localFilesMap.set(idStr, { ...entry, mediaId: idStr, driveFileId: driveIdStr });
+                    this._persistIndex().catch(() => {});
+                }
+                return entry;
+            }
+        }
+
+        const filename = item.original_filename || item.filename || item.title;
+        if (filename) {
+            for (const [key, entry] of localFilesMap.entries()) {
+                if (
+                    entry.filename === filename ||
+                    entry.itemData?.original_filename === filename ||
+                    entry.itemData?.title === filename
+                ) {
+                    if (idStr && !localFilesMap.has(idStr)) {
+                        localFilesMap.set(idStr, { ...entry, mediaId: idStr });
+                        this._persistIndex().catch(() => {});
+                    }
+                    return entry;
+                }
+            }
+        }
+
+        return null;
+    },
+
+    /**
      * Check synchronously if a media item exists in local vault.
      */
-    hasLocalMedia(mediaId) {
-        if (!mediaId || SecurityService.isDecoyMode()) return false;
-        return localFilesMap.has(String(mediaId));
+    hasLocalMedia(mediaIdOrItem) {
+        if (!mediaIdOrItem || SecurityService.isDecoyMode()) return false;
+        if (typeof mediaIdOrItem === 'object' && mediaIdOrItem.localUri) return true;
+        const entry = this._resolveEntry(mediaIdOrItem);
+        return Boolean(entry && (!entry.size || entry.size >= 512));
     },
 
     /**
      * Get playable local file:// URI for an item.
      * Returns string URI if present (and unencrypted), or null if only on cloud or encrypted.
      */
-    getLocalUri(mediaId) {
-        if (!mediaId || SecurityService.isDecoyMode()) return null;
-        const entry = localFilesMap.get(String(mediaId));
+    getLocalUri(mediaIdOrItem) {
+        if (!mediaIdOrItem || SecurityService.isDecoyMode()) return null;
+        if (typeof mediaIdOrItem === 'object' && mediaIdOrItem.localUri && !mediaIdOrItem.localUri.endsWith('.enc')) {
+            return mediaIdOrItem.localUri;
+        }
+        const entry = this._resolveEntry(mediaIdOrItem);
         if (!entry || (entry.size !== undefined && entry.size < 512)) return null;
         // Never return raw encrypted .enc files directly for raw media playback or image components
         if (entry.isEncrypted || (entry.localUri && entry.localUri.endsWith('.enc'))) {
@@ -103,10 +173,18 @@ export const LocalVaultService = {
      * Get decrypted on-demand playback URI for viewing video/photo.
      * Decrypted in transient cache and cleaned up automatically.
      */
-    async getPlayableLocalUri(mediaId) {
-        if (!mediaId || SecurityService.isDecoyMode()) return null;
-        const entry = localFilesMap.get(String(mediaId));
-        if (!entry || !entry.localUri) return null;
+    async getPlayableLocalUri(mediaIdOrItem) {
+        if (!mediaIdOrItem || SecurityService.isDecoyMode()) return null;
+        await this.init();
+        const entry = this._resolveEntry(mediaIdOrItem);
+        if (!entry || !entry.localUri) {
+            if (typeof mediaIdOrItem === 'object' && mediaIdOrItem.localUri && !mediaIdOrItem.localUri.endsWith('.enc')) {
+                return mediaIdOrItem.localUri;
+            }
+            return null;
+        }
+
+        const mediaId = entry.mediaId || (typeof mediaIdOrItem === 'object' ? mediaIdOrItem.id : mediaIdOrItem);
 
         if (entry.isEncrypted || entry.localUri.endsWith('.enc')) {
             const ext = (entry.mimeType && entry.mimeType.includes('video')) ? 'mp4' : 'jpg';
@@ -166,9 +244,12 @@ export const LocalVaultService = {
      * Get local thumbnail file:// URI for an item.
      * Returns string URI if cached locally, or null.
      */
-    getLocalThumbUri(mediaId) {
-        if (!mediaId || SecurityService.isDecoyMode()) return null;
-        const entry = localFilesMap.get(String(mediaId));
+    getLocalThumbUri(mediaIdOrItem) {
+        if (!mediaIdOrItem || SecurityService.isDecoyMode()) return null;
+        if (typeof mediaIdOrItem === 'object' && mediaIdOrItem.localThumbUri) {
+            return mediaIdOrItem.localThumbUri;
+        }
+        const entry = this._resolveEntry(mediaIdOrItem);
         if (!entry) return null;
         if (entry.localThumbUri) return entry.localThumbUri;
         // Never return video files as image thumbnail URIs
@@ -290,10 +371,9 @@ export const LocalVaultService = {
             });
         });
 
-        // 3. Mark each item's local cache status
+        // 3. Mark each item's local cache status using smart resolution
         let list = Array.from(itemsMap.values()).map((it) => {
-            const idStr = String(it.id);
-            const entry = localFilesMap.get(idStr);
+            const entry = this._resolveEntry(it);
             if (entry) {
                 return {
                     ...it,
@@ -355,7 +435,7 @@ export const LocalVaultService = {
      * Save an asset synced from phone into the private sandbox vault.
      * Copies or moves the file to VAULT_DIR.
      */
-    async saveSyncedAsset(mediaId, sourceUri, originalFilename, mimeType = null) {
+    async saveSyncedAsset(mediaId, sourceUri, originalFilename, mimeType = null, extraMeta = {}) {
         if (!mediaId || !sourceUri) return null;
 
         try {
@@ -396,18 +476,29 @@ export const LocalVaultService = {
                 });
             }
 
+            const driveId = extraMeta.driveFileId || (String(mediaId).length > 15 ? String(mediaId) : null);
             const entry = {
                 mediaId: String(mediaId),
+                driveFileId: driveId,
                 localUri: finalTargetUri,
                 filename: originalFilename || safeName,
                 size: sourceInfo.size || 0,
                 mimeType: mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
                 cachedAt: Date.now(),
                 isEncrypted: isEncrypted,
+                itemData: extraMeta.itemData || null,
             };
 
             localFilesMap.set(String(mediaId), entry);
+            if (driveId) {
+                localFilesMap.set(String(driveId), entry);
+            }
+            if (extraMeta.dbId) {
+                localFilesMap.set(String(extraMeta.dbId), entry);
+            }
+
             await this._persistIndex();
+            notifyListeners();
 
             console.log(`[LocalVaultService] Saved media ${mediaId} to private local vault: ${targetUri}`);
             return targetUri;
@@ -787,6 +878,138 @@ export const LocalVaultService = {
             this._isDownloadingAll = false;
             console.error('[LocalVaultService] Download all error:', err);
             onError && onError(err);
+        }
+    },
+
+    // Background auto-sync queue for 100% offline gallery
+    _autoSyncQueue: [],
+    _isAutoSyncRunning: false,
+    _autoSyncListeners: new Set(),
+
+    subscribeAutoSync(cb) {
+        this._autoSyncListeners.add(cb);
+        return () => this._autoSyncListeners.delete(cb);
+    },
+
+    _notifyAutoSync(status) {
+        this._autoSyncListeners.forEach((cb) => {
+            try { cb(status); } catch (e) {}
+        });
+    },
+
+    /**
+     * Automatically downloads any media items that are not yet cached in the local vault.
+     * Operates non-blockingly in the background so the entire gallery is 100% available offline.
+     */
+    async autoSyncGalleryToLocal(items) {
+        if (!Array.isArray(items) || items.length === 0 || SecurityService.isDecoyMode()) return;
+        await this.init();
+
+        const missing = items.filter((it) => !this.hasLocalMedia(it));
+        if (missing.length === 0) return;
+
+        const queueIds = new Set(this._autoSyncQueue.map((m) => String(m.id)));
+        for (const it of missing) {
+            const idStr = String(it.id);
+            if (!queueIds.has(idStr)) {
+                this._autoSyncQueue.push(it);
+                queueIds.add(idStr);
+            }
+        }
+
+        if (this._isAutoSyncRunning) return;
+        this._isAutoSyncRunning = true;
+
+        const totalToSync = this._autoSyncQueue.length;
+        let syncedCount = 0;
+        this._notifyAutoSync({ isSyncing: true, current: 0, total: totalToSync, percentage: 0 });
+
+        const token = MediaUrlHelper.getToken();
+
+        const worker = async () => {
+            while (this._autoSyncQueue.length > 0) {
+                const it = this._autoSyncQueue.shift();
+                if (!it || !it.id) continue;
+                if (this.hasLocalMedia(it)) {
+                    syncedCount++;
+                    continue;
+                }
+
+                const idStr = String(it.id);
+                const isVideo = Boolean(
+                    it.type === 'video' ||
+                    (it.mime_type && it.mime_type.includes('video')) ||
+                    (it.filename && it.filename.match(/\.(mp4|mov|m4v|3gp|webm)$/i)) ||
+                    (it.title && it.title.match(/\.(mp4|mov|m4v|3gp|webm)$/i))
+                );
+                const ext = isVideo ? 'mp4' : 'jpg';
+                const filename = it.original_filename || it.filename || it.title || `media_${idStr}.${ext}`;
+                const targetFullUri = `${VAULT_DIR}full_${idStr}.${ext}`;
+                const targetThumbUri = `${VAULT_DIR}thumb_${idStr}.jpg`;
+
+                try {
+                    // 1. Download thumbnail
+                    const rawThumb = it.thumbnail_url;
+                    if (rawThumb) {
+                        try {
+                            const thumbUrl = MediaUrlHelper.resolve(rawThumb);
+                            await FileSystemLegacy.downloadAsync(thumbUrl, targetThumbUri, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            });
+                        } catch (tErr) {}
+                    }
+
+                    // 2. Download full media file
+                    const rawFull = it.download_url || it.stream_url;
+                    if (rawFull) {
+                        const fullUrl = MediaUrlHelper.resolve(rawFull);
+                        const res = await FileSystemLegacy.downloadAsync(fullUrl, targetFullUri, {
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        });
+
+                        if (res.status === 200) {
+                            const fullInfo = await FileSystemLegacy.getInfoAsync(targetFullUri);
+                            const thumbInfo = await FileSystemLegacy.getInfoAsync(targetThumbUri);
+
+                            if (fullInfo.exists && (!fullInfo.size || fullInfo.size >= 512)) {
+                                const entry = {
+                                    mediaId: idStr,
+                                    driveFileId: it.drive_file_id || null,
+                                    localUri: targetFullUri,
+                                    localThumbUri: thumbInfo.exists ? targetThumbUri : targetFullUri,
+                                    filename,
+                                    size: fullInfo.size || 0,
+                                    mimeType: it.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                                    cachedAt: Date.now(),
+                                    itemData: it,
+                                };
+                                localFilesMap.set(idStr, entry);
+                                if (it.drive_file_id) {
+                                    localFilesMap.set(String(it.drive_file_id), entry);
+                                }
+                                notifyListeners();
+                            }
+                        }
+                    }
+                } catch (dlErr) {
+                    console.warn(`[LocalVaultService] Auto-sync download error for ${idStr}:`, dlErr?.message || dlErr);
+                } finally {
+                    syncedCount++;
+                    const pct = Math.round((syncedCount / totalToSync) * 100);
+                    this._notifyAutoSync({ isSyncing: true, current: syncedCount, total: totalToSync, percentage: pct });
+                }
+            }
+        };
+
+        try {
+            await Promise.all([worker(), worker()]);
+            await this._persistIndex();
+            notifyListeners();
+            this._notifyAutoSync({ isSyncing: false, isComplete: true, current: totalToSync, total: totalToSync, percentage: 100 });
+        } catch (e) {
+            console.warn('[LocalVaultService] AutoSync workers error:', e);
+        } finally {
+            this._isAutoSyncRunning = false;
         }
     },
 };
