@@ -39,17 +39,52 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 class VideoErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false };
+        this.state = { hasError: false, error: null };
     }
-    static getDerivedStateFromError() {
-        return { hasError: true };
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
     }
-    componentDidCatch(err) {
-        console.warn('VideoPlayer error caught:', err);
+    componentDidCatch(err, info) {
+        console.warn('VideoPlayer error caught:', err, info);
     }
+    componentDidUpdate(prevProps) {
+        if (prevProps.mediaId !== this.props.mediaId && this.state.hasError) {
+            this.setState({ hasError: false, error: null });
+        }
+    }
+    handleRetry = () => {
+        this.setState({ hasError: false, error: null });
+    };
     render() {
         if (this.state.hasError) {
-            return this.props.fallback || null;
+            return (
+                <View style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                    {this.props.fallback || null}
+                    <TouchableOpacity
+                        onPress={this.handleRetry}
+                        activeOpacity={0.8}
+                        style={{
+                            position: 'absolute',
+                            backgroundColor: 'rgba(20, 20, 24, 0.88)',
+                            paddingHorizontal: 20,
+                            paddingVertical: 12,
+                            borderRadius: 24,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            shadowColor: '#000000',
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.5,
+                            shadowRadius: 8,
+                            elevation: 8,
+                        }}
+                    >
+                        <SFSymbol name="arrow.clockwise" size={16} color="#0A84FF" style={{ marginRight: 8 }} />
+                        <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 14 }}>Muat Ulang Video</Text>
+                    </TouchableOpacity>
+                </View>
+            );
         }
         return this.props.children;
     }
@@ -130,7 +165,10 @@ export default function PhotoViewerModal({
     const isCurrentVideo = Boolean(
         activeItem &&
         (activeItem.type === 'video' ||
-            (activeItem.mime_type && activeItem.mime_type.includes('video')))
+            (activeItem.mime_type && activeItem.mime_type.toLowerCase().includes('video')) ||
+            (typeof activeItem.filename === 'string' && /\.(mp4|mov|m4v|webm|3gp|mkv)$/i.test(activeItem.filename)) ||
+            (typeof activeItem.title === 'string' && /\.(mp4|mov|m4v|webm|3gp|mkv)$/i.test(activeItem.title)) ||
+            (typeof activeItem.stream_url === 'string' && /\.(mp4|mov|m4v|webm|3gp|mkv)($|\?)/i.test(activeItem.stream_url)))
     );
 
     const isCurrentVideoRef = useRef(isCurrentVideo);
@@ -497,6 +535,7 @@ export default function PhotoViewerModal({
                 >
                     {isCurrentVideo ? (
                         <VideoErrorBoundary
+                            mediaId={activeItem.id}
                             fallback={
                                 <SecureImage
                                     source={activeItem.thumbnail_url || activeItem.stream_url}

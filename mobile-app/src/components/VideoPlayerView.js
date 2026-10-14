@@ -79,8 +79,14 @@ export default function VideoPlayerView({
     const [scrubTime, setScrubTime] = useState(0);
 
     // Asynchronously resolve playable local URI (decrypts encrypted vault .enc if needed)
-    const [localPlayableUri, setLocalPlayableUri] = useState(null);
-    const usingLocalRef = useRef(false);
+    const [localPlayableUri, setLocalPlayableUri] = useState(() => {
+        if (!item?.id) return null;
+        if (item?.localUri && !item.localUri.includes('.enc')) {
+            return item.localUri;
+        }
+        return LocalVaultService.getLocalUri(item.id);
+    });
+    const usingLocalRef = useRef(Boolean(localPlayableUri));
 
     useEffect(() => {
         let isMounted = true;
@@ -90,6 +96,13 @@ export default function VideoPlayerView({
                 return;
             }
             try {
+                if (item?.localUri && !item.localUri.includes('.enc')) {
+                    if (isMounted) {
+                        setLocalPlayableUri(item.localUri);
+                        usingLocalRef.current = true;
+                    }
+                    return;
+                }
                 const playable = await LocalVaultService.getPlayableLocalUri(item.id);
                 if (isMounted) {
                     setLocalPlayableUri(playable);
@@ -101,14 +114,14 @@ export default function VideoPlayerView({
         };
         checkLocal();
         return () => { isMounted = false; };
-    }, [item?.id]);
+    }, [item?.id, item?.localUri]);
 
     // Resolve authenticated streaming URL with token
     const streamUrl = useMemo(() => {
         if (!item) return null;
         let raw = item.stream_url;
-        // If stream_url accidentally contains a local .enc path or is missing, use standard API stream route
-        if (!raw || raw.startsWith('file://') || raw.includes('.enc')) {
+        // If stream_url contains an encrypted local path or is empty, fallback to API stream route
+        if (!raw || raw.includes('.enc')) {
             raw = `/api/media/${item.id}/stream`;
         }
         return MediaUrlHelper.resolve(raw);
@@ -118,7 +131,7 @@ export default function VideoPlayerView({
 
     const videoSource = useMemo(() => {
         // 1. Prioritize verified / decrypted local playable URI
-        const targetUri = localPlayableUri || streamUrl;
+        const targetUri = localPlayableUri || (item?.localUri && !item.localUri.includes('.enc') ? item.localUri : null) || streamUrl;
         if (!targetUri) return null;
 
         const isLocal = targetUri.startsWith('file://') || targetUri.startsWith('content://');
@@ -129,7 +142,7 @@ export default function VideoPlayerView({
             headers: (!isLocal && token) ? { Authorization: `Bearer ${token}` } : {},
             contentType: 'progressive',
         };
-    }, [localPlayableUri, streamUrl, token]);
+    }, [localPlayableUri, item?.localUri, streamUrl, token]);
 
     // Auto-cache to local vault in background when streaming from cloud
     useEffect(() => {
@@ -144,6 +157,33 @@ export default function VideoPlayerView({
         p.timeUpdateEventInterval = 0.25;
         p.play();
     });
+
+    // Synchronize player source when videoSource updates asynchronously
+    const currentLoadedUriRef = useRef(videoSource?.uri || null);
+    useEffect(() => {
+        if (!player || !videoSource?.uri) return;
+        if (currentLoadedUriRef.current === videoSource.uri) return;
+
+        currentLoadedUriRef.current = videoSource.uri;
+        try {
+            if (typeof player.replaceAsync === 'function') {
+                player.replaceAsync(videoSource).then(() => {
+                    if (isVisible) {
+                        player.play();
+                    }
+                }).catch((err) => {
+                    console.warn('[VideoPlayerView] player.replaceAsync error:', err);
+                });
+            } else if (typeof player.replace === 'function') {
+                player.replace(videoSource);
+                if (isVisible) {
+                    player.play();
+                }
+            }
+        } catch (e) {
+            console.warn('[VideoPlayerView] Error updating video player source:', e);
+        }
+    }, [player, videoSource?.uri, isVisible]);
 
     // Synchronize controlsOpacity with chromeVisible and handle auto-hide
     useEffect(() => {
@@ -321,6 +361,11 @@ export default function VideoPlayerView({
                 const cur = player.currentTime;
                 if (typeof cur === 'number' && !isNaN(cur)) {
                     setCurrentTime(cur);
+                    if (cur > 0 || player.playing) {
+                        setFirstFrameRendered(true);
+                        setHasPlayedOnce(true);
+                        setIsBuffering(false);
+                    }
                 }
                 const dur = player.duration;
                 if (typeof dur === 'number' && dur > 0) {
@@ -462,7 +507,9 @@ export default function VideoPlayerView({
         resetControlsTimeout();
     };
 
-    if (!localUri && !streamUrl) {
+    const activePlayableUri = localPlayableUri || (item?.localUri && !item.localUri.includes('.enc') ? item.localUri : null) || streamUrl;
+
+    if (!activePlayableUri) {
         return (
             <View style={styles.errorContainer}>
                 <SFSymbol name="exclamationmark.triangle" size={32} color="#FF9F0A" />
@@ -484,7 +531,7 @@ export default function VideoPlayerView({
                 nativeControls={false}
                 contentFit={contentFit}
                 allowsFullscreen={true}
-                surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                surfaceType={Platform.OS === 'android' ? 'surfaceView' : undefined}
                 onFirstFrameRender={() => {
                     setFirstFrameRendered(true);
                     setHasPlayedOnce(true);
