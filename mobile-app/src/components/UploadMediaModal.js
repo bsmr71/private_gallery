@@ -310,18 +310,41 @@ export default function UploadMediaModal({
 
         if (failCount === 0) {
             const albumNameText = selectedAlbumObj ? ` ke album "${selectedAlbumObj.name}"` : '';
-            Alert.alert(
-                'Unggahan Berhasil',
-                `${successCount} berkas WebP HD berhasil diunggah langsung ke Google Drive${albumNameText}!`,
-                [
-                    {
-                        text: 'Selesai',
-                        onPress: () => {
-                            if (onSuccess) onSuccess();
-                            if (onClose) onClose();
-                        },
+            const assetIdsToDelete = stagedFiles
+                .map((f) => f.asset?.assetId || f.asset?.id)
+                .filter(Boolean);
+
+            const alertButtons = [];
+
+            if (assetIdsToDelete.length > 0) {
+                alertButtons.push({
+                    text: '🗑️ Hapus dari Galeri HP',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const MediaLibrary = require('expo-media-library/legacy');
+                            await MediaLibrary.deleteAssetsAsync(assetIdsToDelete);
+                        } catch (delErr) {
+                            console.warn('[UploadModal] Failed to delete from public gallery:', delErr);
+                        }
+                        if (onSuccess) onSuccess();
+                        if (onClose) onClose();
                     },
-                ]
+                });
+            }
+
+            alertButtons.push({
+                text: 'Selesai (Simpan di Kedua Tempat)',
+                onPress: () => {
+                    if (onSuccess) onSuccess();
+                    if (onClose) onClose();
+                },
+            });
+
+            Alert.alert(
+                'Tersimpan Aman di Brankas 🔒',
+                `${successCount} berkas berhasil ter-backup ke Google Drive${albumNameText} dan tersimpan di memori privat HP (siap buka offline).\n\n🔒 Berkas di Lumina terisolasi & terenkripsi sehingga TIDAK akan muncul di Galeri bawaan HP / Google Photos.\n\nApakah Anda ingin menghapus foto aslinya dari Galeri umum HP agar hanya tersimpan di aplikasi ini?`,
+                alertButtons
             );
         } else {
             Alert.alert(
