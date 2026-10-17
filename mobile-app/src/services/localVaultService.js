@@ -60,6 +60,64 @@ export const LocalVaultService = {
                 }
             }
 
+            // 3. Scan VAULT_DIR to auto-recover any orphaned files on disk
+            // (e.g. after APK update, AsyncStorage cache reset, or index desync)
+            try {
+                const diskFiles = await FileSystemLegacy.readDirectoryAsync(VAULT_DIR);
+                let recoveredCount = 0;
+
+                for (const filename of diskFiles) {
+                    if (!filename || filename === '.nomedia' || filename.startsWith('thumb_')) continue;
+
+                    let mediaId = null;
+                    let isVideo = false;
+
+                    const fullMatch = filename.match(/^full_([^_.]+)\.([a-zA-Z0-9]+)$/i);
+                    const cloudMatch = filename.match(/^cloud_([^_]+)_([0-9]+)\.([a-zA-Z0-9]+)$/i);
+                    const vaultMatch = filename.match(/^vault_([^_]+)_([0-9]+)\.([a-zA-Z0-9]+)$/i);
+
+                    if (fullMatch) {
+                        mediaId = fullMatch[1];
+                        isVideo = ['mp4', 'mov', 'm4v', '3gp', 'webm'].includes(fullMatch[2].toLowerCase());
+                    } else if (cloudMatch) {
+                        mediaId = cloudMatch[1];
+                        isVideo = ['mp4', 'mov', 'm4v', '3gp', 'webm'].includes(cloudMatch[3].toLowerCase());
+                    } else if (vaultMatch) {
+                        mediaId = vaultMatch[1];
+                        isVideo = ['mp4', 'mov', 'm4v', '3gp', 'webm'].includes(vaultMatch[3].toLowerCase());
+                    }
+
+                    if (mediaId && !localFilesMap.has(String(mediaId))) {
+                        const fileUri = `${VAULT_DIR}${filename}`;
+                        const fileInfo = await FileSystemLegacy.getInfoAsync(fileUri);
+                        if (fileInfo.exists && (!fileInfo.size || fileInfo.size >= 512)) {
+                            const thumbUri = `${VAULT_DIR}thumb_${mediaId}.jpg`;
+                            const thumbInfo = await FileSystemLegacy.getInfoAsync(thumbUri);
+
+                            const entry = {
+                                mediaId: String(mediaId),
+                                localUri: fileUri,
+                                localThumbUri: thumbInfo.exists ? thumbUri : fileUri,
+                                filename: filename,
+                                size: fileInfo.size || 0,
+                                mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
+                                cachedAt: fileInfo.modificationTime ? fileInfo.modificationTime * 1000 : Date.now(),
+                            };
+
+                            localFilesMap.set(String(mediaId), entry);
+                            recoveredCount++;
+                        }
+                    }
+                }
+
+                if (recoveredCount > 0) {
+                    console.log(`[LocalVaultService] Auto-recovered ${recoveredCount} orphaned files from disk storage`);
+                    await this._persistIndex();
+                }
+            } catch (scanErr) {
+                console.warn('[LocalVaultService] Disk scan warning:', scanErr);
+            }
+
             isInitialized = true;
             console.log(`[LocalVaultService] Initialized with ${localFilesMap.size} local vault items`);
         } catch (err) {
