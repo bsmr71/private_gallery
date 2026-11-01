@@ -391,53 +391,113 @@ class GoogleDriveService
     }
 
     /**
-     * List all files in the configured vault folder.
+     * List all files in the configured vault folder recursively.
+     * Traverses all subfolders so that files in nested directories are retrieved.
+     * Each file entry includes folder details (id, name, path) to map albums cleanly.
+     *
+     * @param string|null $folderId
+     * @param bool $recursive
+     * @return array
      */
-    public function listFilesInFolder(?string $folderId = null): array
+    public function listFilesInFolder(?string $folderId = null, bool $recursive = true): array
     {
         if (!$this->isConfigured()) {
             $localDir = storage_path('app/mock_google_drive');
             if (!is_dir($localDir)) return [];
-            $files = scandir($localDir);
+
             $result = [];
-            foreach ($files as $f) {
-                if ($f === '.' || $f === '..') continue;
-                $result[] = [
-                    'id' => $f,
-                    'name' => $f,
-                    'size' => filesize($localDir . DIRECTORY_SEPARATOR . $f),
-                    'mimeType' => 'application/octet-stream',
-                    'createdTime' => date('c', filemtime($localDir . DIRECTORY_SEPARATOR . $f)),
-                ];
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($localDir, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            foreach ($iterator as $item) {
+                if ($item->isFile()) {
+                    $relPath = ltrim(str_replace([$localDir, '\\'], ['', '/'], $item->getPath()), '/');
+                    $parentDirName = basename($item->getPath());
+                    if ($parentDirName === 'mock_google_drive') $parentDirName = '';
+
+                    $result[] = [
+                        'id' => $item->getFilename(),
+                        'name' => $item->getFilename(),
+                        'size' => $item->getSize(),
+                        'mimeType' => 'application/octet-stream',
+                        'createdTime' => date('c', $item->getMTime()),
+                        'folder_id' => $parentDirName ?: 'root',
+                        'folder_name' => $parentDirName,
+                        'folder_path' => $relPath,
+                    ];
+                }
             }
             return $result;
         }
 
-        $folderId = $folderId ?: $this->getFolderId();
+        $rootFolderId = $folderId ?: $this->getFolderId();
         $drive = $this->getDriveService();
-        $query = "'{$folderId}' in parents and trashed = false";
-        $optParams = [
-            'q' => $query,
-            'fields' => 'nextPageToken, files(id, name, size, mimeType, createdTime)',
-            'pageSize' => 500,
-            'supportsAllDrives' => true,
-            'includeItemsFromAllDrives' => true,
+
+        $foldersToScan = [
+            [
+                'id' => $rootFolderId,
+                'name' => '',
+                'path' => '',
+            ]
         ];
 
         $allFiles = [];
-        do {
-            $response = $drive->files->listFiles($optParams);
-            foreach ($response->getFiles() as $file) {
-                $allFiles[] = [
-                    'id' => $file->getId(),
-                    'name' => $file->getName(),
-                    'size' => (int)$file->getSize(),
-                    'mimeType' => $file->getMimeType(),
-                    'createdTime' => $file->getCreatedTime(),
-                ];
+        $scannedFolderIds = [];
+
+        while (!empty($foldersToScan)) {
+            $current = array_shift($foldersToScan);
+            $currentId = $current['id'];
+            $currentName = $current['name'];
+            $currentPath = $current['path'];
+
+            if (isset($scannedFolderIds[$currentId])) {
+                continue;
             }
-            $optParams['pageToken'] = $response->getNextPageToken();
-        } while (!empty($optParams['pageToken']));
+            $scannedFolderIds[$currentId] = true;
+
+            $query = "'{$currentId}' in parents and trashed = false";
+            $optParams = [
+                'q' => $query,
+                'fields' => 'nextPageToken, files(id, name, size, mimeType, createdTime)',
+                'pageSize' => 500,
+                'supportsAllDrives' => true,
+                'includeItemsFromAllDrives' => true,
+            ];
+
+            do {
+                $response = $drive->files->listFiles($optParams);
+                foreach ($response->getFiles() as $file) {
+                    $mimeType = $file->getMimeType();
+                    $name = $file->getName();
+                    $id = $file->getId();
+
+                    if ($mimeType === 'application/vnd.google-apps.folder') {
+                        if ($recursive && !isset($scannedFolderIds[$id])) {
+                            $subPath = $currentPath !== '' ? ($currentPath . '/' . $name) : $name;
+                            $foldersToScan[] = [
+                                'id' => $id,
+                                'name' => $name,
+                                'path' => $subPath,
+                            ];
+                        }
+                    } else {
+                        $allFiles[] = [
+                            'id' => $id,
+                            'name' => $name,
+                            'size' => (int)$file->getSize(),
+                            'mimeType' => $mimeType,
+                            'createdTime' => $file->getCreatedTime(),
+                            'folder_id' => $currentId,
+                            'folder_name' => $currentName,
+                            'folder_path' => $currentPath,
+                        ];
+                    }
+                }
+                $optParams['pageToken'] = $response->getNextPageToken();
+            } while (!empty($optParams['pageToken']));
+        }
 
         return $allFiles;
     }

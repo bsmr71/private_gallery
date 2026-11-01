@@ -293,14 +293,60 @@ export const GoogleDriveDirectService = {
     },
 
     /**
+     * Find or create a subfolder with specific name inside parentFolderId on Google Drive
+     */
+    async ensureSubfolder(parentFolderId, subfolderName, accessToken) {
+        if (!parentFolderId || !subfolderName) return parentFolderId;
+        const cleanName = subfolderName.trim();
+        if (!cleanName) return parentFolderId;
+
+        try {
+            const query = `'${parentFolderId}' in parents and name='${cleanName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const searchRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+
+            if (searchRes.ok) {
+                const data = await searchRes.json();
+                if (data.files && data.files.length > 0) {
+                    return data.files[0].id;
+                }
+            }
+
+            // Create new subfolder inside parent
+            const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: cleanName,
+                    mimeType: 'application/vnd.google-apps.folder',
+                    parents: [parentFolderId],
+                }),
+            });
+
+            if (createRes.ok) {
+                const created = await createRes.json();
+                return created.id;
+            }
+        } catch (e) {
+            console.warn('[GoogleDriveDirect] Error ensuring subfolder:', e);
+        }
+        return parentFolderId;
+    },
+
+    /**
      * Upload small file or metadata manifest (.meta) directly to Google Drive
      */
-    async uploadSmallFile(fileName, contentString, mimeType = 'application/json') {
+    async uploadSmallFile(fileName, contentString, mimeType = 'application/json', targetFolderId = null) {
         const info = await this.getConnectionInfo();
         const token = await AsyncStorage.getItem(GDRIVE_KEYS.ACCESS_TOKEN);
         if (!token) throw new Error('Google Drive belum terhubung di aplikasi mobile');
 
-        const folderId = await this.ensureVaultFolder(token);
+        const folderId = targetFolderId || await this.ensureVaultFolder(token);
 
         const metadata = {
             name: fileName,
@@ -333,7 +379,7 @@ export const GoogleDriveDirectService = {
             if (res.status === 401) {
                 const refreshed = await this.refreshAccessTokenDirectly();
                 if (refreshed) {
-                    return await this.uploadSmallFile(fileName, contentString, mimeType);
+                    return await this.uploadSmallFile(fileName, contentString, mimeType, targetFolderId);
                 }
             }
             const err = await res.text();
@@ -348,11 +394,11 @@ export const GoogleDriveDirectService = {
      * Direct Resumable Upload of large encrypted file (.enc) directly from phone storage to Google Drive.
      * Bypasses the server completely! Fully supports Shared Folders.
      */
-    async uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress = null) {
+    async uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress = null, targetFolderId = null) {
         const token = await this.getValidAccessToken();
         if (!token) throw new Error('Google Drive belum terhubung di aplikasi');
 
-        const folderId = await this.ensureVaultFolder(token);
+        const folderId = targetFolderId || await this.ensureVaultFolder(token);
         const fileInfo = await FileSystemLegacy.getInfoAsync(localEncryptedUri);
         if (!fileInfo.exists) throw new Error('File lokal tidak ditemukan: ' + localEncryptedUri);
 
@@ -377,7 +423,7 @@ export const GoogleDriveDirectService = {
             if (initRes.status === 401) {
                 const refreshed = await this.refreshAccessTokenDirectly();
                 if (refreshed) {
-                    return await this.uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress);
+                    return await this.uploadEncryptedFile(localEncryptedUri, remoteFileName, onProgress, targetFolderId);
                 }
             }
             const errText = await initRes.text();
@@ -454,6 +500,10 @@ export const GoogleDriveDirectService = {
         const baseName = `media_${timestamp}_${randStr}`;
         const remoteMediaName = `${baseName}.${ext}`;
 
+        // Resolve destination folder: if albumName is provided, place in subfolder inside vault folder
+        const rootFolderId = await this.ensureVaultFolder(token);
+        const targetFolderId = albumName ? await this.ensureSubfolder(rootFolderId, albumName, token) : rootFolderId;
+
         // 1. Upload main media file directly to Google Drive with progress
         onProgress && onProgress(10);
         const driveFileId = await this.uploadEncryptedFile(
@@ -463,7 +513,8 @@ export const GoogleDriveDirectService = {
                 // map upload progress 10% - 85%
                 const mappedPct = Math.round(10 + (pct * 0.75));
                 onProgress && onProgress(mappedPct);
-            }
+            },
+            targetFolderId
         );
 
         // 2. Upload thumbnail if available for videos
@@ -472,7 +523,7 @@ export const GoogleDriveDirectService = {
             try {
                 onProgress && onProgress(88);
                 const thumbRemoteName = `thumb_${baseName}.jpg`;
-                thumbDriveId = await this.uploadEncryptedFile(fileAsset.thumbnailUri, thumbRemoteName);
+                thumbDriveId = await this.uploadEncryptedFile(fileAsset.thumbnailUri, thumbRemoteName, null, targetFolderId);
             } catch (tErr) {
                 console.warn('[GoogleDriveDirect] Thumbnail upload warning:', tErr);
             }
@@ -499,7 +550,7 @@ export const GoogleDriveDirectService = {
         };
 
         const metaRemoteName = `${baseName}.meta`;
-        await this.uploadSmallFile(metaRemoteName, JSON.stringify(manifest), 'application/json');
+        await this.uploadSmallFile(metaRemoteName, JSON.stringify(manifest), 'application/json', targetFolderId);
 
         // 4. Save to Local Vault so media is instantly available offline in Lumina mobile
         onProgress && onProgress(96);

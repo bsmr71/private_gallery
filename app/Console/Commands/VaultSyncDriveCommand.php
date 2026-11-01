@@ -104,9 +104,13 @@ class VaultSyncDriveCommand extends Command
                     continue;
                 }
 
-                // Album resolution
+                // Album resolution: check manifest album_name first, then fallback to subfolder name
                 $albumId = null;
                 $albumName = trim($metaData['album_name'] ?? '');
+                if (empty($albumName) && !empty($metaFile['folder_name'])) {
+                    $albumName = trim($metaFile['folder_name']);
+                }
+
                 if (!empty($albumName)) {
                     $album = Album::firstOrCreate(
                         ['name' => $albumName],
@@ -139,13 +143,99 @@ class VaultSyncDriveCommand extends Command
                 ]);
 
                 $syncedCount++;
-                $this->info("✓ Berhasil sinkronisasi: {$title} ({$type})");
+                $this->info("✓ Berhasil sinkronisasi: {$title} ({$type})" . ($albumName ? " [Album: {$albumName}]" : ""));
             } catch (\Throwable $e) {
                 $this->error("Gagal memproses {$metaName}: " . $e->getMessage());
                 Log::warning("VaultSync error on {$metaName}: " . $e->getMessage());
                 $errorCount++;
             } finally {
                 @unlink($tempMetaPath);
+            }
+        }
+
+        // --- Process direct / unmanifested media files in folders & subfolders ---
+        $this->info('Memeriksa file foto/video langsung di dalam folder & subfolder Google Drive...');
+
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif'];
+        $videoExtensions = ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', '3gp', 'ts'];
+
+        foreach ($allFiles as $f) {
+            $name = $f['name'] ?? '';
+            $id = $f['id'] ?? '';
+            $mime = strtolower($f['mimeType'] ?? '');
+
+            if (!$id || !$name) continue;
+            if ($name === '.nomedia' || str_ends_with($name, '.meta')) continue;
+            if (str_starts_with($name, 'thumb_')) continue;
+
+            // Skip if already in database
+            if (Media::where('drive_file_id', $id)->exists()) {
+                $skippedCount++;
+                continue;
+            }
+
+            // Determine if it is a media file
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            $isImage = in_array($ext, $imageExtensions) || str_starts_with($mime, 'image/');
+            $isVideo = in_array($ext, $videoExtensions) || str_starts_with($mime, 'video/');
+
+            // Also support orphan .enc files if any
+            $isEnc = str_ends_with($name, '.enc');
+
+            if (!$isImage && !$isVideo && !$isEnc) {
+                continue;
+            }
+
+            $type = $isVideo ? 'video' : 'image';
+            if ($isEnc) {
+                $cleanName = substr($name, 0, -4);
+                $innerExt = strtolower(pathinfo($cleanName, PATHINFO_EXTENSION));
+                $type = in_array($innerExt, $videoExtensions) ? 'video' : 'image';
+            }
+
+            $mimeType = $mime ?: ($type === 'video' ? 'video/mp4' : 'image/jpeg');
+            if ($mime === 'application/octet-stream') {
+                $mimeType = $type === 'video' ? 'video/mp4' : 'image/jpeg';
+            }
+
+            // Assign album from subfolder name if present
+            $albumId = null;
+            $albumName = trim($f['folder_name'] ?? '');
+            if (!empty($albumName)) {
+                $album = Album::firstOrCreate(
+                    ['name' => $albumName],
+                    ['slug' => Str::slug($albumName) . '-' . Str::random(4)]
+                );
+                $albumId = $album->id;
+            }
+
+            $title = pathinfo($name, PATHINFO_FILENAME);
+            if ($isEnc) {
+                $title = pathinfo(substr($name, 0, -4), PATHINFO_FILENAME);
+            }
+
+            try {
+                Media::create([
+                    'title' => $title,
+                    'description' => null,
+                    'type' => $type,
+                    'mime_type' => $mimeType,
+                    'original_filename' => $name,
+                    'size' => (int)($f['size'] ?? 0),
+                    'drive_file_id' => $id,
+                    'thumb_drive_id' => null,
+                    'cache_key' => Str::random(32),
+                    'album_id' => $albumId,
+                    'sort_order' => 0,
+                    'is_favorite' => false,
+                    'is_locked' => false,
+                ]);
+
+                $syncedCount++;
+                $this->info("✓ Berhasil sinkronisasi file subfolder: {$title} ({$type})" . ($albumName ? " [Album: {$albumName}]" : ""));
+            } catch (\Throwable $e) {
+                $this->error("Gagal menambahkan media {$name}: " . $e->getMessage());
+                $errorCount++;
             }
         }
 

@@ -99,10 +99,66 @@ class FileEncryptionService
     }
 
     /**
+     * Check if a file is already unencrypted / standard plaintext media.
+     */
+    public function isPlaintextFile(string $filePath): bool
+    {
+        $handle = @fopen($filePath, 'rb');
+        if (!$handle) {
+            return false;
+        }
+
+        $header = fread($handle, 32);
+        fclose($handle);
+
+        if (strlen($header) < 4) {
+            return false;
+        }
+
+        // JPEG: FF D8 FF
+        if (str_starts_with($header, "\xFF\xD8\xFF")) {
+            return true;
+        }
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if (str_starts_with($header, "\x89PNG\r\n\x1a\n")) {
+            return true;
+        }
+        // GIF: GIF87a or GIF89a
+        if (str_starts_with($header, 'GIF87a') || str_starts_with($header, 'GIF89a')) {
+            return true;
+        }
+        // WEBP: RIFF....WEBP
+        if (str_starts_with($header, 'RIFF') && substr($header, 8, 4) === 'WEBP') {
+            return true;
+        }
+        // MP4 / MOV / M4V (ISO Base Media)
+        if (strlen($header) >= 8 && substr($header, 4, 4) === 'ftyp') {
+            return true;
+        }
+        // QuickTime
+        if (strlen($header) >= 8 && in_array(substr($header, 4, 4), ['moov', 'mdat', 'wide', 'skip'])) {
+            return true;
+        }
+        // Matroska / WebM
+        if (str_starts_with($header, "\x1A\x45\xDF\xA3")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Decrypt an encrypted file to a temporary file.
      */
     public function decryptFile(string $inputPath): string
     {
+        // If file is already unencrypted media, return a direct copy safely
+        if ($this->isPlaintextFile($inputPath)) {
+            $outputPath = tempnam(sys_get_temp_dir(), 'dec_');
+            copy($inputPath, $outputPath);
+            return $outputPath;
+        }
+
         $outputPath = tempnam(sys_get_temp_dir(), 'dec_');
         $input = fopen($inputPath, 'rb');
         $output = fopen($outputPath, 'wb');
@@ -111,48 +167,71 @@ class FileEncryptionService
             throw new \RuntimeException('Cannot open files for decryption');
         }
 
-        // Read header
-        $header = fread($input, self::HEADER_SIZE);
-        $chunkSize = unpack('N', substr($header, 0, 4))[1];
-
-        // Encrypted chunk size = IV + encrypted data (same as plaintext chunk) + tag
-        $encryptedChunkSize = self::IV_LENGTH + $chunkSize + self::TAG_LENGTH;
-
-        $chunkIndex = 0;
-        while (!feof($input)) {
-            $encryptedChunk = fread($input, $encryptedChunkSize);
-            if ($encryptedChunk === false || $encryptedChunk === '') {
-                break;
+        try {
+            // Read header
+            $header = fread($input, self::HEADER_SIZE);
+            if (strlen($header) < self::HEADER_SIZE) {
+                throw new \RuntimeException('Header file terlalu pendek untuk file terenkripsi');
             }
 
-            $chunkLen = strlen($encryptedChunk);
-
-            // Extract IV, ciphertext, and tag
-            $chunkIv = substr($encryptedChunk, 0, self::IV_LENGTH);
-            $tag = substr($encryptedChunk, -self::TAG_LENGTH);
-            $ciphertext = substr($encryptedChunk, self::IV_LENGTH, $chunkLen - self::IV_LENGTH - self::TAG_LENGTH);
-
-            $plaintext = openssl_decrypt(
-                $ciphertext,
-                self::CIPHER,
-                $this->key,
-                OPENSSL_RAW_DATA,
-                $chunkIv,
-                $tag
-            );
-
-            if ($plaintext === false) {
-                throw new \RuntimeException('Decryption failed at chunk ' . $chunkIndex . '. File may be corrupted or key is wrong.');
+            $chunkSize = unpack('N', substr($header, 0, 4))[1];
+            if ($chunkSize <= 0 || $chunkSize > 50 * 1024 * 1024) {
+                throw new \RuntimeException('Invalid chunk size in header');
             }
 
-            fwrite($output, $plaintext);
-            $chunkIndex++;
+            // Encrypted chunk size = IV + encrypted data (same as plaintext chunk) + tag
+            $encryptedChunkSize = self::IV_LENGTH + $chunkSize + self::TAG_LENGTH;
+
+            $chunkIndex = 0;
+            while (!feof($input)) {
+                $encryptedChunk = fread($input, $encryptedChunkSize);
+                if ($encryptedChunk === false || $encryptedChunk === '') {
+                    break;
+                }
+
+                $chunkLen = strlen($encryptedChunk);
+
+                // Extract IV, ciphertext, and tag
+                $chunkIv = substr($encryptedChunk, 0, self::IV_LENGTH);
+                $tag = substr($encryptedChunk, -self::TAG_LENGTH);
+                $ciphertext = substr($encryptedChunk, self::IV_LENGTH, $chunkLen - self::IV_LENGTH - self::TAG_LENGTH);
+
+                $plaintext = openssl_decrypt(
+                    $ciphertext,
+                    self::CIPHER,
+                    $this->key,
+                    OPENSSL_RAW_DATA,
+                    $chunkIv,
+                    $tag
+                );
+
+                if ($plaintext === false) {
+                    throw new \RuntimeException('Decryption failed at chunk ' . $chunkIndex . '. File may be corrupted or key is wrong.');
+                }
+
+                fwrite($output, $plaintext);
+                $chunkIndex++;
+            }
+
+            fclose($input);
+            fclose($output);
+
+            return $outputPath;
+        } catch (\Throwable $e) {
+            if (is_resource($input)) fclose($input);
+            if (is_resource($output)) fclose($output);
+            @unlink($outputPath);
+
+            // Fallback: check if the file is an unencrypted image/video
+            $mime = @mime_content_type($inputPath);
+            if ($mime && (str_starts_with($mime, 'image/') || str_starts_with($mime, 'video/'))) {
+                $fallbackPath = tempnam(sys_get_temp_dir(), 'dec_');
+                copy($inputPath, $fallbackPath);
+                return $fallbackPath;
+            }
+
+            throw $e;
         }
-
-        fclose($input);
-        fclose($output);
-
-        return $outputPath;
     }
 
     /**
