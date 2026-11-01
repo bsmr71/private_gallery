@@ -107,9 +107,12 @@ export default function SyncStatusBar({ onOpenSyncModal, hidePill = false }) {
     const hasFails = (syncState.failCount || 0) > 0;
     const isDone = !syncState.isSyncing && !isPaused && ((syncState.successCount || 0) > 0 || hasFails);
 
-    // Calculate safe margin: TabBar height is 50 + bottomPadding
-    const bottomPadding = Math.max(insets.bottom, 12);
-    const tabBarHeight = 50 + bottomPadding;
+    // Calculate safe margin matching MainTabs
+    const isAndroid = Platform.OS === 'android';
+    const bottomPadding = isAndroid
+        ? Math.max(insets.bottom, 28) + 8
+        : Math.max(insets.bottom, 12);
+    const tabBarHeight = (isAndroid ? 54 : 50) + bottomPadding;
     const bottomOffset = tabBarHeight + 10;
 
     return (

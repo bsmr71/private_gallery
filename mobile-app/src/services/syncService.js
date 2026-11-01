@@ -109,63 +109,73 @@ export const SyncService = {
             return [];
         }
 
-        console.log('[SyncService] Scanning vault folder:', folderUri);
-        const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.heic'];
+        console.log('[SyncService] Scanning vault folder (recursive):', folderUri);
+        const validExtensions = [
+            '.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.heic', '.heif',
+            '.gif', '.m4v', '.3gp', '.mkv', '.webm', '.dng'
+        ];
         const syncedIds = await StorageService.getSyncedAssetIds();
         const syncedSet = new Set(syncedIds);
         const pending = [];
 
-        // Method A: StorageAccessFramework for Android content:// URIs
+        // Method A: StorageAccessFramework for Android content:// URIs with recursive subfolder traversal
         if (folderUri.startsWith('content://') && StorageAccessFramework?.readDirectoryAsync) {
             try {
-                const fileUris = await StorageAccessFramework.readDirectoryAsync(folderUri);
-                console.log(`[SyncService] SAF readDirectoryAsync found ${fileUris.length} items`);
+                const dirQueue = [folderUri];
+                const visitedDirs = new Set();
+                const maxDirsToScan = 80;
 
-                for (let i = 0; i < fileUris.length; i++) {
-                    const uri = fileUris[i];
-                    const decodedUri = safeDecodeURI(uri);
-                    const filename = decodedUri.split('/').pop() || `file_${i}.jpg`;
-                    const ext = filename.split('.').pop().toLowerCase();
+                while (dirQueue.length > 0 && visitedDirs.size < maxDirsToScan) {
+                    const currentDir = dirQueue.shift();
+                    if (visitedDirs.has(currentDir)) continue;
+                    visitedDirs.add(currentDir);
 
-                    if (validExtensions.includes(`.${ext}`)) {
-                        const isVideo = ext === 'mp4' || ext === 'mov';
-                        if (!syncedSet.has(uri)) {
-                            pending.push({
-                                id: uri,
-                                uri: uri,
-                                filename: filename,
-                                mediaType: isVideo ? 'video' : 'photo',
-                                isSafFile: true,
-                            });
-                        }
+                    let children = [];
+                    try {
+                        children = await StorageAccessFramework.readDirectoryAsync(currentDir);
+                    } catch (readErr) {
+                        console.warn('[SyncService] Could not read SAF directory:', currentDir, readErr?.message || readErr);
+                        continue;
                     }
-                }
-                return pending;
-            } catch (safScanErr) {
-                console.warn('[SyncService] SAF scan error:', safScanErr);
-            }
-        }
 
-        // Method B: Directory list from expo-file-system
-        if (Directory) {
-            try {
-                const dir = new Directory(folderUri);
-                const items = dir.list();
-                console.log(`[SyncService] Directory.list found ${items.length} items`);
+                    for (let i = 0; i < children.length; i++) {
+                        const childUri = children[i];
+                        if (visitedDirs.has(childUri)) continue;
 
-                for (let i = 0; i < items.length; i++) {
-                    const item = items[i];
-                    const isDir = item instanceof Directory || item.isDirectory;
-                    if (!isDir) {
-                        const filename = item.name || item.uri.split('/').pop() || `file_${i}.jpg`;
-                        const ext = filename.split('.').pop().toLowerCase();
-                        if (validExtensions.includes(`.${ext}`)) {
-                            const isVideo = ext === 'mp4' || ext === 'mov';
-                            if (!syncedSet.has(item.uri)) {
+                        const decodedUri = safeDecodeURI(childUri);
+                        const rawName = decodedUri.split('/').pop() || `item_${i}`;
+                        const cleanName = rawName.split('?')[0];
+                        const parts = cleanName.split('.');
+                        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+
+                        // Check if childUri is a subdirectory
+                        // If it doesn't match a media extension, test if it can be read as a directory
+                        if (!validExtensions.includes(`.${ext}`)) {
+                            try {
+                                const subItems = await StorageAccessFramework.readDirectoryAsync(childUri);
+                                // Succeeded! It IS a subdirectory!
+                                dirQueue.push(childUri);
+                                continue;
+                            } catch (notDir) {
+                                // Not a directory, treat as a potential file below
+                            }
+                        }
+
+                        const isKnownExt = validExtensions.includes(`.${ext}`);
+                        const isMediaUri = childUri.includes('/image%3A') || childUri.includes('/video%3A') ||
+                                           childUri.includes('image:') || childUri.includes('video:') ||
+                                           decodedUri.includes('image:') || decodedUri.includes('video:');
+
+                        if (isKnownExt || isMediaUri) {
+                            const isVideo = ['mp4', 'mov', 'm4v', '3gp', 'mkv', 'webm'].includes(ext) ||
+                                            childUri.toLowerCase().includes('video');
+                            const finalFilename = isKnownExt ? cleanName : `media_${Date.now()}_${pending.length}.${isVideo ? 'mp4' : 'jpg'}`;
+
+                            if (!syncedSet.has(childUri)) {
                                 pending.push({
-                                    id: item.uri,
-                                    uri: item.uri,
-                                    filename: filename,
+                                    id: childUri,
+                                    uri: childUri,
+                                    filename: finalFilename,
                                     mediaType: isVideo ? 'video' : 'photo',
                                     isSafFile: true,
                                 });
@@ -173,6 +183,58 @@ export const SyncService = {
                         }
                     }
                 }
+
+                console.log(`[SyncService] Recursive SAF scan completed: found ${pending.length} pending items across ${visitedDirs.size} folders`);
+                return pending;
+            } catch (safScanErr) {
+                console.warn('[SyncService] SAF scan error:', safScanErr);
+            }
+        }
+
+        // Method B: Directory list from expo-file-system with recursive subfolder traversal
+        if (Directory) {
+            try {
+                const dirQueue = [folderUri];
+                const visitedDirs = new Set();
+                const maxDirsToScan = 80;
+
+                while (dirQueue.length > 0 && visitedDirs.size < maxDirsToScan) {
+                    const currentDirUri = dirQueue.shift();
+                    if (visitedDirs.has(currentDirUri)) continue;
+                    visitedDirs.add(currentDirUri);
+
+                    try {
+                        const dir = new Directory(currentDirUri);
+                        const items = dir.list();
+                        for (let i = 0; i < items.length; i++) {
+                            const item = items[i];
+                            const isDir = item instanceof Directory || item.isDirectory;
+                            if (isDir) {
+                                dirQueue.push(item.uri);
+                            } else {
+                                const filename = item.name || item.uri.split('/').pop() || `file_${i}.jpg`;
+                                const cleanName = filename.split('?')[0];
+                                const ext = cleanName.split('.').pop().toLowerCase();
+                                if (validExtensions.includes(`.${ext}`)) {
+                                    const isVideo = ['mp4', 'mov', 'm4v', '3gp', 'mkv', 'webm'].includes(ext);
+                                    if (!syncedSet.has(item.uri)) {
+                                        pending.push({
+                                            id: item.uri,
+                                            uri: item.uri,
+                                            filename: cleanName,
+                                            mediaType: isVideo ? 'video' : 'photo',
+                                            isSafFile: true,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } catch (subDirErr) {
+                        console.warn('[SyncService] Directory list err:', currentDirUri, subDirErr);
+                    }
+                }
+
+                console.log(`[SyncService] Recursive Directory scan completed: found ${pending.length} items`);
                 return pending;
             } catch (dirScanErr) {
                 console.warn('[SyncService] Directory.list scan error:', dirScanErr);

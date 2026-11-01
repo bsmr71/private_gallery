@@ -49,7 +49,13 @@ const appTheme = {
 
 function MainTabs({ onLogout }) {
     const insets = useSafeAreaInsets();
-    const bottomPadding = Math.max(insets.bottom, 12);
+    const isAndroid = Platform.OS === 'android';
+    // On Android, insets.bottom can be 0 or small (gesture) or 48 (3-button nav).
+    // Ensure sufficient bottom spacing so system nav buttons never overlap tab items!
+    const bottomPadding = isAndroid
+        ? Math.max(insets.bottom, 28) + 8
+        : Math.max(insets.bottom, 12);
+    const tabBarHeight = (isAndroid ? 54 : 50) + bottomPadding;
 
     return (
         <Tab.Navigator
@@ -62,13 +68,13 @@ function MainTabs({ onLogout }) {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(18, 18, 22, 0.88)',
+                    backgroundColor: isAndroid ? '#121216' : 'transparent',
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: 'rgba(255, 255, 255, 0.14)',
-                    height: 50 + bottomPadding,
-                    paddingBottom: bottomPadding - 2,
+                    height: tabBarHeight,
+                    paddingBottom: bottomPadding,
                     paddingTop: 6,
-                    elevation: 0,
+                    elevation: 12,
                 },
                 tabBarBackground: Platform.OS === 'ios' ? () => (
                     <BlurView

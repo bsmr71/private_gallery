@@ -121,6 +121,12 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
         }
     };
 
+    const handleResetSyncHistory = async () => {
+        setLoadingFolder(true);
+        await StorageService.clearSyncedAssetIds();
+        await loadAndScan();
+    };
+
     const handleToggleAutoDelete = async (val) => {
         setAutoDelete(val);
         await StorageService.setAutoDeleteLocal(val);
@@ -389,6 +395,15 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                             ? `Tidak ada foto baru di folder "${folderName}". Foto yang dimasukkan ke folder ini akan otomatis terdeteksi.`
                                             : 'Ketuk "Pilih Folder" di atas untuk menghubungkan 1 folder di ponsel Anda.'}
                                     </Text>
+                                    {hasFolderUri && (
+                                        <TouchableOpacity
+                                            style={styles.resetSyncBtn}
+                                            onPress={handleResetSyncHistory}
+                                        >
+                                            <SFSymbol name="arrow.clockwise" size={13} color="#0A84FF" style={{ marginRight: 6 }} />
+                                            <Text style={styles.resetSyncText}>Pindai Ulang Semua Foto</Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             ) : (
                                 <FlatList
@@ -749,6 +764,20 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 4,
         lineHeight: 16,
+    },
+    resetSyncBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(10, 132, 255, 0.12)',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        marginTop: 14,
+    },
+    resetSyncText: {
+        color: '#0A84FF',
+        fontSize: 12,
+        fontWeight: '600',
     },
     thumbList: {
         paddingVertical: 4,

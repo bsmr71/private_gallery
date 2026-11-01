@@ -167,6 +167,12 @@ export const StorageService = {
         } catch (e) {}
     },
 
+    async clearSyncedAssetIds() {
+        try {
+            await AsyncStorage.removeItem('@vault_synced_asset_ids');
+        } catch (e) {}
+    },
+
     // Local Vault Offline Cache Setting (Default true: instant playback from local private sandbox)
     async getKeepLocalVault() {
         try {
