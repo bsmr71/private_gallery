@@ -107,9 +107,12 @@ export default function SyncStatusBar({ onOpenSyncModal, hidePill = false }) {
     const hasFails = (syncState.failCount || 0) > 0;
     const isDone = !syncState.isSyncing && !isPaused && ((syncState.successCount || 0) > 0 || hasFails);
 
-    // Calculate safe margin: TabBar height is 50 + bottomPadding
-    const bottomPadding = Math.max(insets.bottom, 12);
-    const tabBarHeight = 50 + bottomPadding;
+    // Calculate safe margin matching MainTabs in App.js
+    const isAndroid = Platform.OS === 'android';
+    const bottomPadding = isAndroid
+        ? Math.max(insets.bottom, 28)
+        : Math.max(insets.bottom, 12);
+    const tabBarHeight = (isAndroid ? 54 : 50) + bottomPadding;
     const bottomOffset = tabBarHeight + 10;
 
     return (
@@ -144,104 +147,104 @@ export default function SyncStatusBar({ onOpenSyncModal, hidePill = false }) {
                         activeOpacity={0.85}
                         onPress={() => onOpenSyncModal && onOpenSyncModal()}
                     >
-                    <BlurView tint="dark" intensity={80} style={StyleSheet.absoluteFill} />
-                    <View style={styles.pillContent}>
-                        {/* Icon */}
-                        <View style={styles.iconBox}>
-                            {isPaused ? (
-                                <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
-                            ) : isDone ? (
-                                hasFails && syncState.successCount === 0 ? (
-                                    <SFSymbol name="xmark.circle" size={13} color="#FF453A" />
-                                ) : hasFails ? (
+                        <BlurView tint="dark" intensity={80} style={StyleSheet.absoluteFill} />
+                        <View style={styles.pillContent}>
+                            {/* Icon */}
+                            <View style={styles.iconBox}>
+                                {isPaused ? (
                                     <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
+                                ) : isDone ? (
+                                    hasFails && syncState.successCount === 0 ? (
+                                        <SFSymbol name="xmark.circle" size={13} color="#FF453A" />
+                                    ) : hasFails ? (
+                                        <SFSymbol name="exclamationmark.triangle" size={13} color="#FF9F0A" />
+                                    ) : (
+                                        <SFSymbol name="checkmark" size={13} color="#30D158" />
+                                    )
                                 ) : (
-                                    <SFSymbol name="checkmark" size={13} color="#30D158" />
-                                )
-                            ) : (
-                                <SFSymbol name="arrow.triangle.2.circlepath" size={13} color="#0A84FF" />
-                            )}
-                        </View>
+                                    <SFSymbol name="arrow.triangle.2.circlepath" size={13} color="#0A84FF" />
+                                )}
+                            </View>
 
-                        {/* Text Details & Mini Progress */}
-                        <View style={styles.textBox}>
-                            <Text style={styles.pillTitle} numberOfLines={1}>
-                                {isPaused
-                                    ? (syncState.pauseReason || 'Jaringan terputus (dijeda)')
-                                    : isDone
-                                    ? (hasFails
-                                        ? `${syncState.successCount || 0} sukses, ${syncState.failCount} gagal/terlewat`
-                                        : `${syncState.successCount} berkas tersinkronkan ke Cloud`)
-                                    : `${syncState.currentFilename || 'Menyinkronkan'} (${syncState.current}/${syncState.total})`}
-                            </Text>
-                            {!isDone && !isPaused && (
-                                <View style={styles.miniTrack}>
-                                    <Animated.View
-                                        style={[
-                                            styles.miniFill,
-                                            { width: progressWidth },
-                                        ]}
-                                    />
-                                </View>
-                            )}
-                        </View>
+                            {/* Text Details & Mini Progress */}
+                            <View style={styles.textBox}>
+                                <Text style={styles.pillTitle} numberOfLines={1}>
+                                    {isPaused
+                                        ? (syncState.pauseReason || 'Jaringan terputus (dijeda)')
+                                        : isDone
+                                            ? (hasFails
+                                                ? `${syncState.successCount || 0} sukses, ${syncState.failCount} gagal/terlewat`
+                                                : `${syncState.successCount} berkas tersinkronkan ke Cloud`)
+                                            : `${syncState.currentFilename || 'Menyinkronkan'} (${syncState.current}/${syncState.total})`}
+                                </Text>
+                                {!isDone && !isPaused && (
+                                    <View style={styles.miniTrack}>
+                                        <Animated.View
+                                            style={[
+                                                styles.miniFill,
+                                                { width: progressWidth },
+                                            ]}
+                                        />
+                                    </View>
+                                )}
+                            </View>
 
-                        {/* Percentage / Status Badge */}
-                        <View style={[
-                            styles.badge,
-                            isDone && !hasFails && styles.badgeSuccess,
-                            (isPaused || (isDone && hasFails)) && styles.badgeWarning,
-                        ]}>
-                            <Text style={[
-                                styles.badgeText,
-                                isDone && !hasFails && styles.badgeTextSuccess,
-                                (isPaused || (isDone && hasFails)) && styles.badgeTextWarning,
+                            {/* Percentage / Status Badge */}
+                            <View style={[
+                                styles.badge,
+                                isDone && !hasFails && styles.badgeSuccess,
+                                (isPaused || (isDone && hasFails)) && styles.badgeWarning,
                             ]}>
-                                {isPaused ? 'Dijeda' : isDone ? (hasFails ? 'Selesai Sebagian' : 'Selesai') : `${syncState.percentage}%`}
-                            </Text>
+                                <Text style={[
+                                    styles.badgeText,
+                                    isDone && !hasFails && styles.badgeTextSuccess,
+                                    (isPaused || (isDone && hasFails)) && styles.badgeTextWarning,
+                                ]}>
+                                    {isPaused ? 'Dijeda' : isDone ? (hasFails ? 'Selesai Sebagian' : 'Selesai') : `${syncState.percentage}%`}
+                                </Text>
+                            </View>
                         </View>
-                    </View>
-                </TouchableOpacity>
-            </View>
-        )}
-    </Animated.View>
-);
+                    </TouchableOpacity>
+                </View>
+            )}
+        </Animated.View>
+    );
 }
 
 const styles = StyleSheet.create({
-container: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 99999,
-    elevation: 9999,
-},
-tabBarEdgeTrack: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 2.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-},
-pillContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-},
-statusBarFill: {
-    height: '100%',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-    elevation: 4,
-},
-pillWrap: {
-    borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    backgroundColor: Platform.OS === 'android' ? 'rgba(18, 18, 22, 0.95)' : 'transparent',
+    container: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 99999,
+        elevation: 9999,
+    },
+    tabBarEdgeTrack: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        height: 2.5,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        overflow: 'hidden',
+    },
+    pillContainer: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        paddingHorizontal: 16,
+    },
+    statusBarFill: {
+        height: '100%',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.8,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    pillWrap: {
+        borderRadius: 22,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.18)',
+        backgroundColor: Platform.OS === 'android' ? 'rgba(18, 18, 22, 0.95)' : 'transparent',
         maxWidth: SCREEN_WIDTH - 32,
         shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },

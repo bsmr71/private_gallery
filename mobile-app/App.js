@@ -49,7 +49,12 @@ const appTheme = {
 
 function MainTabs({ onLogout }) {
     const insets = useSafeAreaInsets();
-    const bottomPadding = Math.max(insets.bottom, 12);
+    const isAndroid = Platform.OS === 'android';
+    // Provide safe, comfortable clearance above Android system navigation bar (3-button nav ~48dp or gesture bar ~24dp)
+    const bottomPadding = isAndroid
+        ? Math.max(insets.bottom, 28)
+        : Math.max(insets.bottom, 12);
+    const tabHeight = (isAndroid ? 54 : 50) + bottomPadding;
 
     return (
         <Tab.Navigator
@@ -62,13 +67,13 @@ function MainTabs({ onLogout }) {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(18, 18, 22, 0.88)',
+                    backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(18, 18, 22, 0.96)',
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: 'rgba(255, 255, 255, 0.14)',
-                    height: 50 + bottomPadding,
-                    paddingBottom: bottomPadding - 2,
-                    paddingTop: 6,
-                    elevation: 0,
+                    height: tabHeight,
+                    paddingBottom: bottomPadding,
+                    paddingTop: 8,
+                    elevation: 10,
                 },
                 tabBarBackground: Platform.OS === 'ios' ? () => (
                     <BlurView
@@ -81,7 +86,8 @@ function MainTabs({ onLogout }) {
                     fontSize: 10,
                     fontWeight: '500',
                     letterSpacing: -0.24,
-                    marginTop: 3,
+                    marginTop: 4,
+                    marginBottom: isAndroid ? 2 : 0,
                 },
                 tabBarIcon: ({ focused, color }) => {
                     let symbolName = 'photos';
@@ -142,8 +148,8 @@ export default function App() {
 
     useEffect(() => {
         // Enforce OS-level FLAG_SECURE: prevents Android task switcher snapshots and screen recording
-        ScreenCapture.preventScreenCaptureAsync().catch(() => {});
-        LocalVaultService.init().catch(() => {});
+        ScreenCapture.preventScreenCaptureAsync().catch(() => { });
+        LocalVaultService.init().catch(() => { });
         checkAuth();
     }, []);
 
@@ -159,7 +165,7 @@ export default function App() {
                     if (sec.action === 'set_new_pin' && sec.new_master_pin) {
                         // Apply new PIN configured from Web Dashboard
                         await SecurityService.applyRemotePins(sec.new_master_pin, sec.new_decoy_pin);
-                        await ApiService.ackPinReset().catch(() => {});
+                        await ApiService.ackPinReset().catch(() => { });
                         setIsLocked(false);
                         SecurityService.setAppLocked(false);
                         Alert.alert(
@@ -169,7 +175,7 @@ export default function App() {
                     } else {
                         // Reset / disable PIN
                         await SecurityService.resetPinToDefaults();
-                        await ApiService.ackPinReset().catch(() => {});
+                        await ApiService.ackPinReset().catch(() => { });
                         setIsLocked(false);
                         SecurityService.setAppLocked(false);
                         Alert.alert(
@@ -209,9 +215,9 @@ export default function App() {
                 // Verify session with server and check for remote PIN reset
                 checkSecuritySync();
                 // Proactively cache Google Drive credentials for offline direct upload
-                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
+                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => { });
                 // Initialize background sync task with OS scheduler
-                BackgroundSyncService.init().catch(() => {});
+                BackgroundSyncService.init().catch(() => { });
             }
         } catch (e) {
             setIsAuthenticated(false);
@@ -231,7 +237,7 @@ export default function App() {
 
                 // Immediately trigger sync in background when app is minimized or closed
                 if (nextAppState === 'background') {
-                    SyncService.triggerAutoSyncIfPending().catch(() => {});
+                    SyncService.triggerAutoSyncIfPending().catch(() => { });
                 }
 
                 // Lock SYNCHRONOUSLY before app leaves screen so it is ALREADY locked in background!
@@ -255,10 +261,10 @@ export default function App() {
                 checkSecuritySync();
 
                 // Trigger sync check on returning to active app
-                SyncService.triggerAutoSyncIfPending().catch(() => {});
+                SyncService.triggerAutoSyncIfPending().catch(() => { });
 
                 // Refresh Google Drive credentials cache
-                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
+                GoogleDriveDirectService.syncCredentialsFromServer().catch(() => { });
 
                 // Dismiss privacy shield safely after lock state settles
                 setTimeout(() => {
@@ -286,7 +292,7 @@ export default function App() {
 
     const handleLogout = async () => {
         try {
-            await ApiService.logout().catch(() => {});
+            await ApiService.logout().catch(() => { });
         } finally {
             await StorageService.removeToken();
             setIsAuthenticated(false);
@@ -298,7 +304,7 @@ export default function App() {
     const handleLoginSuccess = async () => {
         setIsAuthenticated(true);
         // Cache Google Drive credentials immediately after login
-        GoogleDriveDirectService.syncCredentialsFromServer().catch(() => {});
+        GoogleDriveDirectService.syncCredentialsFromServer().catch(() => { });
         const lockEn = await SecurityService.isLockEnabled();
         if (lockEn) {
             setIsLocked(true);

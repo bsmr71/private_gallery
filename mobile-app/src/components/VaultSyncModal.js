@@ -40,919 +40,920 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
     const [vaultStorageInfo, setVaultStorageInfo] = useState({ formatted: '0 MB', count: 0 });
     const [stealthMode, setStealthMode] = useState(false);
 
-    const loadAndScan = useCallback(async () => {
-        try {
-            setLoadingFolder(true);
-            const name = await StorageService.getVaultFolderName();
-            const uri = await StorageService.getVaultDirectoryUri();
-            const del = await StorageService.getAutoDeleteLocal();
-            const syncOnOpen = await StorageService.getAutoSyncEnabled();
-            const keepLocal = await StorageService.getKeepLocalVault();
-            const storageInfo = await LocalVaultService.getVaultStorageUsage();
-
-            setFolderName(name);
-            setHasFolderUri(!!uri);
-            setAutoDelete(del);
-            setAutoSync(syncOnOpen);
-            setKeepLocalVault(keepLocal);
-            setVaultStorageInfo(storageInfo);
-
-            if (uri) {
-                // Auto scan the designated folder
-                const scanned = await SyncService.scanVaultFolder();
-                setPendingAssets(scanned);
-            }
-        } catch (e) {
-            console.warn('Scan error:', e);
-        } finally {
-            setLoadingFolder(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        const unsubscribe = SyncService.subscribe((state) => {
-            setSyncing(state.isSyncing);
-            setProgress({
-                current: state.current,
-                total: state.total,
-                percentage: state.percentage,
-                currentFilename: state.currentFilename,
-            });
-        });
-        return unsubscribe;
-    }, []);
-
-    useEffect(() => {
-        if (visible) {
-            loadAndScan();
-        }
-    }, [visible, loadAndScan]);
-
-    const handleSelectFolder = async () => {
-        try {
-            const folder = await SyncService.selectVaultFolder();
-            if (folder && !folder.cancelled) {
-                setFolderName(folder.name);
-                setHasFolderUri(true);
-                // Scan folder right away
+        const loadAndScan = useCallback(async (forceRescan = false) => {
+            try {
                 setLoadingFolder(true);
-                const scanned = await SyncService.scanVaultFolder();
-                setPendingAssets(scanned);
+                const name = await StorageService.getVaultFolderName();
+                const uri = await StorageService.getVaultDirectoryUri();
+                const del = await StorageService.getAutoDeleteLocal();
+                const syncOnOpen = await StorageService.getAutoSyncEnabled();
+                const keepLocal = await StorageService.getKeepLocalVault();
+                const storageInfo = await LocalVaultService.getVaultStorageUsage();
+
+                setFolderName(name);
+                setHasFolderUri(!!uri);
+                setAutoDelete(del);
+                setAutoSync(syncOnOpen);
+                setKeepLocalVault(keepLocal);
+                setVaultStorageInfo(storageInfo);
+
+                if (uri) {
+                    if (forceRescan) {
+                        await StorageService.clearSyncedAssetIds();
+                    }
+                    // Auto scan the designated folder (supports subfolders & forceRescan)
+                    const scanned = await SyncService.scanVaultFolder({ forceAll: forceRescan });
+                    setPendingAssets(scanned);
+                }
+            } catch (e) {
+                console.warn('Scan error:', e);
+            } finally {
                 setLoadingFolder(false);
             }
-        } catch (e) {
-            console.error('[VaultSyncModal] Error selecting folder:', e);
-            Alert.alert('Gagal Membuka Folder', e?.message || 'Tidak dapat membuka pemilih folder di perangkat Anda.');
-        }
-    };
+        }, []);
 
-    const handlePickAdditionalMedia = async () => {
-        try {
-            const picked = await SyncService.pickMediaFromDevice({ limit: 50 });
-            if (picked.length > 0) {
-                setPendingAssets((prev) => {
-                    const existingUris = new Set(prev.map((p) => p.uri));
-                    const newItems = picked.filter((p) => !existingUris.has(p.uri));
-                    return [...prev, ...newItems];
+        useEffect(() => {
+            const unsubscribe = SyncService.subscribe((state) => {
+                setSyncing(state.isSyncing);
+                setProgress({
+                    current: state.current,
+                    total: state.total,
+                    percentage: state.percentage,
+                    currentFilename: state.currentFilename,
                 });
+            });
+            return unsubscribe;
+        }, []);
+
+        useEffect(() => {
+            if (visible) {
+                loadAndScan();
             }
-        } catch (e) {
-            Alert.alert('Gagal', 'Tidak dapat membuka galeri perangkat.');
-        }
-    };
+        }, [visible, loadAndScan]);
 
-    const handleToggleAutoDelete = async (val) => {
-        setAutoDelete(val);
-        await StorageService.setAutoDeleteLocal(val);
-    };
+        const handleSelectFolder = async () => {
+            try {
+                const folder = await SyncService.selectVaultFolder();
+                if (folder && !folder.cancelled) {
+                    setFolderName(folder.name);
+                    setHasFolderUri(true);
+                    // Scan folder right away
+                    setLoadingFolder(true);
+                    const scanned = await SyncService.scanVaultFolder();
+                    setPendingAssets(scanned);
+                    setLoadingFolder(false);
+                }
+            } catch (e) {
+                console.error('[VaultSyncModal] Error selecting folder:', e);
+                Alert.alert('Gagal Membuka Folder', e?.message || 'Tidak dapat membuka pemilih folder di perangkat Anda.');
+            }
+        };
 
-    const handleToggleAutoSync = async (val) => {
-        setAutoSync(val);
-        await StorageService.setAutoSyncEnabled(val);
-    };
+        const handlePickAdditionalMedia = async () => {
+            try {
+                const picked = await SyncService.pickMediaFromDevice({ limit: 50 });
+                if (picked.length > 0) {
+                    setPendingAssets((prev) => {
+                        const existingUris = new Set(prev.map((p) => p.uri));
+                        const newItems = picked.filter((p) => !existingUris.has(p.uri));
+                        return [...prev, ...newItems];
+                    });
+                }
+            } catch (e) {
+                Alert.alert('Gagal', 'Tidak dapat membuka galeri perangkat.');
+            }
+        };
 
-    const handleToggleKeepLocalVault = async (val) => {
-        setKeepLocalVault(val);
-        await StorageService.setKeepLocalVault(val);
-    };
+        const handleToggleAutoDelete = async (val) => {
+            setAutoDelete(val);
+            await StorageService.setAutoDeleteLocal(val);
+        };
 
-    const handleClearLocalVault = () => {
-        Alert.alert(
-            'Kosongkan Penyimpanan HP?',
-            'Semua berkas foto & video offline di memori HP akan dibersihkan untuk menghemat ruang penyimpanan ponsel.\n\nFoto & video Anda di Google Drive tetap 100% aman dan masih bisa diakses kapan saja.',
-            [
-                { text: 'Batal', style: 'cancel' },
-                {
-                    text: 'Kosongkan',
-                    style: 'destructive',
-                    onPress: async () => {
-                        await LocalVaultService.clearLocalVault();
-                        const updatedInfo = await LocalVaultService.getVaultStorageUsage();
-                        setVaultStorageInfo(updatedInfo);
-                        Alert.alert('Selesai', 'Penyimpanan offline HP berhasil dikosongkan.');
+        const handleToggleAutoSync = async (val) => {
+            setAutoSync(val);
+            await StorageService.setAutoSyncEnabled(val);
+        };
+
+        const handleToggleKeepLocalVault = async (val) => {
+            setKeepLocalVault(val);
+            await StorageService.setKeepLocalVault(val);
+        };
+
+        const handleClearLocalVault = () => {
+            Alert.alert(
+                'Kosongkan Penyimpanan HP?',
+                'Semua berkas foto & video offline di memori HP akan dibersihkan untuk menghemat ruang penyimpanan ponsel.\n\nFoto & video Anda di Google Drive tetap 100% aman dan masih bisa diakses kapan saja.',
+                [
+                    { text: 'Batal', style: 'cancel' },
+                    {
+                        text: 'Kosongkan',
+                        style: 'destructive',
+                        onPress: async () => {
+                            await LocalVaultService.clearLocalVault();
+                            const updatedInfo = await LocalVaultService.getVaultStorageUsage();
+                            setVaultStorageInfo(updatedInfo);
+                            Alert.alert('Selesai', 'Penyimpanan offline HP berhasil dikosongkan.');
+                        },
                     },
-                },
-            ]
-        );
-    };
+                ]
+            );
+        };
 
-    const handleRemoveItem = (index) => {
-        setPendingAssets((prev) => prev.filter((_, i) => i !== index));
-    };
+        const handleRemoveItem = (index) => {
+            setPendingAssets((prev) => prev.filter((_, i) => i !== index));
+        };
 
-    const handleStartSync = async () => {
-        if (pendingAssets.length === 0 || SyncService.isSyncActive()) return;
+        const handleStartSync = async () => {
+            if (pendingAssets.length === 0 || SyncService.isSyncActive()) return;
 
-        try {
-            const res = await SyncService.syncAssets(pendingAssets);
+            try {
+                const res = await SyncService.syncAssets(pendingAssets);
 
-            if (res.alreadyRunning) {
-                Alert.alert('Info', 'Sinkronisasi sudah berjalan.');
-                return;
+                if (res.alreadyRunning) {
+                    Alert.alert('Info', 'Sinkronisasi sudah berjalan.');
+                    return;
+                }
+
+                if (res.isCancelled) {
+                    Alert.alert('Dibatalkan', 'Sinkronisasi dihentikan.');
+                } else if (res.failCount > 0 && res.successCount === 0) {
+                    const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '\n\nPastikan koneksi internet stabil.';
+                    Alert.alert(
+                        'Sinkronisasi Belum Berhasil',
+                        `Gagal mengunggah ${res.failCount} berkas ke server.${detail}`,
+                        [{ text: 'OK' }]
+                    );
+                } else {
+                    Alert.alert(
+                        'Sinkronisasi Selesai',
+                        `${res.successCount} berkas berhasil dienkripsi AES-256 dan disimpan di Google Drive.${res.failCount > 0 ? `\n⚠️ ${res.failCount} berkas gagal diunggah.` : ''
+                        }${res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari folder HP (Zero Footprint).` : ''
+                        }`,
+                        [{ text: 'OK' }]
+                    );
+                }
+
+                // Rescan folder
+                loadAndScan();
+                onSyncCompleted && onSyncCompleted();
+            } catch (err) {
+                Alert.alert('Error', err.message || 'Terjadi kendala saat sinkronisasi');
             }
+        };
 
-            if (res.isCancelled) {
-                Alert.alert('Dibatalkan', 'Sinkronisasi dihentikan.');
-            } else if (res.failCount > 0 && res.successCount === 0) {
-                const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '\n\nPastikan koneksi internet stabil.';
-                Alert.alert(
-                    'Sinkronisasi Belum Berhasil',
-                    `Gagal mengunggah ${res.failCount} berkas ke server.${detail}`,
-                    [{ text: 'OK' }]
-                );
-            } else {
-                Alert.alert(
-                    'Sinkronisasi Selesai',
-                    `${res.successCount} berkas berhasil dienkripsi AES-256 dan disimpan di Google Drive.${
-                        res.failCount > 0 ? `\n⚠️ ${res.failCount} berkas gagal diunggah.` : ''
-                    }${
-                        res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari folder HP (Zero Footprint).` : ''
-                    }`,
-                    [{ text: 'OK' }]
-                );
-            }
+        const panY = useRef(new Animated.Value(SCREEN_HEIGHT * 0.4)).current;
+        const isClosingRef = useRef(false);
 
-            // Rescan folder
-            loadAndScan();
-            onSyncCompleted && onSyncCompleted();
-        } catch (err) {
-            Alert.alert('Error', err.message || 'Terjadi kendala saat sinkronisasi');
-        }
-    };
-
-    const panY = useRef(new Animated.Value(SCREEN_HEIGHT * 0.4)).current;
-    const isClosingRef = useRef(false);
-
-    const resetPosition = () => {
-        Animated.spring(panY, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 24,
-            mass: 0.8,
-            stiffness: 220,
-        }).start();
-    };
-
-    const closeWithAnimation = (velocity = 0) => {
-        if (isClosingRef.current) return;
-        isClosingRef.current = true;
-
-        const duration = Math.max(140, Math.min(240, 250 - Math.abs(velocity) * 80));
-        Animated.timing(panY, {
-            toValue: SCREEN_HEIGHT,
-            duration: duration,
-            useNativeDriver: true,
-        }).start(() => {
-            onClose && onClose();
-            isClosingRef.current = false;
-        });
-    };
-
-    useEffect(() => {
-        if (visible) {
-            isClosingRef.current = false;
-            panY.setValue(SCREEN_HEIGHT * 0.35);
+        const resetPosition = () => {
             Animated.spring(panY, {
                 toValue: 0,
                 useNativeDriver: true,
-                damping: 25,
+                damping: 24,
                 mass: 0.8,
                 stiffness: 220,
             }).start();
-        }
-    }, [visible]);
+        };
 
-    const backdropOpacity = panY.interpolate({
-        inputRange: [0, Math.min(SCREEN_HEIGHT * 0.4, 350)],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-    });
+        const closeWithAnimation = (velocity = 0) => {
+            if (isClosingRef.current) return;
+            isClosingRef.current = true;
 
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-            onPanResponderMove: (_, gestureState) => {
-                if (gestureState.dy > 0) {
-                    panY.setValue(gestureState.dy);
-                }
-            },
-            onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > 65 || gestureState.vy > 0.35) {
-                    closeWithAnimation(gestureState.vy);
-                } else {
-                    resetPosition();
-                }
-            },
-        })
-    ).current;
+            const duration = Math.max(140, Math.min(240, 250 - Math.abs(velocity) * 80));
+            Animated.timing(panY, {
+                toValue: SCREEN_HEIGHT,
+                duration: duration,
+                useNativeDriver: true,
+            }).start(() => {
+                onClose && onClose();
+                isClosingRef.current = false;
+            });
+        };
 
-    if (!visible) return null;
+        useEffect(() => {
+            if (visible) {
+                isClosingRef.current = false;
+                panY.setValue(SCREEN_HEIGHT * 0.35);
+                Animated.spring(panY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    damping: 25,
+                    mass: 0.8,
+                    stiffness: 220,
+                }).start();
+            }
+        }, [visible]);
 
-    return (
-        <Modal
-            visible={visible}
-            animationType="fade"
-            transparent
-            onRequestClose={() => closeWithAnimation()}
-        >
-            <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-                {/* Backdrop dismiss touch */}
-                <TouchableWithoutFeedback onPress={() => closeWithAnimation()}>
-                    <View style={StyleSheet.absoluteFillObject} />
-                </TouchableWithoutFeedback>
+        const backdropOpacity = panY.interpolate({
+            inputRange: [0, Math.min(SCREEN_HEIGHT * 0.4, 350)],
+            outputRange: [1, 0],
+            extrapolate: 'clamp',
+        });
 
-                <Animated.View
-                    style={[
-                        styles.sheet,
-                        {
-                            paddingBottom: Math.max(insets.bottom, 20) + 12,
-                            transform: [{ translateY: panY }],
-                        },
-                    ]}
-                >
-                    {/* Draggable Area (Handle + Header) */}
-                    <View {...panResponder.panHandlers} style={styles.dragArea}>
-                        {/* Grab Handle */}
-                        <View style={styles.handle} />
+        const panResponder = useRef(
+            PanResponder.create({
+                onStartShouldSetPanResponder: () => true,
+                onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+                onPanResponderMove: (_, gestureState) => {
+                    if (gestureState.dy > 0) {
+                        panY.setValue(gestureState.dy);
+                    }
+                },
+                onPanResponderRelease: (_, gestureState) => {
+                    if (gestureState.dy > 65 || gestureState.vy > 0.35) {
+                        closeWithAnimation(gestureState.vy);
+                    } else {
+                        resetPosition();
+                    }
+                },
+            })
+        ).current;
 
-                        {/* Header */}
-                        <View style={styles.header}>
-                            <View style={styles.headerTitleRow}>
-                                <SFSymbol name="lock.fill" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
-                                <View>
-                                    <Text style={styles.headerTitle}>Isolated Vault Sync</Text>
-                                    {syncing && (
-                                        <Text style={styles.syncingSubtext}>
-                                            Sinkronisasi tetap berjalan saat diminimize
-                                        </Text>
-                                    )}
-                                </View>
-                            </View>
-                            <TouchableOpacity
-                                style={styles.closeBtn}
-                                onPress={closeWithAnimation}
-                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                            >
-                                <SFSymbol name="xmark" size={14} color="#8E8E93" />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+        if (!visible) return null;
 
-                    <ScrollView
-                        style={styles.body}
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 36 }}
+        return (
+            <Modal
+                visible={visible}
+                animationType="fade"
+                transparent
+                onRequestClose={() => closeWithAnimation()}
+            >
+                <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+                    {/* Backdrop dismiss touch */}
+                    <TouchableWithoutFeedback onPress={() => closeWithAnimation()}>
+                        <View style={StyleSheet.absoluteFillObject} />
+                    </TouchableWithoutFeedback>
+
+                    <Animated.View
+                        style={[
+                            styles.sheet,
+                            {
+                                paddingBottom: Math.max(insets.bottom, 20) + 12,
+                                transform: [{ translateY: panY }],
+                            },
+                        ]}
                     >
-                        {/* 1 Designated Folder Selector Card */}
-                        <View style={styles.card}>
-                            <Text style={styles.cardLabel}>1 FOLDER KHUSUS DI HP</Text>
-                            <View style={styles.folderRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.folderName} numberOfLines={1}>
-                                        📁 {folderName}
-                                    </Text>
-                                    <Text style={styles.folderSubtitle}>
-                                        {hasFolderUri
-                                            ? 'Folder ini dipantau secara otomatis. Foto di dalamnya siap di-sync.'
-                                            : 'Tunjuk 1 folder di HP yang khusus Anda gunakan untuk menyimpan foto rahasia.'}
-                                    </Text>
+                        {/* Draggable Area (Handle + Header) */}
+                        <View {...panResponder.panHandlers} style={styles.dragArea}>
+                            {/* Grab Handle */}
+                            <View style={styles.handle} />
+
+                            {/* Header */}
+                            <View style={styles.header}>
+                                <View style={styles.headerTitleRow}>
+                                    <SFSymbol name="lock.fill" size={18} color="#0A84FF" style={{ marginRight: 8 }} />
+                                    <View>
+                                        <Text style={styles.headerTitle}>Isolated Vault Sync</Text>
+                                        {syncing && (
+                                            <Text style={styles.syncingSubtext}>
+                                                Sinkronisasi tetap berjalan saat diminimize
+                                            </Text>
+                                        )}
+                                    </View>
                                 </View>
                                 <TouchableOpacity
-                                    style={styles.changeFolderBtn}
-                                    onPress={handleSelectFolder}
-                                    disabled={syncing}
+                                    style={styles.closeBtn}
+                                    onPress={closeWithAnimation}
+                                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                                 >
-                                    <Text style={styles.changeFolderText}>
-                                        {hasFolderUri ? 'Ganti' : 'Pilih Folder'}
-                                    </Text>
+                                    <SFSymbol name="xmark" size={14} color="#8E8E93" />
                                 </TouchableOpacity>
                             </View>
                         </View>
 
-                        {/* Staged Queue Preview Card */}
-                        <View style={styles.card}>
-                            <View style={styles.sectionHeaderRow}>
-                                <Text style={styles.cardLabel}>
-                                    FOTO TERDETEKSI ({pendingAssets.length})
-                                </Text>
-                                <View style={styles.actionLinks}>
-                                    {hasFolderUri && (
-                                        <TouchableOpacity
-                                            onPress={loadAndScan}
-                                            disabled={syncing || loadingFolder}
-                                            style={styles.rescanBtn}
-                                        >
-                                            <SFSymbol name="arrow.clockwise" size={12} color="#8E8E93" style={{ marginRight: 3 }} />
-                                            <Text style={styles.rescanText}>Pindai Ulang</Text>
-                                        </TouchableOpacity>
-                                    )}
+                        <ScrollView
+                            style={styles.body}
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 36 }}
+                        >
+                            {/* 1 Designated Folder Selector Card */}
+                            <View style={styles.card}>
+                                <Text style={styles.cardLabel}>1 FOLDER KHUSUS DI HP</Text>
+                                <View style={styles.folderRow}>
+                                    <View style={{ flex: 1, marginRight: 12 }}>
+                                        <Text style={styles.folderName} numberOfLines={1}>
+                                            📁 {folderName}
+                                        </Text>
+                                        <Text style={styles.folderSubtitle}>
+                                            {hasFolderUri
+                                                ? 'Folder ini dipantau secara otomatis. Foto di dalamnya siap di-sync.'
+                                                : 'Tunjuk 1 folder di HP yang khusus Anda gunakan untuk menyimpan foto rahasia.'}
+                                        </Text>
+                                    </View>
                                     <TouchableOpacity
-                                        onPress={handlePickAdditionalMedia}
+                                        style={styles.changeFolderBtn}
+                                        onPress={handleSelectFolder}
                                         disabled={syncing}
-                                        style={styles.addMoreBtn}
                                     >
-                                        <SFSymbol name="plus" size={13} color="#0A84FF" style={{ marginRight: 4 }} />
-                                        <Text style={styles.addMoreText}>Pilih Manual</Text>
+                                        <Text style={styles.changeFolderText}>
+                                            {hasFolderUri ? 'Ganti' : 'Pilih Folder'}
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
 
-                            {loadingFolder ? (
-                                <ActivityIndicator size="small" color="#0A84FF" style={{ marginVertical: 24 }} />
-                            ) : pendingAssets.length === 0 ? (
-                                <View style={styles.emptyPending}>
-                                    <SFSymbol name="cloud.checkmark" size={36} color="#30D158" />
-                                    <Text style={styles.emptyPendingTitle}>Folder Vault Bersih</Text>
-                                    <Text style={styles.emptyPendingDesc}>
-                                        {hasFolderUri
-                                            ? `Tidak ada foto baru di folder "${folderName}". Foto yang dimasukkan ke folder ini akan otomatis terdeteksi.`
-                                            : 'Ketuk "Pilih Folder" di atas untuk menghubungkan 1 folder di ponsel Anda.'}
+                            {/* Staged Queue Preview Card */}
+                            <View style={styles.card}>
+                                <View style={styles.sectionHeaderRow}>
+                                    <Text style={styles.cardLabel}>
+                                        FOTO TERDETEKSI ({pendingAssets.length})
+                                    </Text>
+                                    <View style={styles.actionLinks}>
+                                        {hasFolderUri && (
+                                            <TouchableOpacity
+                                                onPress={() => loadAndScan(true)}
+                                                disabled={syncing || loadingFolder}
+                                                style={styles.rescanBtn}
+                                            >
+                                                <SFSymbol name="arrow.clockwise" size={12} color="#8E8E93" style={{ marginRight: 3 }} />
+                                                <Text style={styles.rescanText}>Pindai Ulang</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        <TouchableOpacity
+                                            onPress={handlePickAdditionalMedia}
+                                            disabled={syncing}
+                                            style={styles.addMoreBtn}
+                                        >
+                                            <SFSymbol name="plus" size={13} color="#0A84FF" style={{ marginRight: 4 }} />
+                                            <Text style={styles.addMoreText}>Pilih Manual</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {loadingFolder ? (
+                                    <ActivityIndicator size="small" color="#0A84FF" style={{ marginVertical: 24 }} />
+                                ) : pendingAssets.length === 0 ? (
+                                    <View style={styles.emptyPending}>
+                                        <SFSymbol name="cloud.checkmark" size={36} color="#30D158" />
+                                        <Text style={styles.emptyPendingTitle}>Folder Vault Bersih</Text>
+                                        <Text style={styles.emptyPendingDesc}>
+                                            {hasFolderUri
+                                                ? `Tidak ada foto baru di folder "${folderName}". Foto yang dimasukkan ke folder ini akan otomatis terdeteksi.`
+                                                : 'Ketuk "Pilih Folder" di atas untuk menghubungkan 1 folder di ponsel Anda.'}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <FlatList
+                                        data={pendingAssets}
+                                        keyExtractor={(item, idx) => `${item.id}_${idx}`}
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        contentContainerStyle={styles.thumbList}
+                                        renderItem={({ item, index }) => (
+                                            <View style={styles.thumbWrap}>
+                                                <Image source={{ uri: item.uri }} style={styles.thumbImage} resizeMode="cover" />
+                                                {item.mediaType === 'video' && (
+                                                    <View style={styles.videoBadge}>
+                                                        <SFSymbol name="play.fill" size={7} color="#ffffff" />
+                                                    </View>
+                                                )}
+                                                <TouchableOpacity
+                                                    style={styles.removeThumbBtn}
+                                                    onPress={() => handleRemoveItem(index)}
+                                                    disabled={syncing}
+                                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                                >
+                                                    <SFSymbol name="xmark.circle.fill" size={16} color="#ffffff" />
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    />
+                                )}
+                            </View>
+
+                            {/* Privacy & Zero Footprint Toggle */}
+                            <View style={styles.card}>
+                                <Text style={styles.cardLabel}>PENGATURAN BRANKAS &amp; KECEPATAN</Text>
+
+                                {/* Keep in Local Vault for Instant 0.05s Playback */}
+                                <View style={styles.toggleRow}>
+                                    <View style={{ flex: 1, marginRight: 12 }}>
+                                        <Text style={styles.toggleTitle}>Simpan di Brankas Offline HP</Text>
+                                        <Text style={styles.toggleDesc}>
+                                            Menyimpan berkas terenkripsi di memori HP agar foto &amp; video langsung terbuka instan (0.05 detik) tanpa kuota dan tanpa buffering.
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={keepLocalVault}
+                                        onValueChange={handleToggleKeepLocalVault}
+                                        trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
+                                        thumbColor="#ffffff"
+                                        disabled={syncing}
+                                    />
+                                </View>
+
+                                <View style={styles.divider} />
+
+                                {/* Clean public folder */}
+                                <View style={styles.toggleRow}>
+                                    <View style={{ flex: 1, marginRight: 12 }}>
+                                        <Text style={styles.toggleTitle}>Hapus dari Folder Publik HP</Text>
+                                        <Text style={styles.toggleDesc}>
+                                            Membersihkan file dari folder kamera/galeri umum HP setelah backup agar tidak tampak di luar aplikasi (Zero Footprint).
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={autoDelete}
+                                        onValueChange={handleToggleAutoDelete}
+                                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                                        thumbColor="#ffffff"
+                                        disabled={syncing}
+                                    />
+                                </View>
+
+                                <View style={styles.divider} />
+
+                                {/* Auto-Sync Toggle */}
+                                <View style={styles.toggleRow}>
+                                    <View style={{ flex: 1, marginRight: 12 }}>
+                                        <Text style={styles.toggleTitle}>Auto-Sync Saat Buka Aplikasi</Text>
+                                        <Text style={styles.toggleDesc}>
+                                            Otomatis memindai dan mencadangkan foto baru saat Anda membuka aplikasi tanpa perlu menekan tombol manual.
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={autoSync}
+                                        onValueChange={handleToggleAutoSync}
+                                        trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
+                                        thumbColor="#ffffff"
+                                        disabled={syncing}
+                                    />
+                                </View>
+
+                                <View style={styles.divider} />
+
+                                {/* Local Vault Storage Usage & Clear Button */}
+                                <View style={styles.storageUsageRow}>
+                                    <View style={{ flex: 1, marginRight: 10 }}>
+                                        <Text style={styles.storageUsageTitle}>Penyimpanan Offline HP</Text>
+                                        <Text style={styles.storageUsageDesc}>
+                                            {vaultStorageInfo.formatted ? `${vaultStorageInfo.formatted} • ${vaultStorageInfo.count} berkas tersimpan` : '0 MB'}
+                                        </Text>
+                                    </View>
+                                    {vaultStorageInfo.count > 0 && (
+                                        <TouchableOpacity
+                                            style={styles.clearStorageBtn}
+                                            onPress={handleClearLocalVault}
+                                            disabled={syncing}
+                                            activeOpacity={0.7}
+                                        >
+                                            <SFSymbol name="trash" size={13} color="#FF453A" style={{ marginRight: 5 }} />
+                                            <Text style={styles.clearStorageText}>Kosongkan</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            </View>
+
+                            {/* Sync Action Area */}
+                            {syncing ? (
+                                <View style={styles.syncingCard}>
+                                    <ActivityIndicator size="small" color="#0A84FF" style={{ marginBottom: 8 }} />
+                                    <Text style={styles.syncingTitle}>
+                                        Mengenkripsi &amp; Mengunggah ({progress.current} dari {progress.total})
+                                    </Text>
+                                    <View style={styles.progressBarBg}>
+                                        <View style={[styles.progressBarFill, { width: `${progress.percentage}%` }]} />
+                                    </View>
+                                    <Text style={styles.syncingSubtitle} numberOfLines={1}>
+                                        {progress.currentFilename ? `Mengunggah: ${progress.currentFilename}` : 'Terenkripsi biner AES-256 menuju Google Drive...'}
+                                    </Text>
+
+                                    {/* Background Sync & Action Buttons */}
+                                    <View style={styles.syncAuxRow}>
+                                        <TouchableOpacity
+                                            style={[styles.auxBtn, { borderColor: 'rgba(255, 69, 58, 0.3)' }]}
+                                            onPress={() => {
+                                                Alert.alert(
+                                                    'Hentikan Sinkronisasi?',
+                                                    'Apakah Anda ingin menghentikan proses upload yang sedang berjalan?',
+                                                    [
+                                                        { text: 'Lanjut Sync', style: 'cancel' },
+                                                        {
+                                                            text: 'Hentikan',
+                                                            style: 'destructive',
+                                                            onPress: () => {
+                                                                SyncService.cancelSync();
+                                                            },
+                                                        },
+                                                    ]
+                                                );
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <SFSymbol name="xmark.circle" size={13} color="#FF453A" style={{ marginRight: 6 }} />
+                                            <Text style={[styles.auxBtnTextBlue, { color: '#FF453A' }]}>Batalkan</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.auxBtn}
+                                            onPress={onClose}
+                                            activeOpacity={0.7}
+                                        >
+                                            <SFSymbol name="arrow.down.right.and.arrow.up.left" size={13} color="#0A84FF" style={{ marginRight: 6 }} />
+                                            <Text style={styles.auxBtnTextBlue}>Di Background</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    <Text style={styles.bgSyncHint}>
+                                        🔒 Aman: Anda dapat beralih aplikasi atau mengunci HP, sinkronisasi tetap berjalan senyap di latar belakang.
                                     </Text>
                                 </View>
                             ) : (
-                                <FlatList
-                                    data={pendingAssets}
-                                    keyExtractor={(item, idx) => `${item.id}_${idx}`}
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={styles.thumbList}
-                                    renderItem={({ item, index }) => (
-                                        <View style={styles.thumbWrap}>
-                                            <Image source={{ uri: item.uri }} style={styles.thumbImage} resizeMode="cover" />
-                                            {item.mediaType === 'video' && (
-                                                <View style={styles.videoBadge}>
-                                                    <SFSymbol name="play.fill" size={7} color="#ffffff" />
-                                                </View>
-                                            )}
-                                            <TouchableOpacity
-                                                style={styles.removeThumbBtn}
-                                                onPress={() => handleRemoveItem(index)}
-                                                disabled={syncing}
-                                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                                            >
-                                                <SFSymbol name="xmark.circle.fill" size={16} color="#ffffff" />
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-                                />
+                                <TouchableOpacity
+                                    style={[
+                                        styles.syncBtn,
+                                        pendingAssets.length === 0 && styles.syncBtnDisabled,
+                                    ]}
+                                    onPress={handleStartSync}
+                                    disabled={pendingAssets.length === 0}
+                                    activeOpacity={0.8}
+                                >
+                                    <SFSymbol name="arrow.clockwise" size={17} color="#ffffff" style={{ marginRight: 8 }} />
+                                    <Text style={styles.syncBtnText}>
+                                        {pendingAssets.length > 0
+                                            ? `Amankan ${pendingAssets.length} Foto ke Cloud`
+                                            : 'Tidak Ada Foto untuk Di-Sync'}
+                                    </Text>
+                                </TouchableOpacity>
                             )}
-                        </View>
-
-                        {/* Privacy & Zero Footprint Toggle */}
-                        <View style={styles.card}>
-                            <Text style={styles.cardLabel}>PENGATURAN BRANKAS &amp; KECEPATAN</Text>
-
-                            {/* Keep in Local Vault for Instant 0.05s Playback */}
-                            <View style={styles.toggleRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Simpan di Brankas Offline HP</Text>
-                                    <Text style={styles.toggleDesc}>
-                                        Menyimpan berkas terenkripsi di memori HP agar foto &amp; video langsung terbuka instan (0.05 detik) tanpa kuota dan tanpa buffering.
-                                    </Text>
-                                </View>
-                                <Switch
-                                    value={keepLocalVault}
-                                    onValueChange={handleToggleKeepLocalVault}
-                                    trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
-                                    thumbColor="#ffffff"
-                                    disabled={syncing}
-                                />
-                            </View>
-
-                            <View style={styles.divider} />
-
-                            {/* Clean public folder */}
-                            <View style={styles.toggleRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Hapus dari Folder Publik HP</Text>
-                                    <Text style={styles.toggleDesc}>
-                                        Membersihkan file dari folder kamera/galeri umum HP setelah backup agar tidak tampak di luar aplikasi (Zero Footprint).
-                                    </Text>
-                                </View>
-                                <Switch
-                                    value={autoDelete}
-                                    onValueChange={handleToggleAutoDelete}
-                                    trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                                    thumbColor="#ffffff"
-                                    disabled={syncing}
-                                />
-                            </View>
-
-                            <View style={styles.divider} />
-
-                            {/* Auto-Sync Toggle */}
-                            <View style={styles.toggleRow}>
-                                <View style={{ flex: 1, marginRight: 12 }}>
-                                    <Text style={styles.toggleTitle}>Auto-Sync Saat Buka Aplikasi</Text>
-                                    <Text style={styles.toggleDesc}>
-                                        Otomatis memindai dan mencadangkan foto baru saat Anda membuka aplikasi tanpa perlu menekan tombol manual.
-                                    </Text>
-                                </View>
-                                <Switch
-                                    value={autoSync}
-                                    onValueChange={handleToggleAutoSync}
-                                    trackColor={{ false: '#3a3a3c', true: '#0A84FF' }}
-                                    thumbColor="#ffffff"
-                                    disabled={syncing}
-                                />
-                            </View>
-
-                            <View style={styles.divider} />
-
-                            {/* Local Vault Storage Usage & Clear Button */}
-                            <View style={styles.storageUsageRow}>
-                                <View style={{ flex: 1, marginRight: 10 }}>
-                                    <Text style={styles.storageUsageTitle}>Penyimpanan Offline HP</Text>
-                                    <Text style={styles.storageUsageDesc}>
-                                        {vaultStorageInfo.formatted ? `${vaultStorageInfo.formatted} • ${vaultStorageInfo.count} berkas tersimpan` : '0 MB'}
-                                    </Text>
-                                </View>
-                                {vaultStorageInfo.count > 0 && (
-                                    <TouchableOpacity
-                                        style={styles.clearStorageBtn}
-                                        onPress={handleClearLocalVault}
-                                        disabled={syncing}
-                                        activeOpacity={0.7}
-                                    >
-                                        <SFSymbol name="trash" size={13} color="#FF453A" style={{ marginRight: 5 }} />
-                                        <Text style={styles.clearStorageText}>Kosongkan</Text>
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-                        </View>
-
-                        {/* Sync Action Area */}
-                        {syncing ? (
-                            <View style={styles.syncingCard}>
-                                <ActivityIndicator size="small" color="#0A84FF" style={{ marginBottom: 8 }} />
-                                <Text style={styles.syncingTitle}>
-                                    Mengenkripsi &amp; Mengunggah ({progress.current} dari {progress.total})
-                                </Text>
-                                <View style={styles.progressBarBg}>
-                                    <View style={[styles.progressBarFill, { width: `${progress.percentage}%` }]} />
-                                </View>
-                                <Text style={styles.syncingSubtitle} numberOfLines={1}>
-                                    {progress.currentFilename ? `Mengunggah: ${progress.currentFilename}` : 'Terenkripsi biner AES-256 menuju Google Drive...'}
-                                </Text>
-
-                                {/* Background Sync & Action Buttons */}
-                                <View style={styles.syncAuxRow}>
-                                    <TouchableOpacity
-                                        style={[styles.auxBtn, { borderColor: 'rgba(255, 69, 58, 0.3)' }]}
-                                        onPress={() => {
-                                            Alert.alert(
-                                                'Hentikan Sinkronisasi?',
-                                                'Apakah Anda ingin menghentikan proses upload yang sedang berjalan?',
-                                                [
-                                                    { text: 'Lanjut Sync', style: 'cancel' },
-                                                    {
-                                                        text: 'Hentikan',
-                                                        style: 'destructive',
-                                                        onPress: () => {
-                                                            SyncService.cancelSync();
-                                                        },
-                                                    },
-                                                ]
-                                            );
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <SFSymbol name="xmark.circle" size={13} color="#FF453A" style={{ marginRight: 6 }} />
-                                        <Text style={[styles.auxBtnTextBlue, { color: '#FF453A' }]}>Batalkan</Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={styles.auxBtn}
-                                        onPress={onClose}
-                                        activeOpacity={0.7}
-                                    >
-                                        <SFSymbol name="arrow.down.right.and.arrow.up.left" size={13} color="#0A84FF" style={{ marginRight: 6 }} />
-                                        <Text style={styles.auxBtnTextBlue}>Di Background</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                <Text style={styles.bgSyncHint}>
-                                    🔒 Aman: Anda dapat beralih aplikasi atau mengunci HP, sinkronisasi tetap berjalan senyap di latar belakang.
-                                </Text>
-                            </View>
-                        ) : (
-                            <TouchableOpacity
-                                style={[
-                                    styles.syncBtn,
-                                    pendingAssets.length === 0 && styles.syncBtnDisabled,
-                                ]}
-                                onPress={handleStartSync}
-                                disabled={pendingAssets.length === 0}
-                                activeOpacity={0.8}
-                            >
-                                <SFSymbol name="arrow.clockwise" size={17} color="#ffffff" style={{ marginRight: 8 }} />
-                                <Text style={styles.syncBtnText}>
-                                    {pendingAssets.length > 0
-                                        ? `Amankan ${pendingAssets.length} Foto ke Cloud`
-                                        : 'Tidak Ada Foto untuk Di-Sync'}
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-                    </ScrollView>
+                        </ScrollView>
+                    </Animated.View>
                 </Animated.View>
-            </Animated.View>
 
-            {/* Stealth Blackout Mode (Layar Hitam Senyap) */}
-            <Modal visible={stealthMode} transparent={false} animationType="fade">
-                <TouchableOpacity
-                    style={styles.stealthBackdrop}
-                    activeOpacity={1}
-                    onPress={() => setStealthMode(false)}
-                >
-                    <View style={styles.stealthCenter}>
-                        <View style={styles.stealthPulseDot} />
-                        <Text style={styles.stealthProgressText}>{progress.percentage}%</Text>
-                    </View>
-                    <Text style={styles.stealthHintText}>Ketuk di mana saja untuk mengembalikan layar</Text>
-                </TouchableOpacity>
+                {/* Stealth Blackout Mode (Layar Hitam Senyap) */}
+                <Modal visible={stealthMode} transparent={false} animationType="fade">
+                    <TouchableOpacity
+                        style={styles.stealthBackdrop}
+                        activeOpacity={1}
+                        onPress={() => setStealthMode(false)}
+                    >
+                        <View style={styles.stealthCenter}>
+                            <View style={styles.stealthPulseDot} />
+                            <Text style={styles.stealthProgressText}>{progress.percentage}%</Text>
+                        </View>
+                        <Text style={styles.stealthHintText}>Ketuk di mana saja untuk mengembalikan layar</Text>
+                    </TouchableOpacity>
+                </Modal>
             </Modal>
-        </Modal>
-    );
-}
+        );
+    }
 
 const styles = StyleSheet.create({
-    backdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        justifyContent: 'flex-end',
-    },
-    sheet: {
-        backgroundColor: '#1c1c1e',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        maxHeight: '88%',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-    },
-    dragArea: {
-        width: '100%',
-        paddingTop: 2,
-    },
-    syncingSubtext: {
-        color: '#30D158',
-        fontSize: 11,
-        fontWeight: '500',
-        marginTop: 2,
-    },
-    handle: {
-        width: 36,
-        height: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.25)',
-        borderRadius: 2,
-        alignSelf: 'center',
-        marginTop: 10,
-        marginBottom: 6,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    headerTitleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    headerTitle: {
-        color: '#ffffff',
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    closeBtn: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: '#2c2c2e',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    body: {
-        paddingHorizontal: 16,
-        paddingTop: 16,
-    },
-    card: {
-        backgroundColor: '#2c2c2e',
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 14,
-    },
-    cardLabel: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#8E8E93',
-        letterSpacing: 0.5,
-        marginBottom: 6,
-    },
-    folderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    folderName: {
-        color: '#ffffff',
-        fontSize: 17,
-        fontWeight: '700',
-        marginTop: 2,
-    },
-    folderSubtitle: {
-        color: '#8E8E93',
-        fontSize: 12,
-        marginTop: 4,
-        lineHeight: 16,
-    },
-    changeFolderBtn: {
-        backgroundColor: 'rgba(10, 132, 255, 0.15)',
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 14,
-    },
-    changeFolderText: {
-        color: '#0A84FF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    sectionHeaderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-    },
-    actionLinks: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    rescanBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 2,
-        paddingHorizontal: 4,
-    },
-    rescanText: {
-        color: '#8E8E93',
-        fontSize: 12,
-    },
-    addMoreBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 2,
-        paddingHorizontal: 6,
-    },
-    addMoreText: {
-        color: '#0A84FF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    emptyPending: {
-        alignItems: 'center',
-        paddingVertical: 24,
-        paddingHorizontal: 16,
-    },
-    emptyPendingTitle: {
-        color: '#30D158',
-        fontSize: 15,
-        fontWeight: '600',
-        marginTop: 10,
-    },
-    emptyPendingDesc: {
-        color: '#8E8E93',
-        fontSize: 12,
-        textAlign: 'center',
-        marginTop: 4,
-        lineHeight: 16,
-    },
-    thumbList: {
-        paddingVertical: 4,
-        gap: 8,
-    },
-    thumbWrap: {
-        width: THUMB_SIZE,
-        height: THUMB_SIZE,
-        borderRadius: 10,
-        overflow: 'hidden',
-        position: 'relative',
-        backgroundColor: '#1c1c1e',
-    },
-    thumbImage: {
-        width: '100%',
-        height: '100%',
-    },
-    videoBadge: {
-        position: 'absolute',
-        bottom: 3,
-        right: 3,
-        backgroundColor: 'rgba(0,0,0,0.65)',
-        width: 14,
-        height: 14,
-        borderRadius: 7,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    removeThumbBtn: {
-        position: 'absolute',
-        top: 2,
-        right: 2,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        borderRadius: 8,
-    },
-    divider: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-        marginVertical: 12,
-    },
-    toggleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 4,
-    },
-    toggleTitle: {
-        color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    toggleDesc: {
-        color: '#8E8E93',
-        fontSize: 12,
-        lineHeight: 16,
-        marginTop: 2,
-    },
-    syncingCard: {
-        backgroundColor: 'rgba(10, 132, 255, 0.1)',
-        borderWidth: 1,
-        borderColor: 'rgba(10, 132, 255, 0.25)',
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-    },
-    syncingTitle: {
-        color: '#ffffff',
-        fontSize: 15,
-        fontWeight: '600',
-        marginBottom: 8,
-    },
-    progressBarBg: {
-        width: '100%',
-        height: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-        borderRadius: 3,
-        overflow: 'hidden',
-        marginBottom: 8,
-    },
-    progressBarFill: {
-        height: '100%',
-        backgroundColor: '#0A84FF',
-        borderRadius: 3,
-    },
-    syncingSubtitle: {
-        color: '#8E8E93',
-        fontSize: 12,
-    },
-    syncBtn: {
-        backgroundColor: '#0A84FF',
-        borderRadius: 14,
-        paddingVertical: 15,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 4,
-    },
-    syncBtnDisabled: {
-        backgroundColor: '#2c2c2e',
-        opacity: 0.6,
-    },
-    syncBtnText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '700',
-    },
-    syncAuxRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginTop: 14,
-        marginBottom: 10,
-        width: '100%',
-        justifyContent: 'center',
-    },
-    auxBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#2c2c2e',
-        borderRadius: 10,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    auxBtnTextAmber: {
-        color: '#FF9F0A',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    auxBtnTextBlue: {
-        color: '#0A84FF',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    bgSyncHint: {
-        color: '#8E8E93',
-        fontSize: 11,
-        textAlign: 'center',
-        lineHeight: 16,
-        marginTop: 6,
-        paddingHorizontal: 8,
-    },
-    stealthBackdrop: {
-        flex: 1,
-        backgroundColor: '#000000',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-    },
-    stealthCenter: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        opacity: 0.35,
-    },
-    stealthPulseDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#30D158',
-    },
-    stealthProgressText: {
-        color: '#ffffff',
-        fontSize: 13,
-        fontWeight: '500',
-        letterSpacing: 0.5,
-    },
-    stealthHintText: {
-        position: 'absolute',
-        bottom: 40,
-        color: '#3a3a3c',
-        fontSize: 11,
-        textAlign: 'center',
-    },
-    storageUsageRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 6,
-    },
-    storageUsageTitle: {
-        color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    storageUsageDesc: {
-        color: '#8E8E93',
-        fontSize: 12,
-        lineHeight: 16,
-        marginTop: 2,
-    },
-    clearStorageBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255, 69, 58, 0.12)',
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 69, 58, 0.25)',
-    },
-    clearStorageText: {
-        color: '#FF453A',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-});
+        backdrop: {
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            justifyContent: 'flex-end',
+        },
+        sheet: {
+            backgroundColor: '#1c1c1e',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            maxHeight: '88%',
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.12)',
+        },
+        dragArea: {
+            width: '100%',
+            paddingTop: 2,
+        },
+        syncingSubtext: {
+            color: '#30D158',
+            fontSize: 11,
+            fontWeight: '500',
+            marginTop: 2,
+        },
+        handle: {
+            width: 36,
+            height: 4,
+            backgroundColor: 'rgba(255, 255, 255, 0.25)',
+            borderRadius: 2,
+            alignSelf: 'center',
+            marginTop: 10,
+            marginBottom: 6,
+        },
+        header: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        },
+        headerTitleRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        headerTitle: {
+            color: '#ffffff',
+            fontSize: 18,
+            fontWeight: '700',
+        },
+        closeBtn: {
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: '#2c2c2e',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        body: {
+            paddingHorizontal: 16,
+            paddingTop: 16,
+        },
+        card: {
+            backgroundColor: '#2c2c2e',
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 14,
+        },
+        cardLabel: {
+            fontSize: 11,
+            fontWeight: '700',
+            color: '#8E8E93',
+            letterSpacing: 0.5,
+            marginBottom: 6,
+        },
+        folderRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+        },
+        folderName: {
+            color: '#ffffff',
+            fontSize: 17,
+            fontWeight: '700',
+            marginTop: 2,
+        },
+        folderSubtitle: {
+            color: '#8E8E93',
+            fontSize: 12,
+            marginTop: 4,
+            lineHeight: 16,
+        },
+        changeFolderBtn: {
+            backgroundColor: 'rgba(10, 132, 255, 0.15)',
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 14,
+        },
+        changeFolderText: {
+            color: '#0A84FF',
+            fontSize: 13,
+            fontWeight: '600',
+        },
+        sectionHeaderRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+        },
+        actionLinks: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+        },
+        rescanBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 2,
+            paddingHorizontal: 4,
+        },
+        rescanText: {
+            color: '#8E8E93',
+            fontSize: 12,
+        },
+        addMoreBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 2,
+            paddingHorizontal: 6,
+        },
+        addMoreText: {
+            color: '#0A84FF',
+            fontSize: 13,
+            fontWeight: '600',
+        },
+        emptyPending: {
+            alignItems: 'center',
+            paddingVertical: 24,
+            paddingHorizontal: 16,
+        },
+        emptyPendingTitle: {
+            color: '#30D158',
+            fontSize: 15,
+            fontWeight: '600',
+            marginTop: 10,
+        },
+        emptyPendingDesc: {
+            color: '#8E8E93',
+            fontSize: 12,
+            textAlign: 'center',
+            marginTop: 4,
+            lineHeight: 16,
+        },
+        thumbList: {
+            paddingVertical: 4,
+            gap: 8,
+        },
+        thumbWrap: {
+            width: THUMB_SIZE,
+            height: THUMB_SIZE,
+            borderRadius: 10,
+            overflow: 'hidden',
+            position: 'relative',
+            backgroundColor: '#1c1c1e',
+        },
+        thumbImage: {
+            width: '100%',
+            height: '100%',
+        },
+        videoBadge: {
+            position: 'absolute',
+            bottom: 3,
+            right: 3,
+            backgroundColor: 'rgba(0,0,0,0.65)',
+            width: 14,
+            height: 14,
+            borderRadius: 7,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        removeThumbBtn: {
+            position: 'absolute',
+            top: 2,
+            right: 2,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            borderRadius: 8,
+        },
+        divider: {
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            marginVertical: 12,
+        },
+        toggleRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingVertical: 4,
+        },
+        toggleTitle: {
+            color: '#ffffff',
+            fontSize: 14,
+            fontWeight: '600',
+        },
+        toggleDesc: {
+            color: '#8E8E93',
+            fontSize: 12,
+            lineHeight: 16,
+            marginTop: 2,
+        },
+        syncingCard: {
+            backgroundColor: 'rgba(10, 132, 255, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(10, 132, 255, 0.25)',
+            borderRadius: 16,
+            padding: 16,
+            alignItems: 'center',
+        },
+        syncingTitle: {
+            color: '#ffffff',
+            fontSize: 15,
+            fontWeight: '600',
+            marginBottom: 8,
+        },
+        progressBarBg: {
+            width: '100%',
+            height: 6,
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            borderRadius: 3,
+            overflow: 'hidden',
+            marginBottom: 8,
+        },
+        progressBarFill: {
+            height: '100%',
+            backgroundColor: '#0A84FF',
+            borderRadius: 3,
+        },
+        syncingSubtitle: {
+            color: '#8E8E93',
+            fontSize: 12,
+        },
+        syncBtn: {
+            backgroundColor: '#0A84FF',
+            borderRadius: 14,
+            paddingVertical: 15,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 4,
+        },
+        syncBtnDisabled: {
+            backgroundColor: '#2c2c2e',
+            opacity: 0.6,
+        },
+        syncBtnText: {
+            color: '#ffffff',
+            fontSize: 16,
+            fontWeight: '700',
+        },
+        syncAuxRow: {
+            flexDirection: 'row',
+            gap: 10,
+            marginTop: 14,
+            marginBottom: 10,
+            width: '100%',
+            justifyContent: 'center',
+        },
+        auxBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#2c2c2e',
+            borderRadius: 10,
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+        },
+        auxBtnTextAmber: {
+            color: '#FF9F0A',
+            fontSize: 12,
+            fontWeight: '600',
+        },
+        auxBtnTextBlue: {
+            color: '#0A84FF',
+            fontSize: 12,
+            fontWeight: '600',
+        },
+        bgSyncHint: {
+            color: '#8E8E93',
+            fontSize: 11,
+            textAlign: 'center',
+            lineHeight: 16,
+            marginTop: 6,
+            paddingHorizontal: 8,
+        },
+        stealthBackdrop: {
+            flex: 1,
+            backgroundColor: '#000000',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+        },
+        stealthCenter: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            opacity: 0.35,
+        },
+        stealthPulseDot: {
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: '#30D158',
+        },
+        stealthProgressText: {
+            color: '#ffffff',
+            fontSize: 13,
+            fontWeight: '500',
+            letterSpacing: 0.5,
+        },
+        stealthHintText: {
+            position: 'absolute',
+            bottom: 40,
+            color: '#3a3a3c',
+            fontSize: 11,
+            textAlign: 'center',
+        },
+        storageUsageRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingVertical: 6,
+        },
+        storageUsageTitle: {
+            color: '#ffffff',
+            fontSize: 14,
+            fontWeight: '600',
+        },
+        storageUsageDesc: {
+            color: '#8E8E93',
+            fontSize: 12,
+            lineHeight: 16,
+            marginTop: 2,
+        },
+        clearStorageBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: 'rgba(255, 69, 58, 0.12)',
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(255, 69, 58, 0.25)',
+        },
+        clearStorageText: {
+            color: '#FF453A',
+            fontSize: 12,
+            fontWeight: '600',
+        },
+    });
