@@ -164,7 +164,7 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
         };
 
         const handleStartSync = async () => {
-            if (pendingAssets.length === 0 || SyncService.isSyncActive()) return;
+            if (SyncService.isSyncActive()) return;
 
             try {
                 const res = await SyncService.syncAssets(pendingAssets);
@@ -176,24 +176,37 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
 
                 if (res.isCancelled) {
                     Alert.alert('Dibatalkan', 'Sinkronisasi dihentikan.');
-                } else if (res.failCount > 0 && res.successCount === 0) {
-                    const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '\n\nPastikan koneksi internet stabil.';
+                } else if (res.failCount > 0 && res.successCount === 0 && (res.backedUpCount || 0) === 0 && (res.pulledCount || 0) === 0) {
+                    const detail = res.lastError ? `\n\nKendala: ${res.lastError}` : '';
                     Alert.alert(
                         'Sinkronisasi Belum Berhasil',
-                        `Gagal mengunggah ${res.failCount} berkas ke server.${detail}`,
+                        `Gagal memproses ${res.failCount} berkas.${detail}`,
                         [{ text: 'OK' }]
                     );
                 } else {
-                    Alert.alert(
-                        'Sinkronisasi Selesai',
-                        `${res.successCount} berkas berhasil dienkripsi AES-256 dan disimpan di Google Drive.${res.failCount > 0 ? `\n⚠️ ${res.failCount} berkas gagal diunggah.` : ''
-                        }${res.deletedCount > 0 ? `\n\n🗑️ ${res.deletedCount} file lokal telah dibersihkan dari folder HP (Zero Footprint).` : ''
-                        }`,
-                        [{ text: 'OK' }]
-                    );
+                    const lines = [];
+                    if (res.successCount > 0) {
+                        lines.push(`🔒 ${res.successCount} berkas dienkripsi & diamankan ke brankas lokal Lumina.`);
+                    }
+                    if ((res.backedUpCount || 0) > 0) {
+                        lines.push(`☁️ ${res.backedUpCount} berkas berhasil di-backup ke Google Drive (file lokal tetap tersimpan).`);
+                    }
+                    if ((res.pulledCount || 0) > 0) {
+                        lines.push(`⬇️ ${res.pulledCount} berkas dari Google Drive berhasil diunduh ke brankas lokal HP.`);
+                    }
+                    if (res.deletedCount > 0) {
+                        lines.push(`🧹 ${res.deletedCount} file mentah dibersihkan dari folder publik (tanpa jejak).`);
+                    }
+                    if (res.failCount > 0) {
+                        lines.push(`⚠️ ${res.failCount} berkas gagal diproses.`);
+                    }
+                    if (lines.length === 0) {
+                        lines.push('Brankas lokal Android dan Google Drive sudah 100% sinkron.');
+                    }
+                    Alert.alert('Sinkronisasi Selesai', lines.join('\n'), [{ text: 'OK' }]);
                 }
 
-                // Rescan folder
+                // Rescan folder & refresh local vault stats
                 loadAndScan();
                 onSyncCompleted && onSyncCompleted();
             } catch (err) {
@@ -559,19 +572,16 @@ export default function VaultSyncModal({ visible, onClose, onSyncCompleted }) {
                                 </View>
                             ) : (
                                 <TouchableOpacity
-                                    style={[
-                                        styles.syncBtn,
-                                        pendingAssets.length === 0 && styles.syncBtnDisabled,
-                                    ]}
+                                    style={styles.syncBtn}
                                     onPress={handleStartSync}
-                                    disabled={pendingAssets.length === 0}
+                                    disabled={syncing}
                                     activeOpacity={0.8}
                                 >
                                     <SFSymbol name="arrow.clockwise" size={17} color="#ffffff" style={{ marginRight: 8 }} />
                                     <Text style={styles.syncBtnText}>
                                         {pendingAssets.length > 0
-                                            ? `Amankan ${pendingAssets.length} Foto ke Cloud`
-                                            : 'Tidak Ada Foto untuk Di-Sync'}
+                                            ? `Enkripsi ${pendingAssets.length} Foto & Backup 2 Arah`
+                                            : 'Sinkronkan Brankas ↔ Google Drive'}
                                     </Text>
                                 </TouchableOpacity>
                             )}

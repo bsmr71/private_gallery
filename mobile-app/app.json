@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lumina",
     "slug": "private-gallery",
-    "version": "1.5.7",
+    "version": "1.5.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.bsmrlab.lumina",
-      "versionCode": 25,
+      "versionCode": 26,
       "navigationBar": {
         "visible": "always",
         "backgroundColor": "#121216",

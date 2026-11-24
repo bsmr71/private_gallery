@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { ApiService } from './api';
 import { LocalVaultService } from './localVaultService';
+import { CryptoService } from './cryptoService';
 
 const GDRIVE_KEYS = {
     ACCESS_TOKEN: '@lumina_gdrive_access_token',
@@ -477,11 +478,141 @@ export const GoogleDriveDirectService = {
     },
 
     /**
+     * Recursively list all files inside the Google Drive vault folder and its subfolders.
+     * Used for 2-way sync (Drive -> Android local vault).
+     */
+    async listVaultFilesRecursive(maxFolders = 60) {
+        let token = await this.getValidAccessToken();
+        if (!token) return [];
+
+        const rootFolderId = await this.ensureVaultFolder(token);
+        if (!rootFolderId) return [];
+
+        const queue = [{ id: rootFolderId, folderName: '', folderPath: '' }];
+        const visited = new Set();
+        const allFiles = [];
+
+        while (queue.length > 0 && visited.size < maxFolders) {
+            const curr = queue.shift();
+            if (visited.has(curr.id)) continue;
+            visited.add(curr.id);
+
+            let pageToken = null;
+            do {
+                const query = `'${curr.id}' in parents and trashed=false`;
+                let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,name,size,mimeType,createdTime)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+                if (pageToken) {
+                    url += `&pageToken=${encodeURIComponent(pageToken)}`;
+                }
+
+                let res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (res.status === 401) {
+                    const refreshed = await this.refreshAccessTokenDirectly();
+                    if (refreshed) {
+                        token = refreshed;
+                        res = await fetch(url, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                    }
+                }
+
+                if (!res.ok) {
+                    break;
+                }
+
+                const data = await res.json();
+                const files = data.files || [];
+
+                for (const f of files) {
+                    if (f.mimeType === 'application/vnd.google-apps.folder') {
+                        if (!visited.has(f.id)) {
+                            const subPath = curr.folderPath ? `${curr.folderPath}/${f.name}` : f.name;
+                            queue.push({ id: f.id, folderName: f.name, folderPath: subPath });
+                        }
+                    } else {
+                        allFiles.push({
+                            id: f.id,
+                            name: f.name,
+                            size: Number(f.size || 0),
+                            mimeType: f.mimeType || 'application/octet-stream',
+                            createdTime: f.createdTime || new Date().toISOString(),
+                            folderId: curr.id,
+                            folderName: curr.folderName,
+                            folderPath: curr.folderPath,
+                        });
+                    }
+                }
+
+                pageToken = data.nextPageToken || null;
+            } while (pageToken);
+        }
+
+        return allFiles;
+    },
+
+    /**
+     * Download a text/JSON file (such as .meta manifest) directly from Google Drive.
+     */
+    async downloadTextDirectly(driveFileId) {
+        let token = await this.getValidAccessToken();
+        if (!token) return null;
+
+        const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media&supportsAllDrives=true`;
+        let res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 401) {
+            const refreshed = await this.refreshAccessTokenDirectly();
+            if (refreshed) {
+                token = refreshed;
+                res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+            }
+        }
+
+        if (!res.ok) return null;
+        return await res.text();
+    },
+
+    /**
+     * Download a media or encrypted file directly from Google Drive to a local URI.
+     */
+    async downloadFileDirectly(driveFileId, targetLocalUri) {
+        let token = await this.getValidAccessToken();
+        if (!token) throw new Error('Google Drive belum terhubung');
+
+        const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media&supportsAllDrives=true`;
+        let res = await FileSystemLegacy.downloadAsync(url, targetLocalUri, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 401) {
+            const refreshed = await this.refreshAccessTokenDirectly();
+            if (refreshed) {
+                token = refreshed;
+                res = await FileSystemLegacy.downloadAsync(url, targetLocalUri, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+            }
+        }
+
+        if (res.status !== 200) {
+            throw new Error(`Gagal mengunduh file dari Google Drive (status ${res.status})`);
+        }
+        return targetLocalUri;
+    },
+
+    /**
      * Complete direct-to-Google-Drive upload for a single media item.
-     * 100% server-less: uploads media and .meta manifest directly to Google Drive,
+     * 100% server-less: uploads media (encrypted .enc if available) and .meta manifest directly to Google Drive,
      * stores in local vault for instant offline playback, and notifies server if online.
      */
-    async directUploadMediaItem(fileAsset, { albumName = null, onProgress = null } = {}) {
+    async directUploadMediaItem(fileAsset, { albumName = null, onProgress = null, skipLocalSave = false } = {}) {
         const token = await this.getValidAccessToken();
         if (!token) {
             throw new Error('Google Drive belum terhubung. Silakan hubungkan akun Google Anda di pengaturan aplikasi.');
@@ -498,7 +629,11 @@ export const GoogleDriveDirectService = {
         const timestamp = Date.now();
         const randStr = Math.random().toString(36).substring(2, 8);
         const baseName = `media_${timestamp}_${randStr}`;
-        const remoteMediaName = `${baseName}.${ext}`;
+
+        // Use already-encrypted local file if provided (Local-First architecture)
+        const isAlreadyEnc = Boolean(fileAsset.alreadyEncryptedUri);
+        const uploadSourceUri = isAlreadyEnc ? fileAsset.alreadyEncryptedUri : fileAsset.uri;
+        const remoteMediaName = isAlreadyEnc ? `${baseName}.enc` : `${baseName}.${ext}`;
 
         // Resolve destination folder: if albumName is provided, place in subfolder inside vault folder
         const rootFolderId = await this.ensureVaultFolder(token);
@@ -507,7 +642,7 @@ export const GoogleDriveDirectService = {
         // 1. Upload main media file directly to Google Drive with progress
         onProgress && onProgress(10);
         const driveFileId = await this.uploadEncryptedFile(
-            fileAsset.uri,
+            uploadSourceUri,
             remoteMediaName,
             (pct) => {
                 // map upload progress 10% - 85%
@@ -547,23 +682,42 @@ export const GoogleDriveDirectService = {
             album_name: albumName || null,
             created_at: new Date().toISOString(),
             is_favorite: false,
+            is_encrypted: isAlreadyEnc,
         };
 
+        let metaPayload = JSON.stringify(manifest);
+        if (isAlreadyEnc && CryptoService.isNativeCryptoAvailable()) {
+            try {
+                metaPayload = await CryptoService.encryptMetadata(manifest);
+            } catch (metaEncErr) {
+                metaPayload = JSON.stringify(manifest);
+            }
+        }
+
         const metaRemoteName = `${baseName}.meta`;
-        await this.uploadSmallFile(metaRemoteName, JSON.stringify(manifest), 'application/json', targetFolderId);
+        await this.uploadSmallFile(metaRemoteName, metaPayload, 'application/json', targetFolderId);
 
         // 4. Save to Local Vault so media is instantly available offline in Lumina mobile
         onProgress && onProgress(96);
-        try {
-            await LocalVaultService.saveSyncedAsset(
-                driveFileId,
-                fileAsset.uri,
-                originalName,
-                mimeType,
-                { driveFileId, filename: originalName, itemData: manifest }
-            );
-        } catch (vErr) {
-            console.warn('[GoogleDriveDirect] Local vault save warning:', vErr);
+        if (!skipLocalSave) {
+            try {
+                await LocalVaultService.saveSyncedAsset(
+                    driveFileId,
+                    fileAsset.uri,
+                    originalName,
+                    mimeType,
+                    {
+                        driveFileId,
+                        filename: originalName,
+                        albumName: albumName || null,
+                        localThumbUri: fileAsset.thumbnailUri || null,
+                        pendingBackup: false,
+                        itemData: manifest,
+                    }
+                );
+            } catch (vErr) {
+                console.warn('[GoogleDriveDirect] Local vault save warning:', vErr);
+            }
         }
 
         // 5. Fire-and-forget sync to server if server happens to be online

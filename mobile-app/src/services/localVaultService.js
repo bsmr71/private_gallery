@@ -490,8 +490,9 @@ export const LocalVaultService = {
     },
 
     /**
-     * Save an asset synced from phone into the private sandbox vault.
-     * Copies or moves the file to VAULT_DIR.
+     * Save an asset synced from phone (or downloaded from Drive) into the private sandbox vault.
+     * Encrypts locally using AES-256-GCM at rest when native crypto is available.
+     * Zero trace in public folders; automatically updates offline catalog for instant display.
      */
     async saveSyncedAsset(mediaId, sourceUri, originalFilename, mimeType = null, extraMeta = {}) {
         if (!mediaId || !sourceUri) return null;
@@ -499,8 +500,11 @@ export const LocalVaultService = {
         try {
             await this.init();
 
-            const isVideo = mimeType?.includes('video') || originalFilename?.endsWith('.mp4') || originalFilename?.endsWith('.mov');
-            const ext = isVideo ? 'mp4' : (originalFilename?.split('.').pop() || 'jpg');
+            const isVideo = Boolean(
+                (mimeType && mimeType.includes('video')) ||
+                (originalFilename && originalFilename.match(/\.(mp4|mov|m4v|3gp|webm|mkv|avi)$/i))
+            );
+            const ext = isVideo ? 'mp4' : ((originalFilename && originalFilename.includes('.')) ? originalFilename.split('.').pop().toLowerCase() : 'jpg');
             const safeName = `vault_${mediaId}_${Date.now()}.${ext}`;
             const targetUri = `${VAULT_DIR}${safeName}`;
 
@@ -512,10 +516,16 @@ export const LocalVaultService = {
             }
 
             let finalTargetUri = targetUri;
-            let isEncrypted = false;
+            let isEncrypted = Boolean(extraMeta.alreadyEncrypted);
 
-            // Encrypt at-rest using AES-256-GCM hardware acceleration
-            if (CryptoService.isNativeCryptoAvailable()) {
+            if (extraMeta.alreadyEncrypted) {
+                // File downloaded from Drive is already AES-256-GCM .enc
+                const encTargetUri = `${VAULT_DIR}vault_${mediaId}_${Date.now()}.enc`;
+                await FileSystemLegacy.copyAsync({ from: sourceUri, to: encTargetUri });
+                finalTargetUri = encTargetUri;
+                isEncrypted = true;
+            } else if (CryptoService.isNativeCryptoAvailable() && !extraMeta.skipEncryption) {
+                // Encrypt at-rest using AES-256-GCM hardware acceleration
                 const encTargetUri = `${VAULT_DIR}vault_${mediaId}_${Date.now()}.enc`;
                 try {
                     await CryptoService.encryptFile(sourceUri, encTargetUri);
@@ -534,17 +544,56 @@ export const LocalVaultService = {
                 });
             }
 
-            const driveId = extraMeta.driveFileId || (String(mediaId).length > 15 ? String(mediaId) : null);
+            // Copy thumbnail into private vault sandbox if provided (for instant offline video grid display)
+            let savedThumbUri = null;
+            if (extraMeta.localThumbUri) {
+                try {
+                    const thumbInfo = await FileSystemLegacy.getInfoAsync(extraMeta.localThumbUri);
+                    if (thumbInfo.exists) {
+                        const thumbDest = `${VAULT_DIR}thumb_${mediaId}.jpg`;
+                        await FileSystemLegacy.copyAsync({ from: extraMeta.localThumbUri, to: thumbDest });
+                        savedThumbUri = thumbDest;
+                    }
+                } catch (tErr) {
+                    console.warn('[LocalVaultService] Thumbnail save warning:', tErr);
+                }
+            }
+
+            const driveId = extraMeta.driveFileId || null;
+            const pendingBackup = extraMeta.pendingBackup !== undefined ? Boolean(extraMeta.pendingBackup) : !driveId;
+            const cleanTitle = (originalFilename || safeName).replace(/\.[^.]+$/, '');
+            const resolvedMime = mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+
+            const catalogItem = {
+                id: String(driveId || mediaId),
+                local_media_id: String(mediaId),
+                drive_file_id: driveId,
+                title: (extraMeta.itemData && extraMeta.itemData.title) || cleanTitle,
+                original_filename: originalFilename || safeName,
+                type: isVideo ? 'video' : 'image',
+                mime_type: resolvedMime,
+                size: sourceInfo.size || 0,
+                album_name: extraMeta.albumName || (extraMeta.itemData && extraMeta.itemData.album_name) || null,
+                created_at: (extraMeta.itemData && extraMeta.itemData.created_at) || new Date().toISOString(),
+                is_favorite: Boolean(extraMeta.itemData && extraMeta.itemData.is_favorite),
+                pending_backup: pendingBackup,
+                is_local_only: !driveId,
+                ...(extraMeta.itemData || {}),
+            };
+
             const entry = {
                 mediaId: String(mediaId),
                 driveFileId: driveId,
                 localUri: finalTargetUri,
+                localThumbUri: savedThumbUri,
                 filename: originalFilename || safeName,
+                albumName: catalogItem.album_name,
                 size: sourceInfo.size || 0,
-                mimeType: mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                mimeType: resolvedMime,
                 cachedAt: Date.now(),
                 isEncrypted: isEncrypted,
-                itemData: extraMeta.itemData || null,
+                pendingBackup: pendingBackup,
+                itemData: catalogItem,
             };
 
             localFilesMap.set(String(mediaId), entry);
@@ -556,14 +605,84 @@ export const LocalVaultService = {
             }
 
             await this._persistIndex();
+            await this.saveOfflineCatalog([catalogItem]);
             notifyListeners();
 
-            console.log(`[LocalVaultService] Saved media ${mediaId} to private local vault: ${targetUri}`);
-            return targetUri;
+            console.log(`[LocalVaultService] Saved media ${mediaId} to private local vault: ${finalTargetUri} (encrypted=${isEncrypted}, pendingBackup=${pendingBackup})`);
+            return finalTargetUri;
         } catch (err) {
             console.error('[LocalVaultService] Error saving synced asset to local vault:', err);
             return null;
         }
+    },
+
+    /**
+     * Get all unique local vault entries that are encrypted locally and waiting to be backed up to Google Drive.
+     */
+    async getPendingBackupEntries() {
+        await this.init();
+        const seen = new Set();
+        const pending = [];
+        for (const entry of localFilesMap.values()) {
+            if (!entry || !entry.localUri) continue;
+            if (entry.pendingBackup && !entry.driveFileId && !seen.has(entry.localUri)) {
+                seen.add(entry.localUri);
+                pending.push(entry);
+            }
+        }
+        return pending;
+    },
+
+    /**
+     * Check if a Google Drive file ID is already stored in the local Android vault.
+     */
+    async hasDriveFile(driveFileId) {
+        if (!driveFileId) return false;
+        await this.init();
+        const key = String(driveFileId);
+        if (localFilesMap.has(key)) return true;
+        for (const entry of localFilesMap.values()) {
+            if (entry && String(entry.driveFileId) === key) {
+                return true;
+            }
+        }
+        return false;
+    },
+
+    /**
+     * Mark a local-first vault entry as successfully backed up to Google Drive.
+     * NEVER deletes the local file — keeps it intact for 100% offline access.
+     */
+    async markBackedUp(localMediaId, driveFileId, thumbDriveId = null) {
+        if (!localMediaId || !driveFileId) return;
+        await this.init();
+        const key = String(localMediaId);
+        const entry = localFilesMap.get(key);
+        if (!entry) return;
+
+        const updatedItemData = {
+            ...(entry.itemData || {}),
+            id: String(driveFileId),
+            local_media_id: key,
+            drive_file_id: String(driveFileId),
+            thumb_drive_id: thumbDriveId || (entry.itemData && entry.itemData.thumb_drive_id) || null,
+            pending_backup: false,
+            is_local_only: false,
+        };
+
+        const updatedEntry = {
+            ...entry,
+            driveFileId: String(driveFileId),
+            pendingBackup: false,
+            itemData: updatedItemData,
+        };
+
+        localFilesMap.set(key, updatedEntry);
+        localFilesMap.set(String(driveFileId), updatedEntry);
+
+        await this._persistIndex();
+        await this.saveOfflineCatalog([updatedItemData]);
+        notifyListeners();
     },
 
     /**
