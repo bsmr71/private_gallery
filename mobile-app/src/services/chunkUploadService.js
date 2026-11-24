@@ -141,6 +141,10 @@ export const ChunkUploadService = {
                 thumbnail_base64: thumbnailBase64,
             });
 
+            if (!initRes) {
+                throw new Error('Server galeri tidak dapat dihubungi atau sedang offline.');
+            }
+
             // Duplicate detection: server found identical file
             if (initRes.is_duplicate) {
                 console.log(`[ChunkUploadService] File ${originalName} is duplicate, using existing ID.`);
@@ -150,6 +154,10 @@ export const ChunkUploadService = {
                     uploaded: initRes.media ? [initRes.media] : [],
                     media: initRes.media,
                 };
+            }
+
+            if (!initRes.upload_id) {
+                throw new Error(initRes.message || 'Gagal memulai sesi upload chunk di server.');
             }
 
             uploadId = initRes.upload_id;

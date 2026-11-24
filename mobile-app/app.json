@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lumina",
     "slug": "private-gallery",
-    "version": "1.5.6",
+    "version": "1.5.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.bsmrlab.lumina",
-      "versionCode": 24,
+      "versionCode": 25,
       "navigationBar": {
         "visible": "always",
         "backgroundColor": "#121216",
@@ -41,6 +41,10 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.POST_NOTIFICATIONS"
       ]
+    },
+    "androidNavigationBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#000000"
     },
     "web": {
       "favicon": "./assets/favicon.png"
